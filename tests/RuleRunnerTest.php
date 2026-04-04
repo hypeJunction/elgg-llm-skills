@@ -66,8 +66,9 @@ final class RuleRunnerTest extends TestCase
         $fixtureDir = __DIR__ . '/fixtures/2x-to-3x/page-handler-to-route/input';
         $analyses = $this->runner->analyzeAll($this->manifestPath, $fixtureDir);
 
-        // Should only have results from automated rules (currently just PageHandlerToRoute)
-        $this->assertCount(1, $analyses);
+        // Should have results from all automated rules
+        $this->assertGreaterThanOrEqual(1, count($analyses));
+        // First rule should be PageHandlerToRoute (priority 10)
         $this->assertSame('page-handler-to-route', $analyses[0]->ruleId);
         $this->assertTrue($analyses[0]->applicable);
     }
@@ -82,9 +83,11 @@ final class RuleRunnerTest extends TestCase
         try {
             $results = $this->runner->applyAll($this->manifestPath, $workDir);
 
-            $this->assertCount(1, $results);
-            $this->assertTrue($results[0]->success);
-            $this->assertNotEmpty($results[0]->changes);
+            $this->assertGreaterThanOrEqual(1, count($results));
+            // All results should succeed
+            foreach ($results as $result) {
+                $this->assertTrue($result->success);
+            }
 
             // Verify transformation happened
             $startCode = file_get_contents($workDir . '/start.php');

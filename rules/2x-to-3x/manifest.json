@@ -21,8 +21,8 @@
         {
             "id": "003-library-to-autoload",
             "name": "Replace library registration with autoloading",
-            "automated": false,
-            "llm_instructions": "Find all `elgg_register_library('name', 'path')` and `elgg_load_library('name')` calls. These functions are removed in 3.0. Replace with PSR-4 autoloading (move code into namespaced classes) or `require_once` for non-class code. Update composer.json autoload section if adding new namespaces.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\LibraryToAutoload",
             "breaking_change": "elgg_register_library() and elgg_load_library() removed in 3.0",
             "priority": 30
         },
@@ -45,24 +45,24 @@
         {
             "id": "006-subtype-registration",
             "name": "Update entity subtype registration",
-            "automated": false,
-            "llm_instructions": "Replace `add_subtype('object', 'mysubtype', MyClass::class)` and `update_subtype('object', 'mysubtype', MyClass::class)` with `elgg_set_entity_class('object', 'mysubtype', MyClass::class)`. Remove any `get_subtype_id()` or `get_subtype_from_id()` calls — subtypes are now strings, not integer IDs. In `activate.php`, remove subtype registration if it only calls `add_subtype`/`update_subtype`.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\SubtypeRegistration",
             "breaking_change": "Entity subtypes changed from integer IDs to strings in 3.0",
             "priority": 60
         },
         {
             "id": "007-deprecated-entity-queries",
             "name": "Replace deprecated entity query functions",
-            "automated": false,
-            "llm_instructions": "Replace the following deprecated functions with `elgg_get_entities()` or `elgg_list_entities()` using the unified options array:\n\n- `elgg_get_entities_from_metadata()` → add `metadata_name`/`metadata_value` to options\n- `elgg_get_entities_from_relationship()` → add `relationship`/`relationship_guid` to options\n- `elgg_get_entities_from_private_settings()` → add `private_setting_name`/`private_setting_value` to options\n- `elgg_list_entities_from_metadata()` → `elgg_list_entities()` with metadata options\n- `elgg_list_entities_from_relationship()` → `elgg_list_entities()` with relationship options",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\DeprecatedEntityQueries",
             "breaking_change": "Specialized entity query functions deprecated in 3.0",
             "priority": 70
         },
         {
             "id": "008-config-global-removal",
             "name": "Replace $CONFIG and global config access",
-            "automated": false,
-            "llm_instructions": "Find all uses of `global $CONFIG`, `$CONFIG->`, and `$vars['config']` in views. Replace with:\n- `global $CONFIG; $CONFIG->x` → `elgg_get_config('x')`\n- `$vars['config']->x` in views → `elgg_get_config('x')`\n- `$vars['url']` → `elgg_get_site_url()`\n- `$vars['user']` → `elgg_get_logged_in_user_entity()`\n\nThe `$CONFIG` global is now a proxy object; direct array-style access and modification will fail.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\ConfigGlobalRemoval",
             "breaking_change": "$CONFIG global is a proxy in 3.0; direct modification fails",
             "priority": 80
         }
