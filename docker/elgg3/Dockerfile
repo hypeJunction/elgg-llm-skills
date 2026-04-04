@@ -35,17 +35,23 @@ WORKDIR /var/www/html
 # Create Elgg data directory
 RUN mkdir -p /var/www/data && chown www-data:www-data /var/www/data
 
-# Install Elgg via Composer
-RUN composer create-project elgg/starter-project:^3.3 /var/www/html --no-interaction --prefer-dist
+# Install Elgg 3.x with asset-packagist for bower-asset dependencies
+COPY elgg-composer.json /var/www/html/composer.json
+RUN cd /var/www/html && composer install --no-interaction --prefer-dist
 
 # Apache config: allow .htaccess overrides
 RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
+# Remove any pre-existing settings so installer can create them
+RUN rm -f /var/www/html/elgg-config/settings.php
+
+# Create web root bootstrap
+COPY index.php /var/www/html/index.php
+RUN cp vendor/elgg/elgg/install/config/htaccess.dist /var/www/html/.htaccess \
+    && mkdir -p /var/www/html/mod
+
 # Copy install script
 COPY elgg-install.sh /usr/local/bin/elgg-install.sh
 RUN chmod +x /usr/local/bin/elgg-install.sh
-
-# Copy settings template
-COPY settings.php /var/www/html/elgg-config/settings.php
 
 EXPOSE 80
