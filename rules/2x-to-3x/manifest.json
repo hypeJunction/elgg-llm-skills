@@ -7,7 +7,7 @@
             "name": "Convert page handlers to named routes",
             "automated": true,
             "class": "ElggMigrate\\Rules\\V2ToV3\\PageHandlerToRoute",
-            "breaking_change": "elgg_register_page_handler() deprecated in 3.0, removed in 4.0. Replace with elgg_register_route().",
+            "breaking_change": "elgg_register_page_handler() deprecated in 3.0, removed in 4.0",
             "priority": 10
         },
         {
@@ -30,7 +30,7 @@
             "id": "004-raw-sql-to-query-builder",
             "name": "Replace raw SQL in entity queries with QueryBuilder closures",
             "automated": false,
-            "llm_instructions": "Find all `elgg_get_entities()` calls that pass raw SQL strings in `wheres`, `joins`, `order_by`, `group_by`, or `selects` options. Replace with QueryBuilder closures:\n\n```php\n// Before:\n'wheres' => [\"e.subtype = 'blog'\"]\n\n// After:\n'wheres' => [\n    function(\\Elgg\\Database\\QueryBuilder $qb, $alias) {\n        return $qb->compare(\"$alias.subtype\", '=', 'blog', ELGG_VALUE_STRING);\n    }\n]\n```\n\nAlso replace `elgg_get_entities_from_metadata()`, `elgg_get_entities_from_relationship()`, etc. with `elgg_get_entities()` using the unified options format.",
+            "llm_instructions": "Find all `elgg_get_entities()` calls that pass raw SQL strings in `wheres`, `joins`, `order_by`, `group_by`, or `selects` options. Replace with QueryBuilder closures:\n\n```php\n'wheres' => [\n    function(\\Elgg\\Database\\QueryBuilder $qb, $alias) {\n        return $qb->compare(\"$alias.subtype\", '=', 'blog', ELGG_VALUE_STRING);\n    }\n]\n```\n\nAlso handle raw SQL containing `{$CONFIG->dbprefix}` or `elgg_get_config('dbprefix')` table prefixes.",
             "breaking_change": "Raw SQL in entity query options deprecated in 3.0",
             "priority": 40
         },
@@ -38,8 +38,8 @@
             "id": "005-remove-site-guid",
             "name": "Remove site_guid references",
             "automated": false,
-            "llm_instructions": "Multi-site support was removed in 3.0. Find and remove all references to `site_guid` in entity queries, metadata, and function parameters. Remove `'site_guid' => ...` from `elgg_get_entities()` option arrays. Remove `$entity->site_guid` accesses. Remove `elgg_get_site_entity()->guid` when used as a site_guid parameter.",
-            "breaking_change": "Multi-site support removed in 3.0; site_guid attribute removed from all entities",
+            "llm_instructions": "Multi-site support was removed in 3.0. Find and remove all references to `site_guid` in entity queries, metadata, and function parameters. Remove `'site_guid' => ...` from `elgg_get_entities()` option arrays. Remove `$entity->site_guid` accesses.",
+            "breaking_change": "Multi-site support removed in 3.0",
             "priority": 50
         },
         {
@@ -60,11 +60,156 @@
         },
         {
             "id": "008-config-global-removal",
-            "name": "Replace $CONFIG and global config access",
+            "name": "Replace $CONFIG and legacy $vars access",
             "automated": true,
             "class": "ElggMigrate\\Rules\\V2ToV3\\ConfigGlobalRemoval",
-            "breaking_change": "$CONFIG global is a proxy in 3.0; direct modification fails",
+            "breaking_change": "$CONFIG global is a proxy in 3.0; $vars['url']/$vars['user'] removed",
             "priority": 80
+        },
+        {
+            "id": "009-removed-functions",
+            "name": "Replace or remove functions deleted in 3.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctions",
+            "breaking_change": "~50 functions removed in 3.0 (metastrings, search, groups, cache, etc.)",
+            "priority": 90
+        },
+        {
+            "id": "010-removed-methods",
+            "name": "Rename or flag methods removed in 3.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedMethods",
+            "breaking_change": "~20 class methods removed/renamed (ElggEntity, ElggFile, ElggMenuItem, etc.)",
+            "priority": 100
+        },
+        {
+            "id": "011-removed-classes",
+            "name": "Replace class names removed in 3.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedClasses",
+            "breaking_change": "FilePluginFile→ElggFile, ElggDiscussionReply→ElggComment, cache classes removed",
+            "priority": 110
+        },
+        {
+            "id": "012-deprecated-to-oo",
+            "name": "Migrate deprecated procedural functions to OO equivalents",
+            "automated": false,
+            "llm_instructions": "These functions are deprecated in 3.0 and removed in 4.0. Migrate now for forward-compat:\n\n- `ban_user($guid)` → `get_entity($guid)->ban()`\n- `unban_user($guid)` → `get_entity($guid)->unban()`\n- `make_user_admin($guid)` → `get_entity($guid)->makeAdmin()`\n- `remove_user_admin($guid)` → `get_entity($guid)->removeAdmin()`\n- `create_metadata($entity_guid, $name, $value, ...)` → `get_entity($entity_guid)->setMetadata($name, $value)`\n- `create_annotation($entity_guid, $name, $value, ...)` → `get_entity($entity_guid)->annotate($name, $value)`\n- `elgg_get_user_validation_status($guid)` → `get_entity($guid)->isValidated()`\n\nThese require understanding the calling context to determine which entity variable to use.",
+            "breaking_change": "Procedural user/metadata/annotation functions deprecated in 3.0, removed in 4.0",
+            "priority": 120
+        },
+        {
+            "id": "013-pagesetup-event",
+            "name": "Remove pagesetup event registrations",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\PagesetupEvent",
+            "breaking_change": "pagesetup, system event removed in 3.0",
+            "priority": 130
+        },
+        {
+            "id": "014-elgg-plugins-path",
+            "name": "Replace elgg_get_plugins_path() with __DIR__",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\ElggPluginsPath",
+            "breaking_change": "elgg_get_plugins_path() deprecated in 3.0",
+            "priority": 140
+        },
+        {
+            "id": "015-add-group-tool-option",
+            "name": "Replace add_group_tool_option()",
+            "automated": false,
+            "llm_instructions": "Replace `add_group_tool_option($name, $label, $default_on)` with:\n```php\nelgg()->group_tools->register($name, [\n    'label' => $label,\n    'default_on' => $default_on,\n]);\n```\nThis requires understanding the context since `elgg()` returns the DI container.",
+            "breaking_change": "add_group_tool_option() removed in 3.0",
+            "priority": 150
+        },
+        {
+            "id": "016-elgg-register-ajax-view",
+            "name": "Remove elgg_register_ajax_view() calls",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\ElggRegisterAjaxView",
+            "breaking_change": "Views are inherently ajax-capable in 3.0",
+            "priority": 160
+        },
+        {
+            "id": "017-entity-url-handler",
+            "name": "Replace elgg_register_entity_url_handler()",
+            "automated": false,
+            "llm_instructions": "Replace `elgg_register_entity_url_handler($entity_type, $entity_subtype, $callback)` with:\n```php\nelgg_register_plugin_hook_handler('entity:url', $entity_type, function($hook, $type, $url, $params) {\n    $entity = $params['entity'];\n    if ($entity->getSubtype() !== '$entity_subtype') return;\n    // Return custom URL\n});\n```\nThe callback signature changes — it receives hook params instead of the entity directly.",
+            "breaking_change": "elgg_register_entity_url_handler() removed in 3.0",
+            "priority": 170
+        },
+        {
+            "id": "018-layout-views",
+            "name": "Update layout view calls",
+            "automated": false,
+            "llm_instructions": "Layout views simplified in 3.0. Replace:\n- `elgg_view_layout('one_sidebar', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('one_column', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('two_sidebar', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('content', $vars)` → `elgg_view_layout('default', $vars)` with appropriate content/filter/sidebar vars\n\nAll layouts now use `page/layouts/default`. The layout name is still passed but maps to the same template.",
+            "breaking_change": "Layout system simplified — all layouts use page/layouts/default",
+            "priority": 180
+        },
+        {
+            "id": "019-removed-view-vars",
+            "name": "Remove deprecated view variables",
+            "automated": false,
+            "llm_instructions": "Check views for usage of removed variables beyond $vars['url']/$vars['user']/$vars['config'] (handled by rule 008):\n- `$vars['entity']->view` metadata no longer determines rendering view\n- Views in `js/` and `css/` directories should be moved: `views/default/js/myview.php` → `views/default/myview.js.php` (or use actual .js/.css files)\n- Viewtype is static after first `elgg_get_viewtype()` call\n- `$vars['internalname']` in input views → `$vars['name']`",
+            "breaking_change": "Several $vars keys and view conventions changed in 3.0",
+            "priority": 190
+        },
+        {
+            "id": "020-metadata-changes",
+            "name": "Update metadata handling for 3.0 changes",
+            "automated": false,
+            "llm_instructions": "Metadata system changed significantly in 3.0:\n- Metadata no longer has `access_id` — remove any code setting/checking metadata access\n- Metadata cannot be enabled/disabled — remove `$metadata->enable()`, `$metadata->disable()`, `elgg_disable_metadata()`, `elgg_enable_metadata()`\n- Metadata no longer has `owner_guid` — remove any code setting/checking metadata ownership\n- Boolean metadata stored as integers: ensure code doesn't compare with `=== true`/`=== false` but uses `== 1`/`== 0`\n- `metadata_owner_guid` option removed from `elgg_get_entities()`",
+            "breaking_change": "Metadata access control, ownership, and enable/disable removed in 3.0",
+            "priority": 200
+        },
+        {
+            "id": "021-entity-icon-changes",
+            "name": "Update entity icon handling",
+            "automated": false,
+            "llm_instructions": "Icon handling changed in 3.0:\n- Only master icon size is saved; other sizes generated on demand\n- If plugin saves multiple icon sizes manually, change to save only master\n- `$entity->icontime` still works but prefer `$entity->hasIcon()`\n- Icon cropping coordinates may have changed\n- If plugin implements custom icon handling, verify it works with the new on-demand system",
+            "breaking_change": "Entity icons: only master size saved, others on demand",
+            "priority": 210
+        },
+        {
+            "id": "022-discussion-reply-to-comment",
+            "name": "Migrate discussion replies to comments",
+            "automated": false,
+            "llm_instructions": "Discussion replies became generic comments in 3.0:\n- `ElggDiscussionReply` class → `ElggComment` (handled by rule 011)\n- Subtype `discussion_reply` → `comment`\n- Any hooks registered for `discussion_reply` need to change to `comment`\n- `discussion_reply` river entries affected\n- Custom views for discussion replies may need updating",
+            "breaking_change": "Discussion replies moved to comments system in 3.0",
+            "priority": 220
+        },
+        {
+            "id": "023-access-friends-to-collection",
+            "name": "Update ACCESS_FRIENDS usage",
+            "automated": false,
+            "llm_instructions": "ACCESS_FRIENDS is now backed by a real access collection with subtype 'friends':\n- The constant still works but the implementation changed\n- Plugins creating custom access collections may need to add subtypes\n- `access_id` column removed from metadata table — plugins storing access info in metadata need updating\n- Access collection table gained `subtype` column",
+            "breaking_change": "ACCESS_FRIENDS migrated to real access collection in 3.0",
+            "priority": 230
+        },
+        {
+            "id": "024-js-amd-migration",
+            "name": "Migrate JavaScript to AMD modules",
+            "automated": false,
+            "llm_instructions": "JavaScript patterns changed in 3.0:\n- Inline `<script>` tags must use AMD: `require(['elgg', 'jquery'], function(elgg, $) {...})`\n- `elgg.widgets` → require `elgg/widgets` module\n- `elgg.embed` → require `elgg/embed` module  \n- `lightbox.js` → require `elgg/lightbox` module\n- `jQuery.cookie` → use `elgg.session.cookie` module\n- `elgg.ui.init` → use proper AMD initialization\n- Any JS in views should use `elgg_require_js()` to load dependencies",
+            "breaking_change": "jQuery/JS APIs moved to AMD modules in 3.0",
+            "priority": 240
+        },
+        {
+            "id": "025-removed-hooks-events",
+            "name": "Replace removed hooks and events",
+            "automated": false,
+            "llm_instructions": "Several hooks/events removed in 3.0:\n- `pagesetup, system` → handled by rule 013\n- `login, user` event → use `login:after, user`\n- `index, system` hook → use route registration for index page\n- `email, system` hook → use notification system hooks\n- `display, view` hook → use `view, <view_name>` hook\n- `object:notifications, <type>` → use notification event system\n- `upgrade, upgrade` event → use `Elgg\\Upgrade\\Batch` system\n\nFor each, find the registration and update to the new hook/event name. The callback signature may also need updating.",
+            "breaking_change": "Several hooks and events removed or renamed in 3.0",
+            "priority": 250
+        },
+        {
+            "id": "026-upgrade-scripts",
+            "name": "Generate plugin upgrade scripts",
+            "automated": false,
+            "needs_upgrade_script": true,
+            "llm_instructions": "After all other rules have been applied, determine if the plugin needs `Elgg\\Upgrade\\Batch` classes:\n\n1. If plugin used `add_subtype()` → generate upgrade that verifies subtype strings in DB\n2. If plugin used metastring-dependent queries → generate upgrade that verifies metadata is direct\n3. If plugin used `ACCESS_FRIENDS` → verify access collections\n4. If plugin stored data in entity subtables (users_entity, objects_entity, etc.) → generate upgrade to migrate to metadata\n\nUpgrade classes go in `classes/PluginNamespace/Upgrades/` and are registered in the plugin bootstrap.",
+            "breaking_change": "Existing installations need data migration scripts",
+            "priority": 999
         }
     ]
 }
