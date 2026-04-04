@@ -1,0 +1,44 @@
+services:
+  elgg:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount the plugin being tested into mod/
+      # Override PLUGIN_PATH env var or mount manually:
+      #   -v ./tmp/hypeWall:/var/www/html/mod/hypeWall
+      - elgg-data:/var/www/data
+    environment:
+      ELGG_DB_HOST: db
+      ELGG_DB_NAME: elgg
+      ELGG_DB_USER: elgg
+      ELGG_DB_PASS: elgg
+      ELGG_SITE_URL: "http://localhost:8080/"
+      ELGG_DATA_ROOT: "/var/www/data/"
+      ELGG_ADMIN_EMAIL: "admin@example.com"
+      ELGG_ADMIN_PASSWORD: "admin12345"
+    ports:
+      - "8080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: /usr/local/bin/elgg-install.sh
+
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_DATABASE: elgg
+      MYSQL_USER: elgg
+      MYSQL_PASSWORD: elgg
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - db-data:/var/lib/mysql
+
+volumes:
+  elgg-data:
+  db-data:
