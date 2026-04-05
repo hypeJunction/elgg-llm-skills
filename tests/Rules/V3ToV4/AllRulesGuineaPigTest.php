@@ -9,6 +9,7 @@ use ElggMigrate\Rules\V3ToV4\CanWriteToContainer;
 use ElggMigrate\Rules\V3ToV4\DiObjectToCreate;
 use ElggMigrate\Rules\V3ToV4\EntityAttributeSetters;
 use ElggMigrate\Rules\V3ToV4\GenerateElggPluginPhp;
+use ElggMigrate\Rules\V3ToV4\RemoveLegacyBootstrap;
 use ElggMigrate\Rules\V3ToV4\UpdateManifestVersion;
 use ElggMigrate\Rules\V3ToV4\ZendToLaminas;
 use PHPUnit\Framework\TestCase;
@@ -30,6 +31,7 @@ final class AllRulesGuineaPigTest extends TestCase
         return [
             'UpdateManifestVersion' => [new UpdateManifestVersion()],
             'GenerateElggPluginPhp' => [new GenerateElggPluginPhp()],
+            'RemoveLegacyBootstrap' => [new RemoveLegacyBootstrap()],
             'DiObjectToCreate' => [new DiObjectToCreate()],
             'ZendToLaminas' => [new ZendToLaminas()],
             'EntityAttributeSetters' => [new EntityAttributeSetters()],

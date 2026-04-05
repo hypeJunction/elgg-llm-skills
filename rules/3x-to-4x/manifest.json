@@ -21,8 +21,8 @@
         {
             "id": "002-remove-legacy-bootstrap",
             "name": "Remove start.php, activate.php, deactivate.php",
-            "automated": false,
-            "llm_instructions": "After elgg-plugin.php is generated (rule 001), review and remove:\n\n1. **start.php**: All registrations extracted to elgg-plugin.php can be removed. Keep any complex logic that needs a Bootstrap class.\n2. **activate.php**: Entity class registrations moved to elgg-plugin.php 'entities' key. Remove if only contained subtype registration.\n3. **deactivate.php**: Usually empty after migration. Remove if no custom deactivation logic.\n4. **views.php**: View locations can be declared in elgg-plugin.php 'views' key. Remove.\n\nIf start.php has complex initialization logic (conditional registrations, dynamic hooks), create a Bootstrap class:\n```php\nnamespace MyPlugin;\n\nuse Elgg\\DefaultPluginBootstrap;\n\nclass Bootstrap extends DefaultPluginBootstrap {\n    public function init() {\n        // Complex init logic here\n    }\n}\n```\nReference it in elgg-plugin.php: `'bootstrap' => \\MyPlugin\\Bootstrap::class`",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemoveLegacyBootstrap",
             "breaking_change": "start.php, activate.php, deactivate.php, views.php no longer loaded in 4.0",
             "priority": 20
         },
