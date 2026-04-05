@@ -1,0 +1,5 @@
+services:
+  elgg:
+    volumes:
+      - ~/Data/hypejunction/bodyology/bodyology-forum/mod:/var/www/html/mod
+      - elgg-data:/var/www/data
