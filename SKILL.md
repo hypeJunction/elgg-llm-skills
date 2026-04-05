@@ -18,16 +18,16 @@ user-invocable: true
 # elgg-migrate
 
 > **Purpose:** Migrate Elgg plugins from legacy versions to modern Elgg, one major version at a time.
-> **Phases:** Scan → Test Baseline → Security Audit → Migrate (per version) → Finalize
+> **Phases:** Scan → Migrate (branch per version) → Verify in Docker → Finalize
 > **Usage:** `/elgg-migrate <plugin-repo-url-or-path> [--target=6.x] [--dry-run]`
 
 ## Iron Laws
 
-1. **NEVER SKIP A MAJOR VERSION** — Migrate one major version at a time (2.x→3.x, then 3.x→4.x, etc.). Skipping versions guarantees missed breaking changes.
-2. **NEVER MIGRATE WITHOUT PASSING TESTS** — If tests don't pass on the current version, fix them first.
-3. **NEVER APPLY CHANGES WITHOUT VERIFICATION** — Every migration step must be verified (tests + Docker when available).
-4. **EVERY VERSION STEP GETS ITS OWN BRANCH** — Branch per step: `migrate/elgg-3.x`, `migrate/elgg-4.x`, etc.
-5. **SECURITY ISSUES BLOCK MIGRATION** — Critical vulnerabilities must be fixed before proceeding.
+1. **NEVER SKIP A MAJOR VERSION** — Migrate 2.x→3.x, then 3.x→4.x, etc. Skipping guarantees missed breaking changes.
+2. **NEVER MIGRATE WITHOUT A BRANCH** — Each version step gets its own git branch (`migrate/elgg-3.x`, etc.).
+3. **COMMIT EACH CHANGE CATEGORY SEPARATELY** — Automated transforms in one commit, each manual fix category in its own commit.
+4. **VERIFY IN DOCKER** — Every version step must boot in Docker with the plugin active before proceeding.
+5. **SECURITY ISSUES BLOCK MIGRATION** — Critical vulnerabilities found during migration must be fixed.
 
 ## Scope Flags
 
@@ -35,247 +35,254 @@ user-invocable: true
 |------|-------------|
 | `--target=N.x` | Target Elgg version (default: 6.x) |
 | `--dry-run` | Analyze only, don't apply changes |
-| `--skip-docker` | Skip Docker verification (faster, less safe) |
-| `--skip-security` | Skip security audit phase |
+| `--skip-docker` | Skip Docker verification |
 
 ---
 
-## Phase 1: SCAN AND DOCUMENT
+## Phase 1: SETUP
 
-**Mode:** Read-only
+**Mode:** Read-only + git operations
 
 ### Step 1.1: Obtain Plugin
 
-If given a URL, clone it. If given a path, use it directly.
-
 ```bash
+# If URL provided, clone into tmp/
 git clone <plugin-repo-url> tmp/<plugin-name>
 cd tmp/<plugin-name>
-git checkout -b migrate/baseline
 ```
+
+If the plugin is already cloned (e.g., in `tmp/`), work directly on it.
 
 ### Step 1.2: Detect Current Elgg Version
 
 Check in order:
-1. `elgg-plugin.php` — look for `requires.elgg` version constraint
-2. `composer.json` — look for `elgg/elgg` in `require`
-3. `manifest.xml` — look for `<requires>` with `elgg_release`
+1. `elgg-plugin.php` → look for `requires.elgg` version
+2. `composer.json` → look for `elgg/elgg` in require
+3. `manifest.xml` → look for `<requires>` with `elgg_release`
 
-### Step 1.3: Run Automated Analysis
+### Step 1.3: Determine Migration Path
 
-Load the manifest for the first version step from `rules/{from}-to-{to}/manifest.json`.
-Run all automated rules' `analyze()` methods:
-
-```bash
-php -r '
-require "vendor/autoload.php";
-$runner = new \ElggMigrate\RuleRunner();
-$analyses = $runner->analyzeAll("rules/2x-to-3x/manifest.json", "tmp/<plugin>");
-foreach ($analyses as $a) {
-    echo "{$a->ruleId}: {$a->summary}\n";
-    foreach ($a->findings as $f) echo "  {$f->file}:{$f->line} — {$f->description}\n";
-}
-'
+Calculate the version steps needed. Example for a 2.x plugin targeting 6.x:
+```
+2.x → 3.x → 4.x → 5.x → 6.x
 ```
 
-### Step 1.4: Collect LLM Instructions for Non-Automated Rules
-
-```bash
-php -r '
-require "vendor/autoload.php";
-$runner = new \ElggMigrate\RuleRunner();
-$instructions = $runner->getLlmInstructions("rules/2x-to-3x/manifest.json");
-foreach ($instructions as $i) echo "## {$i["name"]}\n{$i["instructions"]}\n\n";
-'
-```
-
-### Step 1.5: Feature Inventory
-
-Scan all PHP/JS/CSS files and document:
-- Every hook/event registration
-- Every action registration
-- Every page handler / route
-- Every entity type and subtype
-- Every view file
-- Every widget
-- Every menu registration
-- Every library registration
-- Every JavaScript module
-- Every language file
-
-Output: Write `MIGRATION_INVENTORY.md` in the plugin root.
+Each step uses its own manifest at `rules/{from}-to-{to}/manifest.json`.
 
 ---
 
-**GATE: Present analysis report and inventory to user. Wait for approval.**
+## Phase 2: MIGRATE (repeat for each version step)
 
----
+**Mode:** Full write access with git
 
-## Phase 2: TEST BASELINE
-
-**Mode:** Write
-
-### Step 2.1: Set Up Docker (if not --skip-docker)
-
-Use the appropriate template from `docker/elgg{N}/` matching the current version.
-See `references/version-matrix.md` for PHP/MySQL requirements.
-
-### Step 2.2: Write Tests
-
-Create `tests/` following Elgg PHPUnit conventions:
-- **Unit tests** for business logic in classes
-- **Integration tests** for hooks, actions, entity CRUD
-- **Functional tests** for routes and views
-
-Every item in the feature inventory should have at least one test.
-
-### Step 2.3: Verify Tests Pass
-
-```bash
-# Local (if possible):
-vendor/bin/phpunit --configuration tmp/<plugin>/phpunit.xml
-
-# Or in Docker:
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpunit --configuration mod/<plugin>/phpunit.xml
-```
-
----
-
-**GATE: ALL tests must pass on the current Elgg version.**
-
----
-
-## Phase 3: SECURITY AUDIT
-
-**Mode:** Read-only analysis, write to fix
-
-Check for (see `references/security-checklist.md` when available):
-- **SQL Injection**: Raw SQL with string concatenation, user input in queries
-- **XSS**: Unescaped output in views (`echo $vars['x']` without escaping)
-- **CSRF**: Actions without token validation
-- **File upload**: Unrestricted types, path traversal
-- **Auth**: Missing `gatekeeper()`, missing `canEdit()` checks
-- **Access control**: Hard-coded access levels
-
-Rate findings: CRITICAL / HIGH / MEDIUM / LOW.
-Fix CRITICAL and HIGH before proceeding.
-
----
-
-**GATE: No CRITICAL issues remain. HIGH issues fixed or explicitly accepted.**
-
----
-
-## Phase 4: MIGRATE (repeat per version step)
-
-**Mode:** Full write access
-
-### Step 4.1: Create Branch
+### Step 2.1: Create Version Branch
 
 ```bash
 git checkout -b migrate/elgg-{N}.x
 ```
 
-### Step 4.2: Run Automated Rules
+### Step 2.2: Run Automated Rules
+
+From the elgg-migrate project root:
 
 ```bash
-php -r '
-require "vendor/autoload.php";
-$runner = new \ElggMigrate\RuleRunner();
-$results = $runner->applyAll("rules/{prev}x-to-{N}x/manifest.json", "tmp/<plugin>");
-foreach ($results as $r) {
-    echo $r->ruleId . ": " . ($r->success ? "OK" : "FAILED") . "\n";
-    foreach ($r->changes as $c) echo "  [{$c->type}] {$c->file}: {$c->description}\n";
-    foreach ($r->warnings as $w) echo "  [WARN] $w\n";
-}
-'
+php bin/migrate.php rules/{from}-to-{to}/manifest.json tmp/<plugin-name>
 ```
 
-### Step 4.3: Apply LLM-Guided Refactoring
+This applies all automated AST-based transformations. Review the output for warnings.
 
-For each non-automated rule in the manifest, follow the `llm_instructions` field.
-Work through them in priority order. For each:
+### Step 2.3: Commit Automated Changes
+
+```bash
+git add -A
+git commit -m "migrate({N}.x): automated AST transformations
+
+Applied by elgg-migrate automated rules:
+- <list each rule that applied and what it changed>"
+```
+
+### Step 2.4: Apply LLM-Guided Fixes
+
+For each non-automated rule in the manifest, read the `llm_instructions` field and apply the changes. The migration CLI shows these:
+
+```bash
+php bin/migrate.php rules/{from}-to-{to}/manifest.json tmp/<plugin-name> --dry-run --report
+```
+
+Work through each applicable LLM rule:
 1. Search the codebase for the pattern described
 2. Apply the transformation
-3. Verify PHP syntax: `php -l <file>`
-4. Commit: `git commit -m "migrate({N}.x): <rule description>"`
+3. Verify syntax: `php -l <file>`
+4. Commit with a descriptive message:
 
-### Step 4.4: Update Docker (if not --skip-docker)
+```bash
+git add -A
+git commit -m "migrate({N}.x): <description of manual fixes>
 
-Switch to the new version's Docker config and verify the plugin loads.
+- <detail each change made>"
+```
 
-### Step 4.5: Run Tests and Fix Failures
+### Step 2.5: Handle Known Pain Points
 
-Run the test suite. For each failure:
-1. Determine if it's a migration issue or a test issue
-2. Fix accordingly
-3. Re-run until green
+#### Legacy Upgrade Scripts (2.x→3.x)
+Old upgrade scripts (`lib/upgrades.php`) often use metastrings, subtype IDs, and raw SQL incompatible with 3.x. These should be:
+- Disabled (wrapped in version check or replaced with a comment)
+- Replaced with `Elgg\Upgrade\Batch` classes if data migration is needed
 
-### Step 4.6: Security Re-check
+#### activate.php / deactivate.php Cleanup
+- `add_subtype`/`update_subtype` → `elgg_set_entity_class` (idempotent, call once)
+- `update_subtype` with 2 args (clearing) → remove (not needed in 3.x+)
+- deactivate.php subtype cleanup → remove (not needed in 3.x+)
 
-Quick scan for regressions introduced during migration.
+#### Redundant Patterns After AST Transform
+The AST transform may produce redundant code. Example:
+```php
+// Before: if (!update_subtype('object', 'x', X::class)) { add_subtype('object', 'x', X::class); }
+// After:  if (!elgg_set_entity_class('object', 'x', X::class)) { elgg_set_entity_class('object', 'x', X::class); }
+// Fix:    elgg_set_entity_class('object', 'x', X::class);  // idempotent
+```
+
+Review transformed code for these patterns and simplify.
+
+### Step 2.6: Verify PHP Syntax
+
+```bash
+find tmp/<plugin-name> -name "*.php" -exec php -l {} \; | grep -v "No syntax errors"
+```
+
+### Step 2.7: Verify in Docker
+
+```bash
+# Start the Docker environment for the target version
+docker compose -f docker/elgg{N}/docker-compose.yml up -d
+
+# Wait for installation
+sleep 30
+
+# Copy plugin into container
+docker cp tmp/<plugin-name>/. $(docker compose -f docker/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-name>/
+
+# Activate plugin
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+require_once '/var/www/html/vendor/autoload.php';
+\$app = \Elgg\Application::getInstance();
+\$app->bootCore();
+_elgg_services()->plugins->generateEntities();
+\$plugin = elgg_get_plugin_from_id('<plugin-name>');
+if (\$plugin && !\$plugin->isActive()) {
+    \$plugin->activate();
+    echo 'Activated' . PHP_EOL;
+} else {
+    echo (\$plugin ? 'Already active' : 'Not found') . PHP_EOL;
+}
+"
+
+# Verify site loads
+curl -sL http://localhost:8380/ | grep -oP '<title>[^<]*</title>'
+
+# Stop when done
+docker compose -f docker/elgg{N}/docker-compose.yml stop
+```
+
+### Step 2.8: Compare with Reference (if available)
+
+If the plugin author has a branch targeting the new version, compare:
+```bash
+git fetch origin
+git diff migrate/elgg-{N}.x origin/{reference-branch} -- start.php
+```
+
+This validates our migration against the author's manual work.
 
 ---
 
-**GATE: All tests pass, no critical security issues. User approves before next version step.**
+## Phase 3: FINALIZE
+
+**Mode:** Read-only verification
+
+### Step 3.1: Review Branch History
+
+```bash
+git log --oneline migrate/elgg-{N}.x --not master
+```
+
+Each version step should have:
+1. One commit for automated AST transforms
+2. One or more commits for manual LLM-guided fixes
+3. Clear commit messages describing what changed and why
+
+### Step 3.2: Security Scan
+
+Quick check for common vulnerabilities:
+- Unescaped output in views (`echo $vars['x']` without escaping)
+- Actions without CSRF token validation
+- Raw SQL with user input
+- Missing permission checks
+
+### Step 3.3: Generate Migration Report
+
+Summarize:
+- Total files changed per version step
+- Which automated rules applied
+- Which LLM rules needed manual work
+- Security issues found
+- Known limitations or remaining manual steps
 
 ---
 
-## Phase 5: VERIFY AND FINALIZE
+## Version-Specific Notes
 
-**Mode:** Read-only verification, then write
+### 2.x → 3.x (largest migration)
+- **Metastrings removed** — all raw SQL using metastrings tables is broken
+- **Subtypes are strings** — `add_subtype()`/`update_subtype()` → `elgg_set_entity_class()`
+- **Page handlers deprecated** — `elgg_register_page_handler()` → `elgg_register_route()`
+- **Libraries removed** — `elgg_register_library()`/`elgg_load_library()` → autoloading
+- **Entity queries unified** — `elgg_get_entities_from_*()` → `elgg_get_entities()`
+- **Config global proxied** — `global $CONFIG` → `elgg_get_config()`
+- **~50 functions removed** — see `rules/2x-to-3x/manifest.json` for complete list
 
-### Step 5.1: Full Test Suite on Final Version
+### 3.x → 4.x
+- **manifest.xml + start.php → elgg-plugin.php** — biggest structural change
+- **All _elgg_* callbacks → class-based handlers**
+- **Type hints added everywhere**
 
-Run complete tests on the target Elgg version.
+### 4.x → 5.x
+- **Hooks and events merged** — `hooks` → `events` in elgg-plugin.php
+- **Private settings removed** → metadata
+- **PHP 8.0+ required**
 
-### Step 5.2: Generate Migration Report
+### 5.x → 6.x
+- **RequireJS/AMD → ES modules**
+- **MySQL 8.0+ required**
 
-Produce `MIGRATION_REPORT.md` with:
-- Version steps completed
-- Files changed per step
-- Deprecated APIs replaced
-- Security issues found and resolved
-- Test coverage summary
-- Remaining manual steps (if any)
+## Docker Environments
 
-### Step 5.3: Update Plugin Metadata
+Each version has a Docker setup in `docker/elgg{N}/`:
 
-- Update `composer.json` Elgg version constraint
-- Ensure `elgg-plugin.php` has correct metadata (if migrated to 4.x+)
-- Update README with new compatibility info
-
----
-
-**GATE: User approves final state.**
-
----
-
-## Quick Reference
-
-| Phase | Mode | Gate |
-|-------|------|------|
-| 1. Scan | Read-only | User reviews analysis |
-| 2. Test Baseline | Write | Tests pass on current version |
-| 3. Security Audit | Read → Write | No critical issues |
-| 4. Migrate (×N) | Write | Tests pass on new version |
-| 5. Finalize | Write | User approves |
+| Version | PHP | MySQL | Port | Status |
+|---------|-----|-------|------|--------|
+| 3.x | 7.4 | 5.7 | 8380 | Working |
+| 4.x | 7.4 | 5.7 | 8480 | TODO |
+| 5.x | 8.0 | 5.7 | 8580 | TODO |
+| 6.x | 8.1 | 8.0 | 8680 | TODO |
 
 ## Project Structure
 
 ```
 elgg-migrate/
 ├── SKILL.md              # This file
-├── src/                  # Migration rule implementations
-├── rules/                # Version manifests (JSON) + rule classes
-│   ├── 2x-to-3x/
-│   ├── 3x-to-4x/
-│   ├── 4x-to-5x/
-│   └── 5x-to-6x/
-├── tests/                # Tests for migration rules
-├── references/           # Breaking change docs, version matrix
-├── docker/               # Docker environments per Elgg version
+├── bin/migrate.php       # CLI migration runner
+├── src/                  # Rule implementations
+│   ├── AbstractRule.php
+│   ├── MigrationRule.php
+│   ├── RuleRunner.php
+│   └── Rules/V2ToV3/    # 11 automated rules
+├── rules/                # Version manifests
+│   └── 2x-to-3x/manifest.json  # 26 rules (11 auto + 15 LLM)
+├── tests/                # PHPUnit tests (55 tests, 445 assertions)
+├── references/           # Breaking change docs
+├── docker/               # Docker environments per version
+│   └── elgg3/            # Working Elgg 3.3.25 setup
 └── tmp/                  # Guinea pig plugins (gitignored)
 ```
 
