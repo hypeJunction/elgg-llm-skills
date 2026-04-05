@@ -1,0 +1,94 @@
+{
+    "from": "3.x",
+    "to": "4.x",
+    "rules": [
+        {
+            "id": "000-update-manifest-version",
+            "name": "Update manifest.xml and composer.json to target Elgg 4.x",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\UpdateManifestVersion",
+            "breaking_change": "Plugin must declare Elgg 4.x compatibility",
+            "priority": 1
+        },
+        {
+            "id": "001-generate-elgg-plugin-php",
+            "name": "Generate elgg-plugin.php from start.php registrations",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\GenerateElggPluginPhp",
+            "breaking_change": "start.php, activate.php, deactivate.php no longer included in 4.0. Use elgg-plugin.php.",
+            "priority": 10
+        },
+        {
+            "id": "002-remove-legacy-bootstrap",
+            "name": "Remove start.php, activate.php, deactivate.php",
+            "automated": false,
+            "llm_instructions": "After elgg-plugin.php is generated (rule 001), review and remove:\n\n1. **start.php**: All registrations extracted to elgg-plugin.php can be removed. Keep any complex logic that needs a Bootstrap class.\n2. **activate.php**: Entity class registrations moved to elgg-plugin.php 'entities' key. Remove if only contained subtype registration.\n3. **deactivate.php**: Usually empty after migration. Remove if no custom deactivation logic.\n4. **views.php**: View locations can be declared in elgg-plugin.php 'views' key. Remove.\n\nIf start.php has complex initialization logic (conditional registrations, dynamic hooks), create a Bootstrap class:\n```php\nnamespace MyPlugin;\n\nuse Elgg\\DefaultPluginBootstrap;\n\nclass Bootstrap extends DefaultPluginBootstrap {\n    public function init() {\n        // Complex init logic here\n    }\n}\n```\nReference it in elgg-plugin.php: `'bootstrap' => \\MyPlugin\\Bootstrap::class`",
+            "breaking_change": "start.php, activate.php, deactivate.php, views.php no longer loaded in 4.0",
+            "priority": 20
+        },
+        {
+            "id": "003-di-object-to-create",
+            "name": "Replace \\DI\\object() with \\DI\\create() in elgg-services.php",
+            "automated": false,
+            "llm_instructions": "In `elgg-services.php`, replace all `\\DI\\object()` calls with `\\DI\\create()`. The PHP-DI library updated this API:\n```php\n// Before:\nreturn [MyService::class => \\DI\\object(MyService::class)];\n// After:\nreturn [MyService::class => \\DI\\create(MyService::class)];\n```",
+            "breaking_change": "PHP-DI updated: \\DI\\object() → \\DI\\create()",
+            "priority": 30
+        },
+        {
+            "id": "004-zend-to-laminas",
+            "name": "Replace Zend\\Mail with Laminas\\Mail",
+            "automated": false,
+            "llm_instructions": "Replace all `Zend\\Mail` namespace references with `Laminas\\Mail`. This applies to:\n- `use` statements\n- Type hints\n- `instanceof` checks\n- Class instantiation\n\nAlso update composer.json if it requires any `zendframework/*` packages — replace with `laminas/*` equivalents.",
+            "breaking_change": "Zend\\Mail → Laminas\\Mail",
+            "priority": 40
+        },
+        {
+            "id": "005-entity-attribute-setters",
+            "name": "Replace magic setters for protected entity attributes",
+            "automated": false,
+            "llm_instructions": "In Elgg 4.0, certain entity attributes can no longer be set via magic setter (`$entity->attr = value`):\n\n- `$entity->type = 'object'` → not allowed (set at creation)\n- `$entity->subtype = 'blog'` → `$entity->setSubtype('blog')`\n- `$entity->enabled = 'yes'` → `$entity->enable()` / `$entity->disable()`\n- `$user->admin = true` → `$user->makeAdmin()` / `$user->removeAdmin()`\n- `$user->banned = true` → `$user->ban()` / `$user->unban()`\n\nSearch for `->type =`, `->subtype =`, `->enabled =`, `->admin =`, `->banned =` on entity objects.",
+            "breaking_change": "type, subtype, enabled, admin, banned no longer settable via magic setter",
+            "priority": 50
+        },
+        {
+            "id": "006-response-classes",
+            "name": "Update response class usage",
+            "automated": false,
+            "llm_instructions": "Response classes were restructured:\n- `OkResponse`, `ErrorResponse`, `RedirectResponse` no longer inherit from `OkResponse`\n- All extend `Elgg\\Http\\Response` and implement `ResponseBuilder`\n- `elgg_error_response()` default HTTP code changed from 200 to 400\n\nIf your plugin creates response objects directly or checks `instanceof OkResponse`, update accordingly.",
+            "breaking_change": "Response class hierarchy changed, elgg_error_response default code is 400",
+            "priority": 60
+        },
+        {
+            "id": "007-tag-metadata",
+            "name": "Replace tag metadata registration",
+            "automated": false,
+            "llm_instructions": "Replace `elgg_register_tag_metadata_name()` and `elgg_get_registered_tag_metadata_names()` with `search:fields` hooks:\n```php\n// Before:\nelgg_register_tag_metadata_name('skills');\n\n// After:\nelgg_register_plugin_hook_handler('search:fields', 'object:mytype', function($hook, $type, $fields) {\n    $fields['metadata'][] = 'skills';\n    return $fields;\n});\n```",
+            "breaking_change": "Tag metadata registration functions removed in 4.0",
+            "priority": 70
+        },
+        {
+            "id": "008-filter-tabs",
+            "name": "Replace elgg_get_filter_tabs()",
+            "automated": false,
+            "llm_instructions": "Replace `elgg_get_filter_tabs()` with menu registration:\n```php\n// Before:\n$tabs = elgg_get_filter_tabs($context, ...);\n\n// After: Register tabs via the filter menu hook\nelgg_register_plugin_hook_handler('register', 'menu:filter:filter', function($hook, $type, $items) {\n    // Add menu items\n    return $items;\n});\n```",
+            "breaking_change": "elgg_get_filter_tabs() removed in 4.0",
+            "priority": 80
+        },
+        {
+            "id": "009-js-ajax-helpers",
+            "name": "Replace legacy JS ajax helpers",
+            "automated": false,
+            "llm_instructions": "Legacy JavaScript AJAX helpers removed:\n- `elgg.action()` → use `elgg/Ajax` module\n- `elgg.get()` → use `elgg/Ajax` module\n- `elgg.getJSON()` → use `elgg/Ajax` module\n- `elgg.post()` → use `elgg/Ajax` module\n\n```javascript\n// Before:\nelgg.action('myplugin/save', {data: {key: 'value'}});\n\n// After:\nrequire(['elgg/Ajax'], function(Ajax) {\n    var ajax = new Ajax();\n    ajax.action('myplugin/save', {data: {key: 'value'}});\n});\n```\n\nAlso: `boot, system` and `ready, system` JS triggers removed.",
+            "breaking_change": "elgg.action/get/getJSON/post removed, use elgg/Ajax module",
+            "priority": 90
+        },
+        {
+            "id": "010-container-write-permissions",
+            "name": "Update canWriteToContainer() calls",
+            "automated": false,
+            "llm_instructions": "In Elgg 4.0, `ElggEntity::canWriteToContainer()` now requires `$type` and `$subtype` parameters:\n```php\n// Before:\n$entity->canWriteToContainer();\n\n// After:\n$entity->canWriteToContainer(0, 'object', 'blog');\n```\n\nSearch for `canWriteToContainer()` calls without type/subtype arguments.",
+            "breaking_change": "canWriteToContainer() requires $type and $subtype in 4.0",
+            "priority": 100
+        }
+    ]
+}

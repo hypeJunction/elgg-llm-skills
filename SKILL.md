@@ -266,10 +266,27 @@ Summarize:
 - **Config global proxied** — `global $CONFIG` → `elgg_get_config()`
 - **~50 functions removed** — see `rules/2x-to-3x/manifest.json` for complete list
 
-### 3.x → 4.x
+### 3.x → 4.x (structural migration)
 - **manifest.xml + start.php → elgg-plugin.php** — biggest structural change
-- **All _elgg_* callbacks → class-based handlers**
-- **Type hints added everywhere**
+  - Actions: `elgg_register_action('name', path)` → `'actions' => ['name' => []]`
+  - Routes: `elgg_register_route('name', [...])` → `'routes' => ['name' => [...]]`
+  - Entities: `elgg_set_entity_class(...)` → `'entities' => [['type'=>..., 'subtype'=>..., 'class'=>...]]`
+  - Hooks: `elgg_register_plugin_hook_handler(...)` → `'hooks' => ['hook' => ['type' => [callbacks]]]`
+  - Events: `elgg_register_event_handler(...)` → `'events' => ['event' => ['type' => [callbacks]]]`
+  - Complex init logic → Bootstrap class (`extends DefaultPluginBootstrap`)
+- **activate.php / deactivate.php removed** — entity registrations go to elgg-plugin.php `entities` key
+- **All _elgg_* callbacks → class-based handlers** (only affects core, not plugins)
+- **Type hints added everywhere** — may cause TypeError in overridden methods
+- **\\DI\\object() → \\DI\\create()** in elgg-services.php
+- **Zend\\Mail → Laminas\\Mail**
+- **Entity attributes** — type, subtype, enabled no longer settable via magic setter
+
+**Learnings from elgg-plugin.php generation:**
+- Hooks with the same name (e.g., multiple `'register'` hooks for different menu types) must be nested: `'register' => ['menu:entity' => [...], 'menu:river' => [...]]`
+- The `init, system` event handler itself should NOT go into elgg-plugin.php — it IS the bootstrap
+- Closures in event handlers (e.g., upgrade callbacks) are preserved but should be refactored to named classes
+- Entity class registrations from `activate.php` merge into the `entities` key
+- Generated file needs manual review — conditional registrations and complex logic need a Bootstrap class
 
 ### 4.x → 5.x
 - **Hooks and events merged** — `hooks` → `events` in elgg-plugin.php
@@ -301,9 +318,11 @@ elgg-migrate/
 │   ├── AbstractRule.php
 │   ├── MigrationRule.php
 │   ├── RuleRunner.php
-│   └── Rules/V2ToV3/    # 11 automated rules
+│   ├── Rules/V2ToV3/    # 12 automated rules
+│   └── Rules/V3ToV4/    # 2 automated rules
 ├── rules/                # Version manifests
-│   └── 2x-to-3x/manifest.json  # 26 rules (11 auto + 15 LLM)
+│   ├── 2x-to-3x/manifest.json  # 27 rules (12 auto + 15 LLM)
+│   └── 3x-to-4x/manifest.json  # 11 rules (2 auto + 9 LLM)
 ├── tests/                # PHPUnit tests (55 tests, 445 assertions)
 ├── references/           # Breaking change docs
 ├── docker/               # Docker environments per version
