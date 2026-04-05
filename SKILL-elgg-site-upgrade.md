@@ -284,7 +284,178 @@ If any gate fails:
 
 Go back to Prep Phase 3 for the next major version.
 
-When ALL version steps pass ALL gates, the migration branches are ready for production.
+When ALL version steps pass ALL gates and you're on the latest Elgg version,
+proceed to Phase 6.
+
+---
+
+## Prep Phase 6: HARDEN PHP DEPENDENCIES
+
+Once on the latest Elgg version, upgrade PHP dependencies one at a time
+to their latest stable versions. This catches compatibility issues early
+and ensures you're on supported, patched versions.
+
+### Step 6.1: List Outdated PHP Packages
+
+```bash
+composer outdated --direct 2>&1
+```
+
+### Step 6.2: Upgrade One Package at a Time
+
+For each outdated package, in order of risk (low-risk utilities first, then
+frameworks, then core dependencies last):
+
+```bash
+# 1. Check what will change
+composer update <vendor>/<package> --dry-run
+
+# 2. Read the package changelog for breaking changes
+# Check GitHub releases or CHANGELOG.md
+
+# 3. Apply the update
+composer update <vendor>/<package>
+
+# 4. Run ALL tests
+vendor/bin/phpunit
+cd e2e && npx playwright test
+
+# 5. Commit if tests pass
+git add composer.json composer.lock
+git commit -m "deps(php): upgrade <vendor>/<package> from X.Y to A.B"
+```
+
+### Step 6.3: Recommended Upgrade Order
+
+Start with packages least likely to break things:
+
+```
+1. Dev dependencies (phpunit, code sniffers, faker)
+2. Utility libraries (monolog, symfony/var-dumper)
+3. Mail/HTTP (laminas/laminas-mail, guzzlehttp/guzzle)
+4. Image processing (imagine/imagine)
+5. Template/view (michelf/php-markdown, css-crush)
+6. Database (doctrine/dbal) — HIGH RISK, test thoroughly
+7. Framework (symfony/*, php-di/php-di) — HIGH RISK
+8. Elgg patch updates (elgg/elgg within same major)
+```
+
+### Step 6.4: Handle Breaking Changes
+
+If a package upgrade breaks tests:
+1. Read the changelog to understand the API change
+2. Fix the code
+3. Commit the fix WITH the dependency bump in the same commit
+4. If the fix is too complex, pin the package to current version and create a ticket
+
+**GATE: All tests pass after each individual package upgrade.**
+
+---
+
+## Prep Phase 7: HARDEN JS/CSS DEPENDENCIES
+
+Upgrade JavaScript and CSS dependencies one at a time. In Elgg, JS deps
+are managed via Composer (npm-asset packages from asset-packagist.org).
+
+### Step 7.1: List JS Dependencies
+
+```bash
+# Elgg manages JS via Composer, not npm directly
+composer show | grep "npm-asset\|bower-asset"
+composer outdated | grep "npm-asset\|bower-asset"
+```
+
+### Step 7.2: Upgrade One JS Package at a Time
+
+```bash
+# 1. Check current version
+composer show npm-asset/jquery
+
+# 2. Update
+composer update npm-asset/jquery
+
+# 3. Run PHP tests (they may test view output that includes JS)
+vendor/bin/phpunit
+
+# 4. Run JS unit tests (if plugin has them)
+npm run test:js
+
+# 5. Run E2E tests (catches JS runtime errors in browser)
+cd e2e && npx playwright test
+
+# 6. Manual smoke test in browser — check console for JS errors
+# Open http://localhost:8380/ and check browser DevTools console
+
+# 7. Commit
+git add composer.json composer.lock
+git commit -m "deps(js): upgrade npm-asset/jquery from X.Y to A.B"
+```
+
+### Step 7.3: Recommended Upgrade Order
+
+```
+1. normalize.css (pure CSS reset, very safe)
+2. sprintf-js (utility, rarely breaks)
+3. cropperjs / jquery-cropper (image cropping)
+4. jquery-colorbox (lightbox — check for API changes)
+5. jquery-ui (MEDIUM RISK — widgets may use deprecated methods)
+6. jQuery (HIGH RISK — major versions have breaking changes)
+7. tagify (HIGH RISK — custom component, API may change)
+```
+
+### Step 7.4: Plugin-Level JS Dependencies
+
+If plugins have their own `package.json`:
+
+```bash
+cd mod/<plugin>
+npm outdated
+npm update <package>
+npm run test:js
+```
+
+### Step 7.5: CSS Dependencies
+
+Elgg uses `css-crush/css-crush` for CSS preprocessing. After upgrading:
+
+```bash
+# Verify CSS compiles without errors
+# Flush simplecache and load a page
+docker compose exec elgg php -r "
+require 'vendor/autoload.php';
+\$app = \Elgg\Application::getInstance();
+\$app->bootCore();
+elgg_invalidate_caches();
+echo 'Caches flushed' . PHP_EOL;
+"
+
+# Check browser for CSS rendering issues
+```
+
+### Step 7.6: Writing JS Tests (use `/elgg-js-test-writer`)
+
+Before upgrading JS dependencies, establish JS test coverage:
+- Unit tests for pure logic (Vitest)
+- Hook/event interaction tests
+- E2E tests for UI behavior (Playwright)
+
+This gives you a safety net for detecting regressions.
+
+**GATE: All tests (PHP + JS + E2E) pass after each dependency upgrade.**
+
+---
+
+## Prep Phase 8: FINAL VERIFICATION
+
+- [ ] All Elgg version steps complete (e.g., 2.x→3.x→4.x→5.x→6.x)
+- [ ] All PHP dependencies at latest stable
+- [ ] All JS/CSS dependencies at latest stable
+- [ ] Full test suite green (PHPUnit + Vitest + Playwright)
+- [ ] Docker boots with all plugins active
+- [ ] No PHP errors in logs
+- [ ] No JS console errors in browser
+
+The migration branches are now ready for production.
 
 ---
 
