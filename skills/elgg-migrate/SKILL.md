@@ -94,7 +94,7 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
 ```
 
-**Step 2.6: Compare with reference** (if Elgg3-hype* repo exists for this plugin)
+**Step 2.6: Compare with reference** (if a manually-migrated version exists upstream)
 
 ### Phase 3: FINALIZE
 
