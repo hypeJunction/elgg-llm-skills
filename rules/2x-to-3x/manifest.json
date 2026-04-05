@@ -252,6 +252,14 @@
             "priority": 185
         },
         {
+            "id": "027-foreach-by-reference-on-iterator",
+            "name": "Replace foreach-by-reference on hook return values (iterators)",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\ForeachByReferenceOnIterator",
+            "breaking_change": "Hook return values like MenuItems are Traversable in 3.x and cannot be iterated by reference",
+            "priority": 290
+        },
+        {
             "id": "028-method-signature-compat",
             "name": "Check overridden method signatures for compatibility",
             "automated": false,
