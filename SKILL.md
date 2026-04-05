@@ -277,9 +277,12 @@ Summarize:
 - **activate.php / deactivate.php removed** — entity registrations go to elgg-plugin.php `entities` key
 - **All _elgg_* callbacks → class-based handlers** (only affects core, not plugins)
 - **Type hints added everywhere** — may cause TypeError in overridden methods
-- **\\DI\\object() → \\DI\\create()** in elgg-services.php
-- **Zend\\Mail → Laminas\\Mail**
-- **Entity attributes** — type, subtype, enabled no longer settable via magic setter
+- **\\DI\\object() → \\DI\\create()** in elgg-services.php (automated)
+- **Zend\\Mail → Laminas\\Mail** (automated)
+- **Entity attributes** — type, subtype, enabled no longer settable via magic setter (automated: subtype→setSubtype(), enabled→enable()/disable(); warns on type/admin/banned)
+- **canWriteToContainer()** — now requires $type and $subtype parameters (automated: warn-only, flags under-specified calls)
+- **elgg_error_response()** — default HTTP code changed from 200 to 400
+- **Response class hierarchy changed** — OkResponse/ErrorResponse/RedirectResponse restructured
 
 **Learnings from elgg-plugin.php generation:**
 - Hooks with the same name (e.g., multiple `'register'` hooks for different menu types) must be nested: `'register' => ['menu:entity' => [...], 'menu:river' => [...]]`
@@ -319,11 +322,11 @@ elgg-migrate/
 │   ├── MigrationRule.php
 │   ├── RuleRunner.php
 │   ├── Rules/V2ToV3/    # 12 automated rules
-│   └── Rules/V3ToV4/    # 2 automated rules
+│   └── Rules/V3ToV4/    # 6 automated rules
 ├── rules/                # Version manifests
 │   ├── 2x-to-3x/manifest.json  # 27 rules (12 auto + 15 LLM)
-│   └── 3x-to-4x/manifest.json  # 11 rules (2 auto + 9 LLM)
-├── tests/                # PHPUnit tests (55 tests, 445 assertions)
+│   └── 3x-to-4x/manifest.json  # 11 rules (6 auto + 5 LLM)
+├── tests/                # PHPUnit tests (98 tests, 686 assertions)
 ├── references/           # Breaking change docs
 ├── docker/               # Docker environments per version
 │   └── elgg3/            # Working Elgg 3.3.25 setup

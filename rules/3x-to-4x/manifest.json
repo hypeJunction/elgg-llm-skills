@@ -29,24 +29,24 @@
         {
             "id": "003-di-object-to-create",
             "name": "Replace \\DI\\object() with \\DI\\create() in elgg-services.php",
-            "automated": false,
-            "llm_instructions": "In `elgg-services.php`, replace all `\\DI\\object()` calls with `\\DI\\create()`. The PHP-DI library updated this API:\n```php\n// Before:\nreturn [MyService::class => \\DI\\object(MyService::class)];\n// After:\nreturn [MyService::class => \\DI\\create(MyService::class)];\n```",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\DiObjectToCreate",
             "breaking_change": "PHP-DI updated: \\DI\\object() → \\DI\\create()",
             "priority": 30
         },
         {
             "id": "004-zend-to-laminas",
             "name": "Replace Zend\\Mail with Laminas\\Mail",
-            "automated": false,
-            "llm_instructions": "Replace all `Zend\\Mail` namespace references with `Laminas\\Mail`. This applies to:\n- `use` statements\n- Type hints\n- `instanceof` checks\n- Class instantiation\n\nAlso update composer.json if it requires any `zendframework/*` packages — replace with `laminas/*` equivalents.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\ZendToLaminas",
             "breaking_change": "Zend\\Mail → Laminas\\Mail",
             "priority": 40
         },
         {
             "id": "005-entity-attribute-setters",
             "name": "Replace magic setters for protected entity attributes",
-            "automated": false,
-            "llm_instructions": "In Elgg 4.0, certain entity attributes can no longer be set via magic setter (`$entity->attr = value`):\n\n- `$entity->type = 'object'` → not allowed (set at creation)\n- `$entity->subtype = 'blog'` → `$entity->setSubtype('blog')`\n- `$entity->enabled = 'yes'` → `$entity->enable()` / `$entity->disable()`\n- `$user->admin = true` → `$user->makeAdmin()` / `$user->removeAdmin()`\n- `$user->banned = true` → `$user->ban()` / `$user->unban()`\n\nSearch for `->type =`, `->subtype =`, `->enabled =`, `->admin =`, `->banned =` on entity objects.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\EntityAttributeSetters",
             "breaking_change": "type, subtype, enabled, admin, banned no longer settable via magic setter",
             "priority": 50
         },
@@ -85,8 +85,8 @@
         {
             "id": "010-container-write-permissions",
             "name": "Update canWriteToContainer() calls",
-            "automated": false,
-            "llm_instructions": "In Elgg 4.0, `ElggEntity::canWriteToContainer()` now requires `$type` and `$subtype` parameters:\n```php\n// Before:\n$entity->canWriteToContainer();\n\n// After:\n$entity->canWriteToContainer(0, 'object', 'blog');\n```\n\nSearch for `canWriteToContainer()` calls without type/subtype arguments.",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\CanWriteToContainer",
             "breaking_change": "canWriteToContainer() requires $type and $subtype in 4.0",
             "priority": 100
         }

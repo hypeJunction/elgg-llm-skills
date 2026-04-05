@@ -150,10 +150,9 @@ class StatusActionTest extends \Elgg\IntegrationTestCase {
 
     public function testStatusActionCreatesPost(): void {
         $user = $this->createUser();
-        // Elgg 3.x:
-elgg_get_session()->setLoggedInUser($user);
-// Elgg 4.x+:
-// _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x: elgg_get_session()->setLoggedInUser($user);
+        // Elgg 4.x+:
+        _elgg_services()->session_manager->setLoggedInUser($user);
 
         $response = $this->executeAction('wall/status', [
             'body' => 'Hello world',
@@ -194,10 +193,9 @@ class HooksTest extends \Elgg\IntegrationTestCase {
 
     public function testContainerPermissionsHook(): void {
         $user = $this->createUser();
-        // Elgg 3.x:
-elgg_get_session()->setLoggedInUser($user);
-// Elgg 4.x+:
-// _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x: elgg_get_session()->setLoggedInUser($user);
+        // Elgg 4.x+:
+        _elgg_services()->session_manager->setLoggedInUser($user);
 
         // User should be able to write to their own wall
         $can = $user->canWriteToContainer(0, 'object', Post::SUBTYPE);
@@ -226,10 +224,9 @@ class ViewsTest extends \Elgg\IntegrationTestCase {
 
     public function testFormViewRenders(): void {
         $user = $this->createUser();
-        // Elgg 3.x:
-elgg_get_session()->setLoggedInUser($user);
-// Elgg 4.x+:
-// _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x: elgg_get_session()->setLoggedInUser($user);
+        // Elgg 4.x+:
+        _elgg_services()->session_manager->setLoggedInUser($user);
 
         $output = elgg_view('forms/wall/status', [
             'entity' => null,
@@ -279,10 +276,9 @@ class PermissionsTest extends \Elgg\IntegrationTestCase {
 
     public function testOwnerCanEditPost(): void {
         $user = $this->createUser();
-        // Elgg 3.x:
-elgg_get_session()->setLoggedInUser($user);
-// Elgg 4.x+:
-// _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x: elgg_get_session()->setLoggedInUser($user);
+        // Elgg 4.x+:
+        _elgg_services()->session_manager->setLoggedInUser($user);
 
         $post = $this->createObject([
             'subtype' => Post::SUBTYPE,
@@ -350,12 +346,31 @@ For each plugin feature, verify at minimum:
 - Helper methods: `createUser()`, `createGroup()`, `createObject()`
 - Automatic cleanup via `Seeding` trait
 
-### Elgg 4.x+ Testing
-- Same API as 3.x with added type hints
+### Elgg 4.x Testing
+- Same base classes as 3.x: `\Elgg\UnitTestCase`, `\Elgg\IntegrationTestCase`
+- Added type hints on methods — overrides must match signatures
 - `executeAction()` helper for action testing
-- PHPUnit 9.x (4.x) or 10.x (6.x)
+- Session management: `_elgg_services()->session_manager->setLoggedInUser($user)` (NOT `elgg_get_session()`)
+- PHPUnit 9.x
+- Plugin config via `elgg-plugin.php` (no `start.php`)
+- Bootstrap class replaces `start.php` init logic
+- `\DI\create()` replaces `\DI\object()` in `elgg-services.php`
+- Entity attributes: use `$entity->setSubtype()`, `$entity->enable()`/`disable()` (no magic setters)
+- `canWriteToContainer()` requires type + subtype args
 
-### Key helper methods (3.x+)
+### Elgg 4.x Key Differences from 3.x
+
+| Feature | Elgg 3.x | Elgg 4.x |
+|---------|----------|----------|
+| Plugin config | `start.php` + `manifest.xml` | `elgg-plugin.php` |
+| Session | `elgg_get_session()->setLoggedInUser()` | `_elgg_services()->session_manager->setLoggedInUser()` |
+| DI definitions | `\DI\object()` | `\DI\create()` |
+| Set subtype | `$entity->subtype = 'x'` | `$entity->setSubtype('x')` |
+| Enable/disable | `$entity->enabled = 'yes'` | `$entity->enable()` / `$entity->disable()` |
+| Container perms | `canWriteToContainer()` | `canWriteToContainer($uid, $type, $subtype)` |
+| Mail namespace | `Zend\Mail` | `Laminas\Mail` |
+
+### Key helper methods (3.x)
 
 ```php
 // Create test entities (auto-cleaned up)
@@ -363,11 +378,8 @@ $user = $this->createUser();
 $group = $this->createGroup();
 $object = $this->createObject(['subtype' => 'blog']);
 
-// Set logged-in user
-// Elgg 3.x:
+// Set logged-in user (Elgg 3.x)
 elgg_get_session()->setLoggedInUser($user);
-// Elgg 4.x+:
-// _elgg_services()->session_manager->setLoggedInUser($user);
 
 // Execute an action
 $response = $this->executeAction('action/name', ['param' => 'value']);
@@ -376,6 +388,25 @@ $response = $this->executeAction('action/name', ['param' => 'value']);
 _elgg_services()->routes;
 _elgg_services()->hooks;
 _elgg_services()->events;
+```
+
+### Key helper methods (4.x+)
+
+```php
+// Create test entities (same as 3.x)
+$user = $this->createUser();
+$group = $this->createGroup();
+$object = $this->createObject(['subtype' => 'blog']);
+
+// Set logged-in user (4.x+ — session_manager)
+_elgg_services()->session_manager->setLoggedInUser($user);
+
+// Execute an action
+$response = $this->executeAction('action/name', ['param' => 'value']);
+
+// Access services
+_elgg_services()->routes;
+_elgg_services()->events; // hooks and events use same service in 4.x
 ```
 
 ---
@@ -470,4 +501,76 @@ class PluginTest extends IntegrationTestCase {
 
     // ... tests here
 }
+```
+
+### Test class (Elgg 4.x) — no manual boot needed
+
+In 4.x, plugins use `elgg-plugin.php` and Bootstrap classes. The test framework
+handles plugin activation — no need to manually require `start.php`.
+
+```php
+<?php
+namespace MyPlugin;
+
+use Elgg\IntegrationTestCase;
+
+class PluginTest extends IntegrationTestCase {
+
+    public function up() {
+        // Plugin is auto-loaded via elgg-plugin.php
+    }
+
+    public function down() {}
+
+    public function testEntityCrud(): void {
+        $user = $this->createUser();
+        _elgg_services()->session_manager->setLoggedInUser($user);
+
+        $entity = $this->createObject([
+            'subtype' => 'my_subtype',
+            'owner_guid' => $user->guid,
+        ]);
+
+        $this->assertInstanceOf(\MyPlugin\MyEntity::class, $entity);
+
+        // Use setter methods, not magic properties
+        $entity->setSubtype('other_subtype');
+        $this->assertEquals('other_subtype', $entity->getSubtype());
+    }
+
+    public function testContainerPermissions(): void {
+        $user = $this->createUser();
+        _elgg_services()->session_manager->setLoggedInUser($user);
+
+        // 4.x requires type + subtype args
+        $can = $user->canWriteToContainer(0, 'object', 'my_subtype');
+        $this->assertTrue($can);
+    }
+}
+```
+
+### tests/phpunit.xml (Elgg 4.x)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.6/phpunit.xsd"
+         bootstrap="bootstrap.php"
+         colors="true">
+    <php>
+        <env name="ELGG_DB_PREFIX" value="elgg_"/>
+        <env name="ELGG_DB_HOST" value="db"/>
+        <env name="ELGG_DB_NAME" value="elgg"/>
+        <env name="ELGG_DB_USER" value="elgg"/>
+        <env name="ELGG_DB_PASS" value="elgg"/>
+    </php>
+    <testsuites>
+        <testsuite name="unit">
+            <directory>phpunit/unit</directory>
+        </testsuite>
+        <testsuite name="integration">
+            <directory>phpunit/integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>
 ```
