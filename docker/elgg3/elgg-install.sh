@@ -64,6 +64,30 @@ SETTINGS_VALUES
         echo 'Elgg installed successfully.' . PHP_EOL;
     " 2>&1 || echo "Install via PHP API completed (check for errors above)."
 
+    # Activate all plugins in mod/
+    echo "Activating plugins..."
+    php -r "
+        require_once 'vendor/autoload.php';
+        \$app = \Elgg\Application::getInstance();
+        \$app->bootCore();
+        _elgg_services()->plugins->generateEntities();
+        \$plugins = elgg_get_plugins('inactive');
+        \$failed = [];
+        foreach (\$plugins as \$plugin) {
+            try {
+                \$plugin->activate();
+            } catch (\Throwable \$e) {
+                \$failed[] = \$plugin->getID() . ': ' . \$e->getMessage();
+            }
+        }
+        if (empty(\$failed)) {
+            echo 'All plugins activated.' . PHP_EOL;
+        } else {
+            echo count(\$failed) . ' plugin(s) failed to activate:' . PHP_EOL;
+            foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
+        }
+    " 2>&1 || echo "Plugin activation completed (check for errors above)."
+
     touch /var/www/html/.elgg-installed
     echo "Elgg setup complete."
 fi
