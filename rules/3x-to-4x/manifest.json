@@ -89,6 +89,14 @@
             "class": "ElggMigrate\\Rules\\V3ToV4\\CanWriteToContainer",
             "breaking_change": "canWriteToContainer() requires $type and $subtype in 4.0",
             "priority": 100
+        },
+        {
+            "id": "011-install-plugin-deps",
+            "name": "Install plugin-specific Composer dependencies",
+            "automated": false,
+            "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
+            "breaking_change": "Plugin-local dependencies must be installed for activation",
+            "priority": 150
         }
     ]
 }

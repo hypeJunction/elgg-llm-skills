@@ -16,6 +16,10 @@ use ElggMigrate\Rules\V2ToV3\RemovedClasses;
 use ElggMigrate\Rules\V2ToV3\RemovedFunctions;
 use ElggMigrate\Rules\V2ToV3\RemovedMethods;
 use ElggMigrate\Rules\V2ToV3\SubtypeRegistration;
+use ElggMigrate\Rules\V2ToV3\GuardVendorRequire;
+use ElggMigrate\Rules\V2ToV3\RemoveImplementsInterface;
+use ElggMigrate\Rules\V2ToV3\RemovedFunctionsInExpressions;
+use ElggMigrate\Rules\V2ToV3\SubtableJoinWarning;
 use ElggMigrate\Rules\V2ToV3\UpdateManifestVersion;
 use PHPUnit\Framework\TestCase;
 
@@ -43,6 +47,10 @@ final class AllRulesGuineaPigTest extends TestCase
             'PagesetupEvent' => [new PagesetupEvent()],
             'ElggPluginsPath' => [new ElggPluginsPath()],
             'ElggRegisterAjaxView' => [new ElggRegisterAjaxView()],
+            'RemoveImplementsInterface' => [new RemoveImplementsInterface()],
+            'SubtableJoinWarning' => [new SubtableJoinWarning()],
+            'GuardVendorRequire' => [new GuardVendorRequire()],
+            'RemovedFunctionsInExpressions' => [new RemovedFunctionsInExpressions()],
         ];
     }
 
@@ -104,6 +112,10 @@ final class AllRulesGuineaPigTest extends TestCase
                 new PagesetupEvent(),
                 new ElggPluginsPath(),
                 new ElggRegisterAjaxView(),
+                new RemoveImplementsInterface(),
+                new SubtableJoinWarning(),
+                new GuardVendorRequire(),
+                new RemovedFunctionsInExpressions(),
             ];
 
             $totalChanges = 0;

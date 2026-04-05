@@ -648,6 +648,7 @@ Check if the function was removed pre-2.x (our rules only cover 2.x→3.x+). Com
 ```
 For EACH plugin:
   1. php -l *.php                    # Syntax check
+  1.5. composer install (if plugin has own deps)  # Install plugin-specific packages
   2. phpstan analyse --level 0       # Static analysis (catches signature/interface issues)
   3. Run automated migration rules   # AST transforms
   4. php -l *.php                    # Re-check syntax
@@ -664,6 +665,7 @@ Steps 2 and 5 would have caught ALL the issues we found reactively in Docker.
 - **RemovedInterfaceCheck** — detect classes implementing removed interfaces
 - **RemoveVendorAutoload** — detect and remove redundant Elgg root autoloader requires (added)
 - **SubtableQueryCheck** — detect JOINs to removed entity subtables
+- **ComposerInstallCheck** — detect plugins with composer.json but no vendor/ dir
 
 ## Available Migration Rules
 

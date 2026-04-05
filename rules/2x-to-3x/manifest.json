@@ -218,6 +218,54 @@
             "llm_instructions": "After all other rules have been applied, determine if the plugin needs `Elgg\\Upgrade\\Batch` classes:\n\n1. If plugin used `add_subtype()` → generate upgrade that verifies subtype strings in DB\n2. If plugin used metastring-dependent queries → generate upgrade that verifies metadata is direct\n3. If plugin used `ACCESS_FRIENDS` → verify access collections\n4. If plugin stored data in entity subtables (users_entity, objects_entity, etc.) → generate upgrade to migrate to metadata\n\nUpgrade classes go in `classes/PluginNamespace/Upgrades/` and are registered in the plugin bootstrap.",
             "breaking_change": "Existing installations need data migration scripts",
             "priority": 999
+        },
+        {
+            "id": "030-remove-implements-interface",
+            "name": "Strip removed interfaces from class implements clauses",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\RemoveImplementsInterface",
+            "breaking_change": "Elgg\\Cache\\Pool, Exportable, Importable interfaces removed in 3.0",
+            "priority": 170
+        },
+        {
+            "id": "031-subtable-join-warning",
+            "name": "Warn about raw SQL referencing removed entity subtables",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\SubtableJoinWarning",
+            "breaking_change": "groups_entity, users_entity, objects_entity, sites_entity tables removed in 3.0",
+            "priority": 175
+        },
+        {
+            "id": "032-guard-vendor-require",
+            "name": "Add file_exists() guard to plugin-local vendor/autoload.php requires",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\GuardVendorRequire",
+            "breaking_change": "Plugin vendor autoload crashes if composer install not run",
+            "priority": 180
+        },
+        {
+            "id": "033-removed-functions-in-expressions",
+            "name": "Replace removed function calls in expressions with default values",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionsInExpressions",
+            "breaking_change": "Removed functions used in if/ternary/assignment expressions need value replacements",
+            "priority": 185
+        },
+        {
+            "id": "028-method-signature-compat",
+            "name": "Check overridden method signatures for compatibility",
+            "automated": false,
+            "llm_instructions": "After running automated rules, check all classes that extend Elgg core classes for method signature mismatches. In Elgg 3.x, many methods gained new parameters:\n\n- `ElggFile::delete()` now has `$follow_symlinks = true` parameter\n- `ElggEntity::canComment()` signature changed\n- `ElggObject::save()` may have new return type\n\nFor each class in `classes/`, check if any overridden method's signature differs from the parent. Add the missing parameters with default values to maintain backward compatibility.\n\nRun `phpstan analyse --level 0` to catch these automatically.",
+            "breaking_change": "PHP 7.4+ enforces parameter type compatibility in method overrides",
+            "priority": 300
+        },
+        {
+            "id": "029-extract-queries-from-views",
+            "name": "Extract database queries from views into testable functions",
+            "automated": false,
+            "llm_instructions": "Search views/ directory for `elgg_get_entities()`, `elgg_list_entities()`, `get_data()`, `update_data()`, `insert_data()` calls. These should be moved to class methods or standalone functions in classes/ or lib/ so they can be unit tested.\n\nPattern:\n```php\n// Before (in views/default/resources/index.php):\n$items = elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n\n// After:\n// In classes/MyPlugin/Queries.php:\nclass Queries {\n    public static function getFeaturedItems() {\n        return elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n    }\n}\n\n// In view:\n$items = Queries::getFeaturedItems();\n```\n\nThis makes the query testable and the view simpler. Especially important for raw SQL queries that reference removed tables.",
+            "breaking_change": "Best practice for testability — not a breaking change itself",
+            "priority": 305
         }
     ]
 }
