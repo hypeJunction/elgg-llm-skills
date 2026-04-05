@@ -141,15 +141,16 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 
 ```
 elgg-migrate/
-├── SKILL.md                  # This file
-├── SKILL-elgg-test-writer.md # Test writing skill
-├── bin/migrate.php           # CLI runner
-├── bin/migrate-plugin.sh     # Batch script (branch + migrate + commit)
-├── src/Rules/V2ToV3/         # 12 automated rules
-├── src/Rules/V3ToV4/         # 7 automated rules
-├── rules/2x-to-3x/          # 27 rules (12 auto + 15 LLM)
-├── rules/3x-to-4x/          # 12 rules (7 auto + 5 LLM)
-├── tests/                    # 112 tests, 717 assertions
-├── docker/elgg{3,4}/         # Docker environments
-└── tmp/                      # Guinea pig plugins (gitignored)
+├── skills/
+│   ├── elgg-migrate/SKILL.md       # This file
+│   └── elgg-test-writer/SKILL.md   # Test writing skill
+├── bin/migrate.php                  # CLI runner
+├── bin/migrate-plugin.sh            # Batch script (branch + migrate + commit)
+├── src/Rules/V2ToV3/                # 12 automated rules
+├── src/Rules/V3ToV4/                # 7 automated rules
+├── rules/2x-to-3x/                 # 27 rules (12 auto + 15 LLM)
+├── rules/3x-to-4x/                 # 12 rules (7 auto + 5 LLM)
+├── tests/                           # 112 tests, 717 assertions
+├── docker/elgg{3,4}/                # Docker environments
+└── tmp/                             # Guinea pig plugins (gitignored)
 ```
