@@ -91,7 +91,31 @@
             "priority": 100
         },
         {
-            "id": "011-install-plugin-deps",
+            "id": "011-exception-class-renames",
+            "name": "Rename exception classes and traits moved in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\ExceptionClassRenames",
+            "breaking_change": "~30 exception classes moved to Elgg\\Exceptions namespace, traits to Elgg\\Traits",
+            "priority": 110
+        },
+        {
+            "id": "012-removed-functions-4x",
+            "name": "Flag functions deprecated in 3.x and removed in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedFunctions",
+            "breaking_change": "~25 functions removed: validate_*, forward(), plugin settings, filter tabs, etc.",
+            "priority": 120
+        },
+        {
+            "id": "013-removed-methods-4x",
+            "name": "Flag class methods deprecated in 3.x and removed in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedMethods",
+            "breaking_change": "~20 methods removed: ElggPlugin::getUserSetting(), ElggGroup::addObjectToGroup(), etc.",
+            "priority": 130
+        },
+        {
+            "id": "014-install-plugin-deps",
             "name": "Install plugin-specific Composer dependencies",
             "automated": false,
             "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",

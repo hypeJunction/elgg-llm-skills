@@ -147,10 +147,10 @@ elgg-migrate/
 ├── bin/migrate.php                  # CLI runner
 ├── bin/migrate-plugin.sh            # Batch script (branch + migrate + commit)
 ├── src/Rules/V2ToV3/                # 12 automated rules
-├── src/Rules/V3ToV4/                # 7 automated rules
+├── src/Rules/V3ToV4/                # 10 automated rules
 ├── rules/2x-to-3x/                 # 27 rules (12 auto + 15 LLM)
-├── rules/3x-to-4x/                 # 12 rules (7 auto + 5 LLM)
-├── tests/                           # 112 tests, 717 assertions
+├── rules/3x-to-4x/                 # 15 rules (10 auto + 5 LLM)
+├── tests/                           # 194 tests, 943 assertions
 ├── docker/elgg{3,4}/                # Docker environments
 └── tmp/                             # Guinea pig plugins (gitignored)
 ```

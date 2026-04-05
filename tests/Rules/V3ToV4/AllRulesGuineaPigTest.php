@@ -8,8 +8,11 @@ use ElggMigrate\MigrationRule;
 use ElggMigrate\Rules\V3ToV4\CanWriteToContainer;
 use ElggMigrate\Rules\V3ToV4\DiObjectToCreate;
 use ElggMigrate\Rules\V3ToV4\EntityAttributeSetters;
+use ElggMigrate\Rules\V3ToV4\ExceptionClassRenames;
 use ElggMigrate\Rules\V3ToV4\GenerateElggPluginPhp;
 use ElggMigrate\Rules\V3ToV4\RemoveLegacyBootstrap;
+use ElggMigrate\Rules\V3ToV4\RemovedFunctions;
+use ElggMigrate\Rules\V3ToV4\RemovedMethods;
 use ElggMigrate\Rules\V3ToV4\UpdateManifestVersion;
 use ElggMigrate\Rules\V3ToV4\ZendToLaminas;
 use PHPUnit\Framework\TestCase;
@@ -36,6 +39,9 @@ final class AllRulesGuineaPigTest extends TestCase
             'ZendToLaminas' => [new ZendToLaminas()],
             'EntityAttributeSetters' => [new EntityAttributeSetters()],
             'CanWriteToContainer' => [new CanWriteToContainer()],
+            'ExceptionClassRenames' => [new ExceptionClassRenames()],
+            'RemovedFunctions' => [new RemovedFunctions()],
+            'RemovedMethods' => [new RemovedMethods()],
         ];
     }
 
@@ -96,6 +102,9 @@ final class AllRulesGuineaPigTest extends TestCase
                 new ZendToLaminas(),
                 new EntityAttributeSetters(),
                 new CanWriteToContainer(),
+                new ExceptionClassRenames(),
+                new RemovedFunctions(),
+                new RemovedMethods(),
             ];
 
             $totalChanges = 0;
