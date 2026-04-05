@@ -322,11 +322,11 @@ elgg-migrate/
 │   ├── MigrationRule.php
 │   ├── RuleRunner.php
 │   ├── Rules/V2ToV3/    # 12 automated rules
-│   └── Rules/V3ToV4/    # 6 automated rules
+│   └── Rules/V3ToV4/    # 7 automated rules
 ├── rules/                # Version manifests
 │   ├── 2x-to-3x/manifest.json  # 27 rules (12 auto + 15 LLM)
-│   └── 3x-to-4x/manifest.json  # 11 rules (6 auto + 5 LLM)
-├── tests/                # PHPUnit tests (98 tests, 686 assertions)
+│   └── 3x-to-4x/manifest.json  # 11 rules (7 auto + 4 LLM)
+├── tests/                # PHPUnit tests (112 tests, 717 assertions)
 ├── references/           # Breaking change docs
 ├── docker/               # Docker environments per version
 │   └── elgg3/            # Working Elgg 3.3.25 setup
