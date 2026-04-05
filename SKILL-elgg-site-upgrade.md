@@ -2,9 +2,8 @@
 name: elgg-site-upgrade
 description: >
   Use when upgrading an entire Elgg installation (core + plugins) between major
-  versions. Covers the complete path: backup, test coverage, plugin migration,
-  Docker verification, and incremental upgrades. Handles both Composer-managed
-  and manual installations.
+  versions. Two workflows: PREPARE (development — branches, tests, Docker) and
+  EXECUTE (production — strict checklist with backup and rollback plan).
 category: process
 triggers:
   - elgg upgrade site
@@ -17,94 +16,103 @@ user-invocable: true
 # elgg-site-upgrade
 
 > **Purpose:** Upgrade an entire Elgg installation from one major version to the next.
-> **Usage:** `/elgg-site-upgrade <project-path> [--from=2.x] [--to=6.x]`
+> **Two workflows:** PREPARE (dev) and EXECUTE (production)
+> **Usage:** `/elgg-site-upgrade <project-path> [--from=2.x] [--to=6.x] [--mode=prepare|execute]`
 
 ## Iron Laws
 
-1. **BACKUP FIRST** — Database, data directory, and code. Every time. No exceptions.
-2. **ONE MAJOR VERSION AT A TIME** — Upgrade 2.x→3.x, then 3.x→4.x, etc. Never skip majors.
-3. **LATEST MINOR FIRST** — Must be on the latest minor of the current major before jumping. E.g., upgrade to 2.3.x before going to 3.x.
-4. **TESTS BEFORE MIGRATION** — Establish test coverage on the current version. Migrate only when tests are green.
-5. **VERIFY EACH STEP IN DOCKER** — Don't proceed to the next version until the current step boots and passes tests.
+1. **ONE MAJOR VERSION AT A TIME** — Upgrade 2.x→3.x, then 3.x→4.x, etc.
+2. **LATEST MINOR FIRST** — Must be on latest minor before jumping major (e.g., 2.3.x before 3.x).
+3. **PREPARE COMPLETELY BEFORE EXECUTING** — Never run the production checklist until the preparation workflow has produced a fully tested migration branch.
 
 ---
 
-## Phase 0: ASSESS THE INSTALLATION
+# PART A: PREPARE (Development Workflow)
 
-### Step 0.1: Detect Current Version
+This is iterative, safe to break. Done in a development environment with Docker
+and a fresh database. The goal is to produce a tested migration branch for each
+version step that can be applied to production with confidence.
+
+## Prep Phase 0: ASSESS
+
+### Step 0.1: Detect Current Elgg Version
 
 ```bash
-# Check Elgg version
-grep -r "release" <project>/vendor/elgg/elgg/engine/lib/elgglib.php | head -3
-# Or from composer
 cat <project>/composer.json | grep "elgg/elgg"
-# Or from database
-# SELECT value FROM elgg_config WHERE name = 'version';
+# Or from manifest: grep -r "elgg_release" <project>/mod/*/manifest.xml | head -5
 ```
 
-### Step 0.2: Inventory All Plugins
+### Step 0.2: Map the Upgrade Path
+
+| From | Target | Steps |
+|------|--------|-------|
+| 2.x | 6.x | 2.3→3.3→4.3→5.1→6.1 |
+| 3.x | 6.x | 3.3→4.3→5.1→6.1 |
+| 4.x | 6.x | 4.3→5.1→6.1 |
+
+**Rule:** Must be on latest minor of current major before jumping. From 2.3+ you can technically jump to any future version, but upgrading one major at a time is safer and lets you test incrementally.
+
+### Step 0.3: Inventory All Plugins
 
 ```bash
-# List all plugins with their version targets
 for d in <project>/mod/*/; do
   name=$(basename "$d")
   if [ -f "$d/manifest.xml" ]; then
-    version=$(grep -A1 'elgg_release' "$d/manifest.xml" | grep version | grep -oP '>[^<]+<' | tr -d '><')
-    echo "$name: Elgg $version (manifest.xml)"
+    ver=$(grep -A1 'elgg_release' "$d/manifest.xml" | grep version | grep -oP '>[^<]+<' | tr -d '><')
+    echo "$name: Elgg $ver"
   elif [ -f "$d/elgg-plugin.php" ]; then
-    echo "$name: has elgg-plugin.php (3.x+)"
-  else
-    echo "$name: unknown format"
+    echo "$name: elgg-plugin.php (3.x+)"
   fi
-done
+done | sort
 ```
 
-### Step 0.3: Categorize Plugins
+### Step 0.4: Categorize Plugins
 
-| Category | How to identify | Upgrade strategy |
-|----------|----------------|-----------------|
-| **Composer-managed** | Listed in project `composer.json` | `composer require vendor/plugin:^N.0` |
-| **With upstream repo** | Has `.git` dir or known GitHub repo | Clone, create migrate branch, push |
-| **Custom/private** | No upstream, lives only in `mod/` | Migrate in-place, commit to project repo |
-| **Core plugins** | Ships with Elgg (blog, groups, etc.) | Upgraded automatically with Elgg core |
+| Category | Identify by | Strategy |
+|----------|------------|----------|
+| **Core** | Ships with Elgg | Auto-upgraded with core |
+| **Composer-managed with upstream** | In `composer.json`, has GitHub repo | Find upgraded version or migrate |
+| **Custom/private** | Only in `mod/`, no upstream | Migrate in-place in project repo |
 
-### Step 0.4: Find Upgraded Plugin Versions
+### Step 0.5: Find Upgraded Plugin Versions
 
-For each third-party plugin, check if an upgraded version exists:
+For each plugin, check if a compatible version already exists:
 
+**Strategy 1: Check upstream branches**
 ```bash
-# Check if the plugin author has a version for the target Elgg version
-# Method 1: Check GitHub branches
-gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '3\.x|4\.x|elgg3|elgg4'
-
-# Method 2: Check Composer for available versions
-composer show <vendor>/<plugin> --all --format=json | php -r '...'
-
-# Method 3: Check for Elgg3-* repos (hypeJunction pattern)
-gh search repos --owner <org> "Elgg3-<plugin>" --json name -q '.[].name'
-
-# Method 4: Check the plugin's composer.json requires
-gh api repos/<owner>/<plugin>/contents/composer.json -q '.content' | base64 -d | grep "elgg/elgg"
+gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '3\.x|4\.x'
 ```
 
-**hypeJunction-specific:** The hypeJunction org has `Elgg3-<plugin>` repos that are manually migrated versions. These serve as reference implementations for what the migrated plugin should look like.
+**Strategy 2: Check Elgg3-* repos (hypeJunction pattern)**
+```bash
+gh search repos --owner <org> "Elgg3-<plugin>" --json name -q '.[].name'
+```
+
+**Strategy 3: Check Composer**
+```bash
+composer show <vendor>/<plugin> --all 2>/dev/null | grep versions
+```
+
+**Strategy 4: Check manifest on branches**
+```bash
+gh api "repos/<owner>/<plugin>/contents/manifest.xml?ref=3.x" -q '.content' | base64 -d | grep -A1 'elgg_release'
+```
+
+**If no upgraded version exists:** Use elgg-migrate to create one.
 
 ---
 
-## Phase 1: SETUP WORKSPACE
+## Prep Phase 1: SETUP WORKSPACE
 
 ### Step 1.1: Clone Plugin Repos
 
-For plugins with upstream repos, clone them into a workspace:
-
 ```bash
 mkdir -p ~/plugins-workspace
+# Clone each plugin with an upstream repo
 git clone https://github.com/<owner>/<plugin>.git ~/plugins-workspace/<plugin>
 ```
 
 ### Step 1.2: Symlink Into Project
-
-Replace `mod/` directories with symlinks to the workspace:
 
 ```bash
 cd <project>/mod
@@ -112,60 +120,65 @@ rm -rf <plugin>
 ln -s ~/plugins-workspace/<plugin> <plugin>
 ```
 
-This ensures changes in the workspace are immediately reflected in the project.
+Changes in the workspace are instantly reflected in the project.
 
-### Step 1.3: Create Migration Branch
+### Step 1.3: Create Branches
 
 ```bash
-# In the project repo
-git checkout -b migrate/elgg-{N}.x
+# Project
+git -C <project> checkout -b migrate/elgg-{N}.x
 
-# In each plugin repo
+# Each plugin
 git -C ~/plugins-workspace/<plugin> checkout -b migrate/elgg-{N}.x
+```
+
+### Step 1.4: Record Plugin Activation Order
+
+Get the current activation order from the running site and save it:
+
+```bash
+# Save to mod/.plugin-order.txt (one plugin ID per line, in priority order)
 ```
 
 ---
 
-## Phase 2: TEST BASELINE
+## Prep Phase 2: TEST BASELINE (Current Version)
 
 ### Step 2.1: Boot Docker for Current Version
 
-Use the appropriate Docker environment from `docker/elgg{N}/`:
-
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml up -d
+docker compose -f docker/elgg{CURRENT}/docker-compose.yml \
+  -f docker/elgg{CURRENT}/docker-compose.override.yml up -d
 ```
 
-### Step 2.2: Write Plugin Tests
+### Step 2.2: Write Tests (use `/elgg-test-writer`)
 
-Use `/elgg-test-writer` skill to generate test suites for each plugin. Focus on:
-- Entity CRUD
-- Hook/event handler registration
-- Action registration and behavior
-- Route registration
-- Permission checks
-- View rendering
+For each plugin, write:
+- Entity CRUD tests
+- Registration tests (actions, routes, hooks, widgets)
+- Permission tests
+- View rendering tests
 
-### Step 2.3: Verify Tests Pass
+### Step 2.3: Run Tests — Must Be Green
 
 ```bash
 docker compose exec elgg php vendor/bin/phpunit \
   --configuration mod/<plugin>/tests/phpunit.xml
 ```
 
-**GATE: All tests must pass on the current version before proceeding.**
+**GATE: Tests pass on current version. This is your safety net.**
 
 ---
 
-## Phase 3: MIGRATE PLUGINS
+## Prep Phase 3: MIGRATE PLUGINS (For One Version Step)
 
-### Step 3.1: Run Automated Rules
+### Step 3.1: Automated Migration
 
 ```bash
-# From the elgg-migrate project root
+# From elgg-migrate root
 php bin/migrate.php rules/{from}-to-{to}/manifest.json ~/plugins-workspace/<plugin>
 
-# Or batch all plugins
+# Or batch
 ./bin/migrate-plugin.sh ~/plugins-workspace/<plugin> rules/{from}-to-{to}/manifest.json
 ```
 
@@ -178,146 +191,217 @@ git -C ~/plugins-workspace/<plugin> commit -m "migrate({N}.x): automated AST tra
 
 ### Step 3.3: Apply LLM-Guided Fixes
 
+Review the `--report` output and apply each fix:
+
 ```bash
-# View remaining manual work
 php bin/migrate.php rules/{from}-to-{to}/manifest.json ~/plugins-workspace/<plugin> --dry-run --report
 ```
 
-Apply each LLM rule manually, committing separately.
+Commit each category of fixes separately.
 
 ### Step 3.4: Migrate Custom Plugins In-Place
 
-For plugins without upstream repos (custom/private):
-
 ```bash
-# Run directly on the project's mod/ directory
 php bin/migrate.php rules/{from}-to-{to}/manifest.json <project>/mod/<plugin>
-
-# Commit to the project repo
 git -C <project> add mod/<plugin>
-git -C <project> commit -m "migrate({N}.x): <plugin> automated transforms"
+git -C <project> commit -m "migrate({N}.x): <plugin>"
+```
+
+### Step 3.5: Compare With Reference (if available)
+
+```bash
+# Clone the reference (e.g., Elgg3-hypeDropzone)
+diff ~/plugins-workspace/<plugin> ~/plugins-workspace/Elgg3-<plugin> --stat
 ```
 
 ---
 
-## Phase 4: UPGRADE ELGG CORE
+## Prep Phase 4: VERIFY IN DOCKER (Target Version)
 
-### Step 4.1: Update Composer
-
-```bash
-cd <project>
-composer require elgg/elgg:~{N}.0
-composer update
-```
-
-### Step 4.2: Run Elgg Upgrade
-
-```bash
-# CLI (recommended)
-vendor/bin/elgg-cli upgrade async -v
-
-# Or web-based
-# Visit: http://your-site/upgrade.php
-# Then: http://your-site/admin/upgrades
-```
-
-### Step 4.3: Handle Upgrade Failures
-
-If the upgrade fails due to plugin errors:
-
-```bash
-# Nuclear option: disable all plugins
-touch <project>/mod/disabled
-
-# Run upgrade again
-vendor/bin/elgg-cli upgrade async -v
-
-# Remove the disabled file
-rm <project>/mod/disabled
-
-# Re-activate plugins individually via admin UI
-```
-
----
-
-## Phase 5: VERIFY IN DOCKER
-
-### Step 5.1: Boot Docker for New Version
+### Step 4.1: Boot Docker for Target Version
 
 ```bash
 docker compose -f docker/elgg{N}/docker-compose.yml \
   -f docker/elgg{N}/docker-compose.override.yml up -d
 ```
 
-### Step 5.2: Plugin Activation Order
+### Step 4.2: Validate Plugin Activation (GATE)
 
-Plugins must activate in dependency order. Use a `.plugin-order.txt` file in `mod/`:
-
-```bash
-# The Docker install script reads this file and activates in order
-cp references/bodyology-plugin-order.txt <project>/mod/.plugin-order.txt
-```
-
-### Step 5.3: Validate (BLOCKING GATE)
-
-ALL of these must succeed:
+All plugins must activate without fatal errors:
 
 ```bash
-# 1. All plugins activate
 docker compose exec elgg php -r "
 require 'vendor/autoload.php';
 \$app = \Elgg\Application::getInstance();
 \$app->bootCore();
-\$inactive = elgg_get_plugins('inactive');
-echo count(\$inactive) . ' inactive plugins';
+_elgg_services()->plugins->generateEntities();
+// Read activation order
+\$order = file('/var/www/html/mod/.plugin-order.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+\$failed = [];
+foreach (\$order as \$id) {
+    \$id = trim(\$id);
+    \$plugin = elgg_get_plugin_from_id(\$id);
+    if (!\$plugin || \$plugin->isActive()) continue;
+    try { \$plugin->activate(); }
+    catch (\Throwable \$e) { \$failed[] = \$id . ': ' . \$e->getMessage(); }
+}
+if (empty(\$failed)) { echo 'All plugins activated.' . PHP_EOL; }
+else { foreach (\$failed as \$f) echo 'FAIL: ' . \$f . PHP_EOL; }
 "
+```
 
-# 2. Site renders
+### Step 4.3: Validate Site Renders (GATE)
+
+```bash
 curl -sL http://localhost:${ELGG_PORT}/ | grep -oP '<title>[^<]*</title>'
+# Must NOT contain "Fatal Error"
+```
 
-# 3. No PHP errors
-docker compose exec elgg grep -c 'CRITICAL\|Fatal' /var/log/apache2/error.log
+### Step 4.4: Run Tests (GATE)
 
-# 4. Tests pass
+```bash
 docker compose exec elgg php vendor/bin/phpunit \
   --configuration mod/<plugin>/tests/phpunit.xml
+```
 
-# 5. E2E smoke tests pass
-cd e2e && npx playwright test
+### Step 4.5: Run E2E Smoke Tests
+
+```bash
+cd e2e && ELGG_URL=http://localhost:${ELGG_PORT} npx playwright test
+```
+
+### Step 4.6: Fix Issues, Iterate
+
+If any gate fails:
+1. Fix the issue in the workspace
+2. Commit the fix
+3. Re-run the failing gate
+4. Repeat until all gates pass
+
+---
+
+## Prep Phase 5: REPEAT FOR EACH VERSION STEP
+
+Go back to Prep Phase 3 for the next major version.
+
+When ALL version steps pass ALL gates, the migration branches are ready for production.
+
+---
+
+# PART B: EXECUTE (Production Checklist)
+
+This is a one-time, sequential procedure. No experimentation. Every step has
+a verification check. If any check fails, STOP and decide whether to fix
+forward or roll back.
+
+## Pre-Flight
+
+- [ ] All migration branches tested in Docker (Part A complete)
+- [ ] Maintenance window scheduled
+- [ ] Team notified
+- [ ] Rollback plan documented
+
+## Execution Checklist
+
+### 1. BACKUP
+
+- [ ] Database dump: `mysqldump -u root -p elgg > elgg_backup_$(date +%Y%m%d).sql`
+- [ ] Data directory: `tar czf elgg_data_$(date +%Y%m%d).tar.gz /path/to/data/`
+- [ ] Code snapshot: `git tag pre-upgrade-$(date +%Y%m%d)`
+- [ ] **Verify backup is restorable** (test restore on a separate server)
+
+### 2. ENABLE MAINTENANCE MODE
+
+- [ ] Add to `settings.php`: `$CONFIG->elgg_maintenance_mode = true;`
+- [ ] Or via admin UI: Admin → Settings → Advanced → Maintenance Mode
+
+### 3. UPDATE PLUGIN CODE
+
+- [ ] Merge migration branches for all plugins:
+  ```bash
+  # For each plugin with upstream repo
+  cd ~/plugins-workspace/<plugin>
+  git checkout migrate/elgg-{N}.x
+  # Symlinks in mod/ already point here
+
+  # For the project repo (custom plugins)
+  cd <project>
+  git merge migrate/elgg-{N}.x
+  ```
+
+### 4. UPDATE ELGG CORE
+
+- [ ] `composer require elgg/elgg:~{N}.0`
+- [ ] `composer update`
+- [ ] Verify: `php vendor/bin/elgg-cli --version`
+
+### 5. RUN UPGRADE
+
+- [ ] Synchronous: `php vendor/bin/elgg-cli upgrade -v`
+- [ ] Async: `php vendor/bin/elgg-cli upgrade async -v`
+- [ ] Or web: visit `upgrade.php`, then `admin/upgrades`
+- [ ] If stuck: `php vendor/bin/elgg-cli upgrade async -v --force`
+
+### 6. VERIFY
+
+- [ ] Site loads: `curl -sL https://your-site.com/ | grep '<title>'`
+- [ ] Admin panel works: log in as admin, check plugins page
+- [ ] Key features work: test critical user journeys
+- [ ] No PHP errors in logs: `tail /var/log/elgg/error.log`
+- [ ] Cron runs: `php vendor/bin/elgg-cli cron -v`
+
+### 7. FLUSH CACHES
+
+- [ ] `php vendor/bin/elgg-cli cache:clear`
+- [ ] Or: Admin → Settings → Advanced → Flush Caches
+
+### 8. DISABLE MAINTENANCE MODE
+
+- [ ] Remove `$CONFIG->elgg_maintenance_mode` from settings.php
+- [ ] Or via admin UI
+
+### 9. POST-UPGRADE
+
+- [ ] Monitor error logs for 24 hours
+- [ ] Verify email notifications still work
+- [ ] Verify cron jobs run successfully
+- [ ] Update documentation
+
+## Rollback Procedure
+
+If the upgrade fails and cannot be fixed:
+
+```bash
+# 1. Restore database
+mysql -u root -p elgg < elgg_backup_YYYYMMDD.sql
+
+# 2. Restore code
+git checkout pre-upgrade-YYYYMMDD
+composer install
+
+# 3. Restore data directory (if changed)
+tar xzf elgg_data_YYYYMMDD.tar.gz -C /
+
+# 4. Flush caches
+rm -rf data/system_cache/* data/views_simplecache/*
+
+# 5. Verify site works
+curl -sL https://your-site.com/ | grep '<title>'
 ```
 
 ---
 
-## Phase 6: REPEAT FOR NEXT VERSION
+# Reference
 
-Go back to Phase 3 and repeat for the next major version step.
-
----
-
-## Version Upgrade Paths
-
-### Official Rules (from Elgg docs)
+## Version Upgrade Paths (from Elgg docs)
 
 | From | To | Requirement |
 |------|----|-------------|
 | < 2.0 | 2.x | Upgrade one minor at a time |
 | 2.x | 3.x | Must be on 2.3.x first |
-| 2.3+ | Any future | Can jump directly (2.3→5.x is valid) |
-| Any minor | Next major | Supported (e.g., 3.1→4.0) |
-| Skip major | Not supported | Never go 2.x→4.x directly |
+| 2.3+ | Any future | Can jump directly (but one-at-a-time is safer) |
 
-### Composer Commands Per Step
-
-| Step | Command |
-|------|---------|
-| 2.x → 3.x | `composer require elgg/elgg:~3.3.0 && composer update` |
-| 3.x → 4.x | `composer require elgg/elgg:~4.3.0 && composer update` |
-| 4.x → 5.x | `composer require elgg/elgg:~5.1.0 && composer update` |
-| 5.x → 6.x | `composer require elgg/elgg:~6.1.0 && composer update` |
-
-After each: `vendor/bin/elgg-cli upgrade async -v`
-
-### PHP/MySQL Requirements Per Version
+## PHP/MySQL Requirements
 
 | Elgg | PHP | MySQL | MariaDB |
 |------|-----|-------|---------|
@@ -327,132 +411,58 @@ After each: `vendor/bin/elgg-cli upgrade async -v`
 | 5.1 | >=8.0 | >=5.7 | >=10.3 |
 | 6.1 | >=8.1 | >=8.0 | >=10.6 |
 
----
-
-## Finding Compatible Plugin Versions
-
-### Strategy 1: Check Upstream Branches
+## Composer Commands Per Step
 
 ```bash
-# Check for version-specific branches
-gh api repos/<owner>/<plugin>/branches -q '.[].name'
+# 2.x → 3.x
+composer require elgg/elgg:~3.3.0 && composer update && vendor/bin/elgg-cli upgrade async -v
 
-# Look for: 3.x, 4.x, 5.x, 6.x, master, main
-# Or: elgg3, elgg4, elgg-3.x, etc.
+# 3.x → 4.x
+composer require elgg/elgg:~4.3.0 && composer update && vendor/bin/elgg-cli upgrade async -v
+
+# 4.x → 5.x
+composer require elgg/elgg:~5.1.0 && composer update && vendor/bin/elgg-cli upgrade async -v
+
+# 5.x → 6.x
+composer require elgg/elgg:~6.1.0 && composer update && vendor/bin/elgg-cli upgrade async -v
 ```
 
-### Strategy 2: Check Elgg3-* Pattern (hypeJunction)
+## Troubleshooting
 
-Some authors maintain separate repos for each Elgg version:
+**All plugins crash on upgrade:**
+Create empty file `<project>/mod/disabled` to disable all plugins. Run upgrade. Remove file. Re-activate plugins individually.
 
-```bash
-# hypeJunction uses Elgg3-<plugin> naming
-gh search repos --owner hypeJunction "Elgg3-" --json name -q '.[].name'
-```
+**`upgrade.php` returns error:**
+Add `$CONFIG->security_protect_upgrade = false;` to settings.php. Remove after upgrade.
 
-### Strategy 3: Check Composer Versions
+**Upgrade hangs / mutex lock:**
+`php vendor/bin/elgg-cli upgrade async -v --force`
 
-```bash
-composer show <vendor>/<plugin> --all --format=json 2>/dev/null | \
-  php -r '$d=json_decode(file_get_contents("php://stdin"),true); 
-  foreach($d["versions"]??[] as $v) echo "$v\n";'
-```
+**Plugin depends on removed function:**
+Check if the function was removed pre-2.x (our rules only cover 2.x→3.x+). Common pre-2.x removals:
+- `register_notification_object()` → `elgg_register_notification_event()`
+- `register_notification_handler()` → notification event system
+- `elgg_register_entity_url_handler()` → `entity:url` hook
 
-### Strategy 4: Check manifest.xml on Branches
+**Entity subtable queries crash (3.x):**
+`groups_entity`, `users_entity`, `objects_entity`, `sites_entity` tables removed in 3.x. Rewrite JOINs to use metadata queries or QueryBuilder.
 
-```bash
-# Fetch manifest from a specific branch
-gh api "repos/<owner>/<plugin>/contents/manifest.xml?ref=3.x" -q '.content' | \
-  base64 -d | grep -A1 'elgg_release'
-```
+## Learnings From bodyology-forum Migration
 
-### Strategy 5: When No Upgraded Version Exists
+1. **92 plugins migrated** — 47 had code changes from automated rules
+2. **Activation order matters** — use `.plugin-order.txt` to control sequence
+3. **Pre-2.x function removals** not covered by automated rules — manual fix needed
+4. **PHP version compat** — `isset()` on expressions fails in PHP 7.4+
+5. **Entity subtable removal** is the most impactful 3.x schema change
+6. **Fresh Docker install auto-enables all plugins** — problematic for testing
+7. **Elgg 3.x settings.php** must use `global $CONFIG` pattern
+8. **`roave/security-advisories`** conflicts with old Elgg versions — use `"replace"` in composer.json
 
-If no compatible version exists:
-1. Use `elgg-migrate` to create one (automated rules + LLM-guided fixes)
-2. Fork the repo and maintain your own migrated version
-3. Replace with an alternative plugin that supports the target version
-4. Remove the plugin if it's non-essential
+## Available Migration Rules
 
----
-
-## Learnings From Real-World Migration (bodyology-forum)
-
-### Issues Discovered During 2.x→3.x Migration
-
-| Issue | Plugin | Root Cause | Fix |
-|-------|--------|-----------|-----|
-| `register_notification_object()` fatal | videolist | Function removed pre-2.x | `elgg_register_notification_event()` |
-| `elgg_register_entity_url_handler()` fatal | videolist | Removed in 3.x | `entity:url` hook |
-| `isset()` on function result | code_review | PHP 7.4 incompatibility | `!== null` |
-| `get_subtype_id()` in activate.php | anypage, news, tour | Function removed in 3.x | `elgg_set_entity_class()` (idempotent) |
-| `groups_entity` subtable query | bodyology_theme | Subtables removed in 3.x | Rewrite to use metadata |
-| Missing class dependency | bodyology_courses | Plugin activation order | Ensure dependencies activate first |
-| `menus_api_combine_menus()` not found | bodyology_theme | Namespace/loading issue | Verify function namespace |
-
-### Plugin Activation Order Matters
-
-In a fresh Elgg install, ALL plugins in `mod/` are registered. They must activate in dependency order. Use `.plugin-order.txt` in `mod/` (one plugin ID per line) to control activation sequence.
-
-### Functions Removed BEFORE 2.x (Not in Our Rules)
-
-Our automated rules cover 2.x→3.x API changes. But some plugins still use functions removed even earlier:
-- `register_notification_object()` — removed in 2.0
-- `register_notification_handler()` — removed in 2.0
-- Old `notify_user()` patterns
-
-These cause immediate fatals and must be fixed manually before the automated rules can run.
-
-### Entity Subtables Removed in 3.x
-
-The most impactful 3.x schema change: `groups_entity`, `users_entity`, `objects_entity`, `sites_entity` tables were removed. All columns moved to metadata.
-
-Any plugin with raw SQL joining these tables will fatal:
-```sql
--- BROKEN in 3.x:
-SELECT * FROM elgg_entities e
-JOIN elgg_groups_entity ge ON e.guid = ge.guid
-
--- FIX: Use QueryBuilder or metadata queries:
-elgg_get_entities(['type' => 'group', 'metadata_name' => 'name', ...])
-```
-
-### Composer vs Manual Installation
-
-| | Composer | Manual |
-|---|---|---|
-| Upgrade command | `composer require elgg/elgg:~N.0 && composer update` | Download, overwrite, visit upgrade.php |
-| Plugin install | `composer require vendor/plugin` | Copy to mod/ |
-| Rollback | `git checkout composer.lock && composer install` | Restore from backup |
-| Recommended for | New installs, actively maintained sites | Legacy sites being upgraded |
-
-### Docker Test Environment Notes
-
-- Use `docker-compose.override.yml` to mount project's `mod/` into the container
-- Fresh Elgg install auto-registers and enables ALL plugins in `mod/`
-- Must clear system cache after fixing plugins: `rm -rf data/system_cache/*`
-- Elgg 3.x settings.php MUST use `global $CONFIG` (not just `$CONFIG = new \stdClass`)
-- Bootstrap uses `\Elgg\Application::index()` for web, `::loadCore()` for CLI/tests
-- `roave/security-advisories` conflicts with old Elgg versions — use `"replace"` in composer.json
-
----
-
-## Automated Migration Rules Available
-
-| Version Step | Automated Rules | LLM Rules | Manifest |
-|-------------|:---:|:---:|---|
-| 2.x → 3.x | 12 | 15 | `rules/2x-to-3x/manifest.json` |
-| 3.x → 4.x | 6 | 5 | `rules/3x-to-4x/manifest.json` |
-| 4.x → 5.x | — | — | TODO |
-| 5.x → 6.x | — | — | TODO |
-
----
-
-## References
-
-- [Elgg Upgrade Guide](https://learn.elgg.org/en/stable/admin/upgrading.html)
-- [Elgg Composer Guide](https://learn.elgg.org/en/stable/admin/composer.html)
-- [Elgg Release Policy](https://learn.elgg.org/en/stable/appendix/releases.html)
-- [Version Matrix](references/version-matrix.md)
-- [Breaking Changes](references/breaking-changes/overview.md)
-- [Bodyology Plugin Order](references/bodyology-plugin-order.txt)
+| Step | Auto | LLM | Manifest |
+|------|:----:|:---:|---------|
+| 2.x→3.x | 12 | 15 | `rules/2x-to-3x/manifest.json` |
+| 3.x→4.x | 6 | 5 | `rules/3x-to-4x/manifest.json` |
+| 4.x→5.x | — | — | TODO |
+| 5.x→6.x | — | — | TODO |
