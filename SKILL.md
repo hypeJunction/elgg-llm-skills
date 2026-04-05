@@ -150,35 +150,60 @@ Review transformed code for these patterns and simplify.
 find tmp/<plugin-name> -name "*.php" -exec php -l {} \; | grep -v "No syntax errors"
 ```
 
-### Step 2.7: Verify in Docker
+### Step 2.7: Validate in Docker (GATE)
+
+This is a **blocking validation gate**. The migration step is not complete until the plugin activates and the site renders in Docker.
 
 ```bash
 # Start the Docker environment for the target version
 docker compose -f docker/elgg{N}/docker-compose.yml up -d
-
-# Wait for installation
 sleep 30
 
 # Copy plugin into container
-docker cp tmp/<plugin-name>/. $(docker compose -f docker/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-name>/
+docker cp tmp/<plugin-name>/. \
+  $(docker compose -f docker/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-name>/
+```
 
-# Activate plugin
+**Validate plugin activation** — this MUST succeed:
+```bash
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
 require_once '/var/www/html/vendor/autoload.php';
 \$app = \Elgg\Application::getInstance();
 \$app->bootCore();
 _elgg_services()->plugins->generateEntities();
 \$plugin = elgg_get_plugin_from_id('<plugin-name>');
-if (\$plugin && !\$plugin->isActive()) {
-    \$plugin->activate();
-    echo 'Activated' . PHP_EOL;
+if (!\$plugin) { echo 'FAIL: plugin not found' . PHP_EOL; exit(1); }
+if (!\$plugin->isActive()) {
+    try {
+        \$plugin->activate();
+        echo 'OK: activated' . PHP_EOL;
+    } catch (\Throwable \$e) {
+        echo 'FAIL: ' . \$e->getMessage() . PHP_EOL; exit(1);
+    }
 } else {
-    echo (\$plugin ? 'Already active' : 'Not found') . PHP_EOL;
+    echo 'OK: already active' . PHP_EOL;
 }
 "
+```
 
-# Verify site loads
-curl -sL http://localhost:8380/ | grep -oP '<title>[^<]*</title>'
+**Validate site renders** — this MUST return a non-empty page:
+```bash
+SIZE=$(curl -sL http://localhost:${ELGG_PORT:-8380}/ | wc -c)
+if [ "$SIZE" -gt 100 ]; then echo "OK: site renders ($SIZE bytes)"; else echo "FAIL: empty page"; exit 1; fi
+```
+
+**Validate no PHP errors in logs:**
+```bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  grep -c "PHP Fatal\|PHP Error" /var/log/apache2/error.log 2>/dev/null || echo "OK: no PHP errors"
+```
+
+If ANY validation fails, fix the issue before proceeding. Do NOT continue to the next version step.
+
+```bash
+# Run plugin tests if they exist (see /elgg-test-writer skill)
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/<plugin-name>/phpunit.xml 2>/dev/null || echo "No tests yet"
 
 # Stop when done
 docker compose -f docker/elgg{N}/docker-compose.yml stop
