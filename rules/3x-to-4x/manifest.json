@@ -115,7 +115,31 @@
             "priority": 130
         },
         {
-            "id": "014-install-plugin-deps",
+            "id": "014-hook-event-renames",
+            "name": "Rename deprecated hooks and events for 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\HookEventRenames",
+            "breaking_change": "profile:fields hooks, river events, usersettings hook renamed/removed in 4.0",
+            "priority": 140
+        },
+        {
+            "id": "015-removed-views",
+            "name": "Replace removed views",
+            "automated": false,
+            "llm_instructions": "Several views removed in 4.0. Search plugin views/ and PHP files for references:\n\n- `notifications/personal` → use `notifications/settings` or `notifications/users`\n- `notifications/groups` → removed\n- `notifications/settings/collections` → removed\n- `notifications/settings/personal` → `notifications/settings/records`\n- `notifications/subscriptions/groups` → `forms/notifications/subscriptions/groups`\n- `notifications/subscriptions/users` → `forms/notifications/subscriptions/users`\n- `resources/river` → `resources/activity/all` or `resources/activity/owner`\n- `resources/comments/view` → use `\\Elgg\\Controllers\\CommentEntityRedirector`\n- `object/plugin/elements/contributors` → removed\n- `input/urlshortener` → removed\n- `navigation/menu/elements/item_deps` → merged into `navigation/menu/elements/item`\n\nAlso: `$vars['plugin']` in settings forms → use `$vars['entity']` instead.",
+            "breaking_change": "Several notification, resource, and plugin views removed or renamed in 4.0",
+            "priority": 150
+        },
+        {
+            "id": "016-removed-constants",
+            "name": "Replace removed constants",
+            "automated": false,
+            "llm_instructions": "Search for removed constants:\n\n- `ELGG_PLUGIN_USER_SETTING_PREFIX` → removed\n- `ELGG_PLUGIN_INTERNAL_PREFIX` → use `\\ElggPlugin::PRIORITY_SETTING_NAME`\n- `\\ElggRelationship::RELATIONSHIP_LIMIT` → use `\\Elgg\\Database\\RelationshipsTable::RELATIONSHIP_COLUMN_LENGTH`\n\nAlso check for notification origin constants:\n- `ORIGIN_SUBSCRIPTIONS` → removed from `Elgg\\Notifications\\Notification`\n- `ORIGIN_INSTANT` → removed from `Elgg\\Notifications\\Notification`",
+            "breaking_change": "Several plugin and notification constants removed in 4.0",
+            "priority": 160
+        },
+        {
+            "id": "017-install-plugin-deps",
             "name": "Install plugin-specific Composer dependencies",
             "automated": false,
             "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
