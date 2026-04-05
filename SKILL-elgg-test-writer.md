@@ -150,7 +150,10 @@ class StatusActionTest extends \Elgg\IntegrationTestCase {
 
     public function testStatusActionCreatesPost(): void {
         $user = $this->createUser();
-        _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x:
+elgg_get_session()->setLoggedInUser($user);
+// Elgg 4.x+:
+// _elgg_services()->session_manager->setLoggedInUser($user);
 
         $response = $this->executeAction('wall/status', [
             'body' => 'Hello world',
@@ -191,7 +194,10 @@ class HooksTest extends \Elgg\IntegrationTestCase {
 
     public function testContainerPermissionsHook(): void {
         $user = $this->createUser();
-        _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x:
+elgg_get_session()->setLoggedInUser($user);
+// Elgg 4.x+:
+// _elgg_services()->session_manager->setLoggedInUser($user);
 
         // User should be able to write to their own wall
         $can = $user->canWriteToContainer(0, 'object', Post::SUBTYPE);
@@ -220,7 +226,10 @@ class ViewsTest extends \Elgg\IntegrationTestCase {
 
     public function testFormViewRenders(): void {
         $user = $this->createUser();
-        _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x:
+elgg_get_session()->setLoggedInUser($user);
+// Elgg 4.x+:
+// _elgg_services()->session_manager->setLoggedInUser($user);
 
         $output = elgg_view('forms/wall/status', [
             'entity' => null,
@@ -270,7 +279,10 @@ class PermissionsTest extends \Elgg\IntegrationTestCase {
 
     public function testOwnerCanEditPost(): void {
         $user = $this->createUser();
-        _elgg_services()->session_manager->setLoggedInUser($user);
+        // Elgg 3.x:
+elgg_get_session()->setLoggedInUser($user);
+// Elgg 4.x+:
+// _elgg_services()->session_manager->setLoggedInUser($user);
 
         $post = $this->createObject([
             'subtype' => Post::SUBTYPE,
@@ -352,7 +364,10 @@ $group = $this->createGroup();
 $object = $this->createObject(['subtype' => 'blog']);
 
 // Set logged-in user
-_elgg_services()->session_manager->setLoggedInUser($user);
+// Elgg 3.x:
+elgg_get_session()->setLoggedInUser($user);
+// Elgg 4.x+:
+// _elgg_services()->session_manager->setLoggedInUser($user);
 
 // Execute an action
 $response = $this->executeAction('action/name', ['param' => 'value']);
@@ -361,4 +376,98 @@ $response = $this->executeAction('action/name', ['param' => 'value']);
 _elgg_services()->routes;
 _elgg_services()->hooks;
 _elgg_services()->events;
+```
+
+---
+
+## Phase 5: CI SETUP
+
+Add GitHub Actions to run tests on push/PR. Use the template at
+`references/ci/elgg3-github-actions.yml` (or elgg4, elgg5, elgg6 variants).
+
+### Quick setup
+```bash
+mkdir -p .github/workflows
+# Copy and edit the template:
+cp <elgg-migrate-root>/references/ci/elgg3-github-actions.yml .github/workflows/tests.yml
+# Replace PLUGIN_NAME with your plugin's directory name
+sed -i 's/PLUGIN_NAME/myplugin/g' .github/workflows/tests.yml
+```
+
+### What the CI workflow does
+1. Starts MySQL service container
+2. Installs PHP with required extensions
+3. Installs Elgg via Composer
+4. Creates settings.php for test database
+5. Runs ElggInstaller to set up database
+6. Copies plugin into mod/ directory
+7. Activates plugin via PHP
+8. Runs PHPUnit tests
+
+---
+
+## File Templates
+
+### tests/bootstrap.php (Elgg 3.x)
+
+```php
+<?php
+$elggRoot = dirname(dirname(dirname(__DIR__)));
+require_once $elggRoot . '/vendor/autoload.php';
+
+$testClassesDir = $elggRoot . '/vendor/elgg/elgg/engine/tests/classes';
+spl_autoload_register(function ($class) use ($testClassesDir) {
+    $file = $testClassesDir . '/' . str_replace('\\', '/', $class) . '.php';
+    if (file_exists($file)) require_once $file;
+});
+
+require_once dirname(__DIR__) . '/autoloader.php';
+\Elgg\Application::loadCore();
+```
+
+### tests/phpunit.xml (Elgg 3.x)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="bootstrap.php" colors="true">
+    <php>
+        <env name="ELGG_DB_PREFIX" value="elgg_"/>
+        <env name="ELGG_DB_HOST" value="db"/>
+        <env name="ELGG_DB_NAME" value="elgg"/>
+        <env name="ELGG_DB_USER" value="elgg"/>
+        <env name="ELGG_DB_PASS" value="elgg"/>
+    </php>
+    <testsuites>
+        <testsuite name="integration">
+            <directory>phpunit/integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>
+```
+
+### Test class with plugin boot (Elgg 3.x)
+
+```php
+<?php
+namespace MyPlugin;
+
+use Elgg\IntegrationTestCase;
+
+class PluginTest extends IntegrationTestCase {
+
+    private static bool $pluginBooted = false;
+
+    public function up() {
+        if (!self::$pluginBooted) {
+            $pluginDir = dirname(dirname(dirname(dirname(dirname(__DIR__)))));
+            require_once $pluginDir . '/start.php';
+            elgg_trigger_event('init', 'system');
+            self::$pluginBooted = true;
+        }
+    }
+
+    public function down() {}
+
+    // ... tests here
+}
 ```
