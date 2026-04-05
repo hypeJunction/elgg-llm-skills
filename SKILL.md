@@ -150,6 +150,26 @@ Review transformed code for these patterns and simplify.
 find tmp/<plugin-name> -name "*.php" -exec php -l {} \; | grep -v "No syntax errors"
 ```
 
+### Step 2.6b: Static Analysis (recommended)
+
+Run PHPStan to catch type errors, method signature mismatches, and calls to
+undefined functions BEFORE deploying to Docker:
+
+```bash
+# Install PHPStan if not present
+composer require --dev phpstan/phpstan
+
+# Run at a basic level (catches fatal-level issues)
+vendor/bin/phpstan analyse tmp/<plugin-name>/classes/ tmp/<plugin-name>/start.php \
+  --level 0 --no-progress
+```
+
+Static analysis catches issues our AST rules miss:
+- **Method signature mismatches** (e.g., `delete()` vs `delete($follow_symlinks)`)
+- **Calls to truly undefined functions** (not just renamed ones)
+- **Type errors** from new type hints in Elgg 3.x/4.x
+- **Hardcoded paths** that resolve differently in Docker vs host
+
 ### Step 2.7: Validate in Docker (GATE)
 
 This is a **blocking validation gate**. The migration step is not complete until the plugin activates and the site renders in Docker.

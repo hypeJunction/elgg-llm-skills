@@ -3,20 +3,25 @@ set -e
 
 # Usage: ./bin/migrate-plugin.sh <plugin-path> <manifest>
 # Example: ./bin/migrate-plugin.sh ~/Data/hypejunction/plugins/hypeDropzone rules/2x-to-3x/manifest.json
+#          ./bin/migrate-plugin.sh ~/Data/hypejunction/plugins/hypeDropzone rules/3x-to-4x/manifest.json
 
 PLUGIN_PATH="${1:?Usage: migrate-plugin.sh <plugin-path> <manifest>}"
 MANIFEST="${2:?Usage: migrate-plugin.sh <plugin-path> <manifest>}"
 PLUGIN_NAME=$(basename "$PLUGIN_PATH")
 ELGG_MIGRATE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Derive branch name from manifest path (e.g., rules/3x-to-4x/manifest.json → migrate/elgg-4.x)
+TARGET_VERSION=$(basename "$(dirname "$MANIFEST")" | sed 's/.*-to-//')
+BRANCH="migrate/elgg-${TARGET_VERSION}"
+
 echo "=== Migrating $PLUGIN_NAME ==="
 echo "Plugin: $PLUGIN_PATH"
 echo "Manifest: $MANIFEST"
+echo "Branch: $BRANCH"
 echo
 
 # Step 1: Create migration branch
 cd "$PLUGIN_PATH"
-BRANCH="migrate/elgg-3.x"
 if git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
     echo "Branch $BRANCH already exists, checking out..."
     git checkout "$BRANCH"
@@ -40,7 +45,7 @@ php bin/migrate.php "$MANIFEST" "$PLUGIN_PATH" 2>&1
 echo
 echo "--- SYNTAX CHECK ---"
 errors=0
-for f in $(find "$PLUGIN_PATH" -name "*.php" -not -path "*/vendor/*"); do
+for f in $(command find "$PLUGIN_PATH" -name "*.php" -not -path "*/vendor/*"); do
     result=$(php -l "$f" 2>&1)
     if echo "$result" | grep -q "Parse error"; then
         echo "FAIL: $f"
@@ -61,10 +66,10 @@ if git diff --quiet && git diff --cached --quiet; then
     echo "No changes to commit."
 else
     git add -A
-    git commit -m "migrate(3.x): automated AST transformations
+    git commit -m "migrate(${TARGET_VERSION}): automated AST transformations
 
 Applied by elgg-migrate automated rules.
-See elgg-migrate rules/2x-to-3x/manifest.json for details."
+See elgg-migrate $(basename "$(dirname "$MANIFEST")")/manifest.json for details."
     echo "Committed."
 fi
 

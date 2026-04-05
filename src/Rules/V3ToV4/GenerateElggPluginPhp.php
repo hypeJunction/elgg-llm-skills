@@ -343,6 +343,11 @@ final class GenerateElggPluginPhp extends AbstractRule
             return null;
         }
 
+        // Skip closures — they can't be serialized in elgg-plugin.php
+        if (isset($call->args[2]) && $call->args[2]->value instanceof Node\Expr\Closure) {
+            return null;
+        }
+
         $callback = isset($call->args[2]) ? $printer->prettyPrintExpr($call->args[2]->value) : null;
 
         return ['hook' => $hook, 'type' => $type, 'callback' => $callback];
@@ -356,6 +361,11 @@ final class GenerateElggPluginPhp extends AbstractRule
             ? $call->args[1]->value->value : null;
 
         if (!$event || !$type) {
+            return null;
+        }
+
+        // Skip closures — they can't be serialized in elgg-plugin.php
+        if (isset($call->args[2]) && $call->args[2]->value instanceof Node\Expr\Closure) {
             return null;
         }
 

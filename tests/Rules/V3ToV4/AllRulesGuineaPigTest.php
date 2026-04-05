@@ -90,11 +90,12 @@ final class AllRulesGuineaPigTest extends TestCase
         try {
             $rules = [
                 new UpdateManifestVersion(),
+                new GenerateElggPluginPhp(),
+                new RemoveLegacyBootstrap(),
                 new DiObjectToCreate(),
                 new ZendToLaminas(),
                 new EntityAttributeSetters(),
                 new CanWriteToContainer(),
-                // GenerateElggPluginPhp skipped — guinea pigs already have elgg-plugin.php
             ];
 
             $totalChanges = 0;

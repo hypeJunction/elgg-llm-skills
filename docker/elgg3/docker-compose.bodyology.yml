@@ -2,4 +2,6 @@ services:
   elgg:
     volumes:
       - ~/Data/hypejunction/bodyology/bodyology-forum/mod:/var/www/html/mod
+      # Mount plugins workspace so symlinks resolve inside the container
+      - ~/Data/hypejunction/plugins:/home/ismayilkhayredinov/Data/hypejunction/plugins:ro
       - elgg-data:/var/www/data
