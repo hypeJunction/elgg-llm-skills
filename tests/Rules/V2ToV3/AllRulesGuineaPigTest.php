@@ -16,6 +16,7 @@ use ElggMigrate\Rules\V2ToV3\RemovedClasses;
 use ElggMigrate\Rules\V2ToV3\RemovedFunctions;
 use ElggMigrate\Rules\V2ToV3\RemovedMethods;
 use ElggMigrate\Rules\V2ToV3\SubtypeRegistration;
+use ElggMigrate\Rules\V2ToV3\UpdateManifestVersion;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -30,6 +31,7 @@ final class AllRulesGuineaPigTest extends TestCase
     public static function ruleProvider(): array
     {
         return [
+            'UpdateManifestVersion' => [new UpdateManifestVersion()],
             'PageHandlerToRoute' => [new PageHandlerToRoute()],
             'LibraryToAutoload' => [new LibraryToAutoload()],
             'DeprecatedEntityQueries' => [new DeprecatedEntityQueries()],
@@ -90,6 +92,7 @@ final class AllRulesGuineaPigTest extends TestCase
 
         try {
             $rules = [
+                new UpdateManifestVersion(),
                 new PageHandlerToRoute(),
                 new LibraryToAutoload(),
                 new DeprecatedEntityQueries(),

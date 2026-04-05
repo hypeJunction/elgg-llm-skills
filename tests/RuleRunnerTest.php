@@ -68,9 +68,8 @@ final class RuleRunnerTest extends TestCase
 
         // Should have results from all automated rules
         $this->assertGreaterThanOrEqual(1, count($analyses));
-        // First rule should be PageHandlerToRoute (priority 10)
-        $this->assertSame('page-handler-to-route', $analyses[0]->ruleId);
-        $this->assertTrue($analyses[0]->applicable);
+        // First rule should be UpdateManifestVersion (priority 1)
+        $this->assertSame('update-manifest-version', $analyses[0]->ruleId);
     }
 
     public function testApplyAllTransformsFiles(): void

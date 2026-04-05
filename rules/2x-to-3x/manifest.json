@@ -3,6 +3,14 @@
     "to": "3.x",
     "rules": [
         {
+            "id": "000-update-manifest-version",
+            "name": "Update manifest.xml and composer.json to target Elgg 3.x",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V2ToV3\\UpdateManifestVersion",
+            "breaking_change": "Plugin must declare Elgg 3.x compatibility in manifest.xml and composer.json",
+            "priority": 1
+        },
+        {
             "id": "001-page-handler-to-route",
             "name": "Convert page handlers to named routes",
             "automated": true,
