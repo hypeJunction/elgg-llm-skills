@@ -252,7 +252,15 @@
             "priority": 185
         },
         {
-            "id": "027-foreach-by-reference-on-iterator",
+            "id": "027-menu-hook-array-to-menuitems",
+            "name": "Wrap plain arrays in MenuItems when triggering menu:register hooks",
+            "automated": false,
+            "llm_instructions": "In Elgg 3.x, the `register` hook for menus returns `\\Elgg\\Menu\\MenuItems` (a Collection implementing Traversable) instead of plain arrays. Core hook handlers call `->merge()`, `->filter()` etc. on the return value.\n\nFind any code that manually triggers `elgg_trigger_plugin_hook('register', 'menu:*', $params, $default)` where `$default` is a plain array. Wrap it:\n\n```php\n// Before:\n$menu = (array) elgg_extract($menu_name, $menus, []);\nreturn elgg_trigger_plugin_hook('register', \"menu:$menu_name\", $params, $menu);\n\n// After:\n$menu = (array) elgg_extract($menu_name, $menus, []);\n$menu_items = new \\Elgg\\Menu\\MenuItems($menu);\n$result = elgg_trigger_plugin_hook('register', \"menu:$menu_name\", $params, $menu_items);\n// Convert back to array for downstream consumers\nreturn $result instanceof \\Traversable ? iterator_to_array($result) : (array) $result;\n```\n\nAlso check for code that passes the result of such hooks to functions expecting arrays — they may need `iterator_to_array()` conversion.",
+            "breaking_change": "Menu hook return values are MenuItems (Collection) in 3.x, not plain arrays",
+            "priority": 285
+        },
+        {
+            "id": "028-foreach-by-reference-on-iterator",
             "name": "Replace foreach-by-reference on hook return values (iterators)",
             "automated": true,
             "class": "ElggMigrate\\Rules\\V2ToV3\\ForeachByReferenceOnIterator",
@@ -260,7 +268,7 @@
             "priority": 290
         },
         {
-            "id": "028-method-signature-compat",
+            "id": "029-method-signature-compat",
             "name": "Check overridden method signatures for compatibility",
             "automated": false,
             "llm_instructions": "After running automated rules, check all classes that extend Elgg core classes for method signature mismatches. In Elgg 3.x, many methods gained new parameters:\n\n- `ElggFile::delete()` now has `$follow_symlinks = true` parameter\n- `ElggEntity::canComment()` signature changed\n- `ElggObject::save()` may have new return type\n\nFor each class in `classes/`, check if any overridden method's signature differs from the parent. Add the missing parameters with default values to maintain backward compatibility.\n\nRun `phpstan analyse --level 0` to catch these automatically.",
@@ -268,7 +276,7 @@
             "priority": 300
         },
         {
-            "id": "029-extract-queries-from-views",
+            "id": "030-extract-queries-from-views",
             "name": "Extract database queries from views into testable functions",
             "automated": false,
             "llm_instructions": "Search views/ directory for `elgg_get_entities()`, `elgg_list_entities()`, `get_data()`, `update_data()`, `insert_data()` calls. These should be moved to class methods or standalone functions in classes/ or lib/ so they can be unit tested.\n\nPattern:\n```php\n// Before (in views/default/resources/index.php):\n$items = elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n\n// After:\n// In classes/MyPlugin/Queries.php:\nclass Queries {\n    public static function getFeaturedItems() {\n        return elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n    }\n}\n\n// In view:\n$items = Queries::getFeaturedItems();\n```\n\nThis makes the query testable and the view simpler. Especially important for raw SQL queries that reference removed tables.",
