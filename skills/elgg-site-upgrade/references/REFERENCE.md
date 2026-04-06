@@ -103,11 +103,123 @@ Steps 2 and 5 would have caught ALL the issues we found reactively in Docker.
 - **SubtableQueryCheck** — detect JOINs to removed entity subtables
 - **ComposerInstallCheck** — detect plugins with composer.json but no vendor/ dir
 
+## Docker Testing Setup for Site Verification
+
+### Docker Architecture
+
+Use a two-service Docker Compose stack:
+- **app** — PHP 7.4-apache (for 3.x) with Elgg core installed via Composer
+- **db** — MySQL 5.7 with healthcheck
+
+**Key design decisions:**
+- Keep composer.json minimal (only `elgg/elgg`, `composer/installers`, `symfony/var-dumper`)
+- Replace `roave/security-advisories` in `composer.json` to avoid circular conflicts with older Elgg versions
+- Mount local `mod/` to `/opt/plugins` and symlink at startup (see below)
+- Set `simplecache_enabled = false` and `system_cache_enabled = false` in settings.php
+
+### Plugin Loading via Symlinks
+
+Plugins come from two sources:
+1. **Git-tracked plugins** (custom plugins like `bodyology_*`) — COPY'd into the image via Dockerfile
+2. **Composer-installed plugins** (upstream like `hype*`) — exist as symlinks in `mod/` pointing to `~/Data/hypejunction/plugins/<name>`
+
+**Problem:** Symlinks use absolute host paths that don't resolve inside the container.
+**Solution:** Mount the plugin source directory at the same absolute path inside the container:
+
+```yaml
+volumes:
+  - ./mod:/opt/plugins
+  - <plugins-dir>:<absolute-host-path-of-plugins-dir>:ro
+```
+
+The entrypoint script:
+1. Removes broken symlinks from `/var/www/html/mod/` (leftover from COPY of host symlinks)
+2. Symlinks real directories from `/opt/plugins` into `/var/www/html/mod/`
+3. Host-path symlinks resolve because the source dir is mounted at the same path
+
+### Plugin Activation Order
+
+Create `mod/.plugin-order.txt` with one plugin ID per line (comments with `#`).
+Source the order from the production database or from a previously saved activation order file.
+
+The entrypoint activates plugins in this order, logging OK/SKIP/FAIL for each.
+
+### Playwright E2E Testing
+
+**Setup:**
+- Playwright 1.50+ with Chromium
+- Auth setup stores session in `playwright/.auth/admin.json`
+- Tests run sequentially (workers: 1) against the Docker site
+
+**Gotchas:**
+- **External resources block page load** — Themes that load fonts or assets from external CDNs (e.g., Google Fonts) block Playwright's `load` event for 30+ seconds. Fix: set `timeout: 60_000` in playwright config and use `waitUntil: "domcontentloaded"` for navigation.
+- **Custom index has no login form** — Some themes show a branded homepage without a login form for unauthenticated users. Auth setup must navigate to `/login` explicitly.
+- **Strict mode violations** — Always use `.first()` on multi-match CSS selectors (`".elgg-page-body, .elgg-page"`) to avoid Playwright strict mode errors.
+- **Registration may be disabled** — Tests for `/register` should check if the form exists before interacting.
+
+**Docker Compose for E2E:**
+```yaml
+# docker-compose.e2e.yml extends docker-compose.yml
+services:
+  app:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 10s
+      start_period: 60s  # Allow time for plugin activation
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.50.0-noble
+    working_dir: /e2e
+    volumes:
+      - ./e2e:/e2e
+    environment:
+      BASE_URL: http://app:80
+    depends_on:
+      app:
+        condition: service_healthy
+```
+
+### Gathering Active Plugin List
+
+To get the plugin activation order from a running Elgg site:
+
+```php
+php -r "
+require 'vendor/autoload.php';
+\$app = \Elgg\Application::getInstance();
+\$app->bootCore();
+\$plugins = elgg_get_plugins('active');
+foreach (\$plugins as \$p) echo \$p->getID() . PHP_EOL;
+" > mod/.plugin-order.txt
+```
+
+Or from the database directly:
+```sql
+SELECT ps.value FROM elgg_private_settings ps
+JOIN elgg_entities e ON e.guid = ps.entity_guid
+WHERE e.type = 'object' AND e.subtype = 'plugin'
+AND ps.name = 'elgg:internal:priority'
+ORDER BY CAST(ps.value AS UNSIGNED);
+```
+
+## Additional Learnings from Site Migration E2E Testing
+
+### Issues Found by E2E Testing
+
+18. **`foreach` by reference on iterators** — In Elgg 3.x, hook return values like `MenuItems` implement `Traversable` but cannot be iterated by reference. `foreach ($return as &$item)` crashes. **Rule 028 now catches this.** Replace with `iterator_to_array()` + key-based iteration.
+
+19. **Plain array passed to menu hook** — `elgg_trigger_plugin_hook('register', 'menu:*', $params, $plain_array)` crashes because core hook handlers call `->merge()` on what they expect to be a `MenuItems` collection. **Rule 027 (LLM-guided) documents this.** Wrap default in `new \Elgg\Menu\MenuItems()`.
+
+20. **`elgg_check_access_overrides()` in conditionals** — The removed functions rule had this as `action: remove`, but when used in `if` conditions, removal breaks logic. Changed to `action: rename, to: elgg_is_admin_user` since both take a user GUID argument.
+
+21. **Composer version constraints stale after migration** — When plugins are migrated to a new major version, their packagist versions may change (major bumps). For Docker testing, it's simpler to strip all plugin deps from `composer.json` and use local symlinks instead.
+
+22. **Image rebuild required for git-tracked plugin fixes** — Fixes to git-tracked plugins require a Docker image rebuild since they're COPY'd into the image. Symlinked/volume-mounted plugins are reflected immediately.
+
 ## Available Migration Rules
 
 | Step | Auto | LLM | Manifest |
 |------|:----:|:---:|---------|
-| 2.x→3.x | 12 | 15 | `rules/2x-to-3x/manifest.json` |
+| 2.x→3.x | 13 | 17 | `rules/2x-to-3x/manifest.json` |
 | 3.x→4.x | 6 | 5 | `rules/3x-to-4x/manifest.json` |
 | 4.x→5.x | — | — | TODO |
 | 5.x→6.x | — | — | TODO |
