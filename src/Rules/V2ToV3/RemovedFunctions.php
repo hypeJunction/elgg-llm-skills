@@ -46,7 +46,7 @@ final class RemovedFunctions extends AbstractRule
         'elgg_get_metastring_map' => ['action' => 'remove', 'note' => 'Metastrings table removed in 3.0'],
         'elgg_format_url' => ['action' => 'remove', 'note' => 'No replacement — URLs no longer formatted this way'],
         'elgg_override_permissions' => ['action' => 'remove', 'note' => 'Use elgg_call(ELGG_IGNORE_ACCESS, ...) instead'],
-        'elgg_check_access_overrides' => ['action' => 'remove', 'note' => 'No replacement in 3.0'],
+        'elgg_check_access_overrides' => ['action' => 'rename', 'to' => 'elgg_is_admin_user', 'note' => 'Access override check replaced by admin check in 3.0'],
         'elgg_register_viewtype' => ['action' => 'remove', 'note' => 'Custom viewtypes handled differently in 3.0'],
         'elgg_is_registered_viewtype' => ['action' => 'remove', 'note' => 'Custom viewtypes handled differently in 3.0'],
         'elgg_get_class_loader' => ['action' => 'remove', 'note' => 'Use Composer autoloading'],
