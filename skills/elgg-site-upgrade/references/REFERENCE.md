@@ -103,6 +103,47 @@ Steps 2 and 5 would have caught ALL the issues we found reactively in Docker.
 - **SubtableQueryCheck** — detect JOINs to removed entity subtables
 - **ComposerInstallCheck** — detect plugins with composer.json but no vendor/ dir
 
+### CSS / Simplecache Issues
+
+18. **css-crush v2.4 silently fails on certain CSS** — The `_elgg_views_preprocess_css` hook runs css-crush on the entire `elgg.css` simplecache bundle. If any extended CSS view contains patterns that cause css-crush to fail, the **entire site stylesheet becomes empty** (0 bytes) — a catastrophic silent failure with no error log.
+
+**Root cause:** css-crush v2.4.0 (2015) silently returns empty string instead of erroring when it encounters certain CSS patterns in large bundles. The failure is context-dependent — the same CSS works in isolation but fails when combined with other rules.
+
+**Known trigger:** Custom CSS files with complex selectors (like `.all.topics .elgg-layout-content > .elgg-content`) can break css-crush when bundled into `elgg.css` via `elgg_extend_view('css/elgg', 'css/theme/custom.css')`.
+
+**Diagnosis:**
+```php
+// Check if simplecache CSS is empty
+$size = strlen(file_get_contents("http://localhost:PORT/cache/TIMESTAMP/default/elgg.css"));
+// If 0 or 1, css-crush is failing
+
+// Debug which view breaks it:
+elgg_unextend_view('css/elgg', 'css/theme/suspect.css');
+$content = elgg_view('elgg.css');
+$compiled = _elgg_services()->cssCompiler->compile($content);
+// If compiled is now >0 bytes, that view was the culprit
+```
+
+**Fix:** Load the problematic CSS as an external stylesheet instead of extending it into the bundle:
+```php
+// Instead of:
+elgg_extend_view('css/elgg', 'css/theme/custom.css', 999);
+
+// Use:
+elgg_register_css('theme.custom', '/mod/PLUGIN/views/default/css/theme/custom.css');
+elgg_load_css('theme.custom');
+```
+
+**Prevention rule for migrations:** After migrating, verify simplecache CSS is non-empty:
+```bash
+# MUST return > 1000 bytes
+curl -sL -o /dev/null -w "%{size_download}" "http://localhost:PORT/cache/$(curl -sL http://localhost:PORT/ | grep -oP 'cache/\K\d+' | head -1)/default/elgg.css"
+```
+
+19. **Settings.php overrides database values** — `simplecache_enabled` and `system_cache_enabled` in `settings.php` override database values. If `elgg_save_config('simplecache_enabled', 0)` writes to settings.php, it persists even after re-enabling in the database. Always check settings.php directly.
+
+20. **Container doesn't reflect host file changes** — When plugins are COPY'd into the Docker image at build time (not volume-mounted), changes to host files require either `docker compose cp` or a full rebuild. The `./mod:/opt/plugins` volume mount only provides symlink targets, not the actual plugin source for COPY'd plugins.
+
 ## Docker Testing Setup for Site Verification
 
 ### Docker Architecture

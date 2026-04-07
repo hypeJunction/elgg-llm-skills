@@ -249,6 +249,20 @@ curl -sL http://localhost:${ELGG_PORT}/ | grep -oP '<title>[^<]*</title>'
 # Must NOT contain "Fatal Error"
 ```
 
+### Step 4.3.1: Validate Simplecache CSS (GATE)
+
+**Critical:** css-crush v2.4 (used in Elgg 3.x) silently fails on certain CSS patterns,
+causing the entire site stylesheet to be empty. Always verify CSS loads after migration.
+
+```bash
+# Get cache timestamp from page
+TS=$(curl -sL http://localhost:${ELGG_PORT}/ | grep -oP 'cache/\K\d+' | head -1)
+# CSS MUST be > 1000 bytes
+SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT}/cache/${TS}/default/elgg.css")
+echo "elgg.css: ${SIZE} bytes"
+# If 0 or 1, a plugin CSS view is breaking css-crush. See references/REFERENCE.md §18.
+```
+
 ### Step 4.4: Run Tests (GATE)
 
 ```bash
@@ -257,6 +271,10 @@ docker compose exec elgg php vendor/bin/phpunit \
 ```
 
 ### Step 4.5: Run E2E Smoke Tests
+
+See [references/testing/elgg-e2e-testing.md](../../references/testing/elgg-e2e-testing.md) for
+setup details, correct Elgg URLs/selectors, and known pitfalls (hypeWall interception,
+foreach-by-reference crashes, OPcache stale code, etc.).
 
 ```bash
 cd e2e && ELGG_URL=http://localhost:${ELGG_PORT} npx playwright test
@@ -554,5 +572,17 @@ curl -sL https://your-site.com/ | grep '<title>'
 
 ---
 
+
+## Beads Formula
+
+This workflow is available as a beads formula for structured task tracking:
+
+```bash
+bd mol pour elgg-site-upgrade --var project=/path/to/project --var from=2.x --var to=3.x --var port=8380
+```
+
+The formula creates a hierarchy of issues with dependencies, ensuring each gate is verified before proceeding. The formula lives in `.beads/formulas/elgg-site-upgrade.formula.json`.
+
+---
 
 See [references/REFERENCE.md](references/REFERENCE.md) for version tables, troubleshooting, and migration learnings.

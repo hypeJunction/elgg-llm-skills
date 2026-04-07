@@ -16,8 +16,10 @@ $CONFIG->dbencoding = 'utf8mb4';
 $CONFIG->wwwroot = getenv('ELGG_SITE_URL') ?: 'http://localhost:8080/';
 $CONFIG->dataroot = getenv('ELGG_DATA_ROOT') ?: '/var/www/data/';
 
-$CONFIG->simplecache_enabled = false;
-$CONFIG->system_cache_enabled = false;
+// Enable caches for realistic performance in E2E tests.
+// Disable for development iteration (views/CSS/JS changes take effect immediately).
+$CONFIG->simplecache_enabled = true;
+$CONFIG->system_cache_enabled = true;
 
 // Boot settings
 $CONFIG->installer_running = false;

@@ -282,6 +282,22 @@
             "llm_instructions": "Search views/ directory for `elgg_get_entities()`, `elgg_list_entities()`, `get_data()`, `update_data()`, `insert_data()` calls. These should be moved to class methods or standalone functions in classes/ or lib/ so they can be unit tested.\n\nPattern:\n```php\n// Before (in views/default/resources/index.php):\n$items = elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n\n// After:\n// In classes/MyPlugin/Queries.php:\nclass Queries {\n    public static function getFeaturedItems() {\n        return elgg_get_entities(['type' => 'object', 'subtype' => 'blog']);\n    }\n}\n\n// In view:\n$items = Queries::getFeaturedItems();\n```\n\nThis makes the query testable and the view simpler. Especially important for raw SQL queries that reference removed tables.",
             "breaking_change": "Best practice for testability — not a breaking change itself",
             "priority": 305
+        },
+        {
+            "id": "031-foreach-by-reference-on-iterators",
+            "name": "Remove foreach-by-reference on Iterator objects",
+            "automated": false,
+            "llm_instructions": "Search for `foreach ($var as &$item)` patterns where the iterated variable is an Iterator/IteratorAggregate object (e.g., Elgg\\Menu\\MenuItems). PHP 7.4+ does not allow foreach by reference on iterators.\n\nFix: Remove the `&` reference. Since PHP objects are passed by reference by default, mutations via method calls (e.g., `$item->setData()`, `$item->setHref()`) still modify the original object.\n\n```php\n// Before (crashes on PHP 7.4+)\nforeach ($return as &$item) {\n    $item->setHref('...');\n}\n\n// After\nforeach ($return as $key => $item) {\n    $item->setHref('...');\n}\n```\n\nCommon locations: hook handlers for 'register' 'menu:*' hooks where $return is Elgg\\Menu\\MenuItems.",
+            "breaking_change": "PHP 7.4 fatal error: An iterator cannot be used with foreach by reference",
+            "priority": 310
+        },
+        {
+            "id": "032-css-simplecache-compat",
+            "name": "Verify CSS views are compatible with css-crush simplecache compilation",
+            "automated": false,
+            "llm_instructions": "Check if the plugin extends CSS views into the simplecache bundle via `elgg_extend_view('css/elgg', ...)` or `elgg_extend_view('elgg.css', ...)`. If so, verify the CSS content is compatible with css-crush v2.4.\n\n**Critical issue:** css-crush v2.4 (used in Elgg 3.x) silently fails on certain CSS patterns, returning empty string instead of compiled CSS. This causes the ENTIRE site stylesheet to become empty — a catastrophic silent failure.\n\n**Diagnosis after Docker verification:**\n```bash\n# Check if simplecache CSS has content (MUST be > 1000 bytes)\ncurl -sL -o /dev/null -w '%{size_download}' 'http://localhost:PORT/cache/TIMESTAMP/default/elgg.css'\n```\n\nIf the CSS is 0 or 1 bytes, a plugin CSS view is breaking css-crush.\n\n**Fix:** Load plugin CSS as an external stylesheet instead of extending into the bundle:\n```php\n// Instead of:\nelgg_extend_view('css/elgg', 'css/theme/custom.css', 999);\n\n// Use:\nelgg_register_css('theme.custom', '/mod/PLUGIN/views/default/css/theme/custom.css');\nelgg_load_css('theme.custom');\n```\n\n**To find the culprit:** Binary-search by removing CSS extensions one at a time and testing if compilation succeeds.",
+            "breaking_change": "css-crush v2.4 silently returns empty CSS for certain patterns, making the entire site unstyled",
+            "priority": 500
         }
     ]
 }

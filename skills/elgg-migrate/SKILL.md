@@ -92,6 +92,11 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
 # Run plugin tests if they exist
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
+
+# Verify simplecache CSS is non-empty (css-crush v2.4 silently fails on some CSS)
+TS=$(curl -sL http://localhost:${ELGG_PORT}/ | grep -oP 'cache/\K\d+' | head -1)
+SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT}/cache/${TS}/default/elgg.css")
+test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 ```
 
 **Step 2.6: Compare with reference** (if a manually-migrated version exists upstream)
