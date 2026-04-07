@@ -83,9 +83,37 @@ final class RemovedMethods extends AbstractRule
             if ($ast === null) continue;
 
             $calls = $this->finder()->find($ast, function (Node $node) use ($methodNames) {
-                return $node instanceof Node\Expr\MethodCall
-                    && $node->name instanceof Node\Identifier
-                    && in_array($node->name->name, $methodNames, true);
+                if (!$node instanceof Node\Expr\MethodCall
+                    || !$node->name instanceof Node\Identifier
+                    || !in_array($node->name->name, $methodNames, true)
+                ) {
+                    return false;
+                }
+
+                // Heuristic: skip calls on variables whose names suggest non-Elgg types.
+                // Without full type resolution, we use variable name patterns to reduce
+                // false positives for generic method names like getError(), getContext().
+                $methodName = $node->name->name;
+                $info = self::MAP[$methodName];
+                $var = $node->var;
+
+                if ($var instanceof Node\Expr\Variable && is_string($var->name)) {
+                    $varName = strtolower($var->name);
+
+                    // Skip variables that clearly come from non-Elgg namespaces
+                    $nonElggPatterns = [
+                        'upload', 'request', 'response', 'exception', 'error',
+                        'form', 'input', 'http', 'curl', 'client', 'connection',
+                        'cache', 'session', 'cookie', 'event', 'listener',
+                    ];
+                    foreach ($nonElggPatterns as $pattern) {
+                        if (str_contains($varName, $pattern)) {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
             });
 
             $printer = $this->printer();

@@ -40,6 +40,38 @@ final class RemovedMethodsTest extends TestCase
         }
     }
 
+    public function testAnalyzeSkipsNonElggVariableNames(): void
+    {
+        $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
+        mkdir($workDir, 0755, true);
+        // $upload->getError() should NOT flag — $upload suggests Symfony UploadedFile
+        // $request->getError() should NOT flag — $request suggests HTTP request
+        file_put_contents($workDir . '/test.php', "<?php\n\$upload->getError();\n\$request->getError();\n\$response->getContext();\n");
+
+        try {
+            $analysis = $this->rule->analyze($workDir);
+            $this->assertFalse($analysis->applicable, 'Should not flag getError/getContext on non-Elgg variable names');
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
+    public function testAnalyzeFlagsElggVariableNames(): void
+    {
+        $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
+        mkdir($workDir, 0755, true);
+        // $plugin->getError() SHOULD flag — $plugin suggests ElggPlugin
+        file_put_contents($workDir . '/test.php', "<?php\n\$plugin->getError();\n");
+
+        try {
+            $analysis = $this->rule->analyze($workDir);
+            $this->assertTrue($analysis->applicable, 'Should flag getError on $plugin');
+            $this->assertCount(1, $analysis->findings);
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
     public function testApplyProducesWarningsButNoChanges(): void
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
