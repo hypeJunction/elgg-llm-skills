@@ -13,7 +13,7 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 ## Iron Laws
 
 1. **NEVER SKIP A MAJOR VERSION** — 2.x→3.x→4.x→5.x→6.x. Skipping guarantees missed breaking changes.
-2. **NEVER MIGRATE WITHOUT A BRANCH** — Each version step gets `migrate/elgg-{N}.x`.
+2. **NEVER MIGRATE WITHOUT A BRANCH** — Branch name is the TARGET version: `migrate/elgg-{TARGET}.x` (e.g., 3→4 = `migrate/elgg-4.x`).
 3. **VERIFY IN DOCKER** — Plugin must activate and site must render before proceeding.
 4. **CLOSURES CANNOT GO IN elgg-plugin.php** — Elgg 4+ serializes plugin config. Use class-based callbacks or Bootstrap.
 5. **DIRECTORY NAME MUST MATCH composer.json** — Elgg 4+ requires plugin dir matches the `name` field (lowercase).
@@ -41,14 +41,21 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 
 ### Phase 2: MIGRATE (repeat per version step)
 
-```
-git checkout -b migrate/elgg-{N}.x
+**BRANCH NAMING**: The branch name is the **TARGET** version, not the source.
+- Migrating 2.x → 3.x: `migrate/elgg-3.x`
+- Migrating 3.x → 4.x: `migrate/elgg-4.x`
+- Migrating 4.x → 5.x: `migrate/elgg-5.x`
+
+```bash
+# In each plugin's git repo:
+git checkout -b migrate/elgg-{TARGET}.x
 ```
 
 **Step 2.1: Run automated rules**
 ```bash
-php bin/migrate.php rules/{from}-to-{to}/manifest.json <plugin>
-git add -A && git commit -m "migrate({N}.x): automated AST transformations"
+cd /path/to/elgg-migrate
+php -r 'require "vendor/autoload.php"; $r = new ElggMigrate\RuleRunner(); $r->applyAll("rules/{from}-to-{to}/manifest.json", "<plugin-path>");'
+cd <plugin-path> && git add -A && git commit -m "migrate({TARGET}.x): automated AST transformations"
 ```
 
 **Step 2.2: Apply LLM-guided fixes** — use `--dry-run --report` to see instructions, apply each, commit separately.
