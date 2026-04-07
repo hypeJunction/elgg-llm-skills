@@ -538,6 +538,97 @@ Same as 5.x but:
 
 ---
 
+## Migration Pitfalls: Lessons from 2.x → 3.x (April 2026)
+
+These are hard-won lessons from migrating 45 hypeJunction plugins. Each pitfall caused a runtime failure that `php -l` syntax checking could not detect.
+
+### QueryBuilder Closures
+
+**`$qb->subquery()` does not exist.** Several LLM-generated migrations used `$qb->subquery('entity_relationships')` which compiles but generates garbage SQL at runtime. For `NOT EXISTS` / `EXISTS` subqueries, use raw SQL inside the closure:
+
+```php
+// WRONG — $qb->subquery() is not a real method
+$options['wheres'][] = function($qb, $alias) use ($user_guid) {
+    $rel = $qb->subquery('entity_relationships');  // DOES NOT EXIST
+    ...
+};
+
+// CORRECT — raw SQL inside closure
+$options['wheres'][] = function($qb, $alias) use ($user_guid) {
+    $dbprefix = elgg_get_config('dbprefix');
+    return "NOT EXISTS (SELECT 1 FROM {$dbprefix}entity_relationships 
+        WHERE guid_one = {$user_guid} AND relationship = 'viewed' 
+        AND guid_two = {$alias}.guid)";
+};
+```
+
+**Valid QueryBuilder methods for joins:**
+- `$qb->joinMetadataTable($alias, 'guid', 'metadata_name')` — join metadata
+- `$qb->joinAnnotationTable($alias, 'guid', 'annotation_name')` — join annotations
+- `$qb->joinEntitiesTable($alias, 'container_guid')` — join entities table
+- `$qb->joinRelationshipTable($alias, 'guid', 'relationship')` — join relationships
+- `$qb->compare("$alias.column", '=', $value, ELGG_VALUE_STRING)` — comparisons
+- `$qb->between("$alias.time_created", $start, $end)` — ranges
+
+### elgg-plugin.php Class Loading
+
+**Do NOT use class constants** (e.g., `MyClass::SUBTYPE`) for values in `elgg-plugin.php`. The file is parsed before autoloaders run, so constants cause `Class not found` fatals.
+
+```php
+// WRONG — SUBTYPE constant triggers autoload before classes/ is registered
+'subtype' => hjAlbum::SUBTYPE,
+
+// CORRECT — string literals for values, ::class is OK (resolved at compile time)
+'subtype' => 'hjalbum',
+'class' => \hypeJunction\Gallery\hjAlbum::class,  // ::class is fine
+```
+
+### Function Renames (Not Caught by AST Rules)
+
+These function renames are easy to miss because they look correct:
+
+| Wrong (doesn't exist in 3.x) | Correct |
+|-------------------------------|---------|
+| `elgg_get_current_language()` | `get_current_language()` |
+| `elgg_count_entities()` | `elgg_get_entities(['count' => true])` |
+| `$group->group_acl` | `$group->getOwnedAccessCollection('group_acl')->id` |
+
+### Metastrings Removal
+
+In Elgg 2.x, metadata was stored via metastring IDs:
+```
+metadata.name_id → metastrings.id → metastrings.string = 'geo:lat'
+metadata.value_id → metastrings.id → metastrings.string = '51.5074'
+```
+
+In Elgg 3.x, metadata is stored directly:
+```
+metadata.name = 'geo:lat'
+metadata.value = '51.5074'
+```
+
+When rewriting SQL joins:
+- Replace `JOIN metastrings ms ON md.value_id = ms.id` with direct `md.value`
+- Replace `ms.string` with `md.value` or `n_table.value`
+- Replace `md.name_id = {metastring_id}` with `md.name = 'metadata_name'`
+
+### Entity Subtable Removal
+
+`users_entity`, `groups_entity`, `objects_entity`, `sites_entity` tables are gone. Fields like `name`, `username`, `description`, `title` are now metadata.
+
+For sorting: use `'sort_by' => ['property' => 'name', 'direction' => 'ASC']` instead of `ORDER BY ue.name`.
+
+### Docker Validation Gate
+
+Even with all 45 plugins activating successfully, the site may still 500. Plugin activation only checks `start.php` parse + `init` event registration. Views and hooks that run on page render can still crash.
+
+**Always test both:**
+1. Plugin activation: `docker logs` should show "N plugin(s) activated, 0 failed"
+2. Site render: `curl -sL http://localhost:PORT/` should return HTTP 200, >1000 bytes, no "Fatal Error" in title
+3. CSS validation: `curl` the CSS URL, should be >1000 bytes (css-crush silently returns empty on certain CSS errors)
+
+---
+
 ## Source URLs
 
 - Upgrade notes index: https://learn.elgg.org/en/stable/appendix/upgrade-notes.html
