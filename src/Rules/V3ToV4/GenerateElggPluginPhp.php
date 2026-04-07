@@ -19,7 +19,10 @@ use PhpParser\NodeFinder;
  * - elgg_register_action() → 'actions' key
  * - elgg_register_route() → 'routes' key
  * - elgg_set_entity_class() → 'entities' key
+ * - elgg_register_entity_type() → 'entities' key (type registration)
  * - elgg_register_widget_type() → 'widgets' key
+ * - elgg_register_notification_event() → 'notifications' key
+ * - elgg_extend_view() → 'view_extensions' key
  * - elgg_register_plugin_hook_handler() → 'hooks' key
  * - elgg_register_event_handler() → 'events' key
  *
@@ -86,6 +89,15 @@ final class GenerateElggPluginPhp extends AbstractRule
         if (!empty($extracted['events'])) {
             $findings[] = new Finding('start.php', 0, count($extracted['events']) . ' event(s) to move to elgg-plugin.php', '');
         }
+        if (!empty($extracted['view_extensions'])) {
+            $findings[] = new Finding('start.php', 0, count($extracted['view_extensions']) . ' view extension(s) to move to elgg-plugin.php', '');
+        }
+        if (!empty($extracted['widgets'])) {
+            $findings[] = new Finding('start.php', 0, count($extracted['widgets']) . ' widget(s) to move to elgg-plugin.php', '');
+        }
+        if (!empty($extracted['notifications'])) {
+            $findings[] = new Finding('start.php', 0, count($extracted['notifications']) . ' notification event(s) to move to elgg-plugin.php', '');
+        }
 
         // Also check activate.php for entity registrations
         if (is_file($pluginPath . '/activate.php')) {
@@ -121,8 +133,16 @@ final class GenerateElggPluginPhp extends AbstractRule
         $extracted = $this->extractRegistrations($pluginPath);
         $activateEntities = $this->extractEntityClassesFromActivate($pluginPath);
 
-        // Merge activate.php entities with start.php entities
+        // Merge activate.php entities with start.php entities, dedup by type+subtype
         $allEntities = array_merge($extracted['entities'], $activateEntities);
+        $deduped = [];
+        foreach ($allEntities as $entity) {
+            $key = $entity['type'] . ':' . $entity['subtype'];
+            if (!isset($deduped[$key]) || !empty($entity['class'])) {
+                $deduped[$key] = $entity;
+            }
+        }
+        $allEntities = array_values($deduped);
 
         $changes = [];
         $warnings = [];
@@ -154,6 +174,18 @@ final class GenerateElggPluginPhp extends AbstractRule
             if (empty($config['events'])) {
                 unset($config['events']);
             }
+        }
+
+        if (!empty($extracted['view_extensions'])) {
+            $config['view_extensions'] = $extracted['view_extensions'];
+        }
+
+        if (!empty($extracted['widgets'])) {
+            $config['widgets'] = $extracted['widgets'];
+        }
+
+        if (!empty($extracted['notifications'])) {
+            $config['notifications'] = $extracted['notifications'];
         }
 
         if (empty($config)) {
@@ -196,6 +228,9 @@ final class GenerateElggPluginPhp extends AbstractRule
             'entities' => [],
             'hooks' => [],
             'events' => [],
+            'view_extensions' => [],
+            'widgets' => [],
+            'notifications' => [],
         ];
 
         $startPhp = $pluginPath . '/start.php';
@@ -252,6 +287,34 @@ final class GenerateElggPluginPhp extends AbstractRule
                     $event = $this->extractEvent($call, $printer);
                     if ($event) {
                         $result['events'][] = $event;
+                    }
+                    break;
+
+                case 'elgg_extend_view':
+                    $ext = $this->extractViewExtension($call);
+                    if ($ext) {
+                        $result['view_extensions'][] = $ext;
+                    }
+                    break;
+
+                case 'elgg_register_widget_type':
+                    $widget = $this->extractWidget($call);
+                    if ($widget) {
+                        $result['widgets'][] = $widget;
+                    }
+                    break;
+
+                case 'elgg_register_notification_event':
+                    $notif = $this->extractNotificationEvent($call);
+                    if ($notif) {
+                        $result['notifications'][] = $notif;
+                    }
+                    break;
+
+                case 'elgg_register_entity_type':
+                    $entity = $this->extractEntityType($call);
+                    if ($entity) {
+                        $result['entities'][] = $entity;
                     }
                     break;
             }
@@ -374,6 +437,85 @@ final class GenerateElggPluginPhp extends AbstractRule
         return ['event' => $event, 'type' => $type, 'callback' => $callback];
     }
 
+    private function extractViewExtension(Node\Expr\FuncCall $call): ?array
+    {
+        $view = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
+            ? $call->args[0]->value->value : null;
+        $extension = isset($call->args[1]) && $call->args[1]->value instanceof Node\Scalar\String_
+            ? $call->args[1]->value->value : null;
+
+        if (!$view || !$extension) {
+            return null;
+        }
+
+        $result = ['view' => $view, 'extension' => $extension, 'config' => []];
+
+        // Check for priority (3rd arg)
+        if (isset($call->args[2]) && $call->args[2]->value instanceof Node\Scalar\Int_) {
+            $priority = $call->args[2]->value->value;
+            if ($priority !== 500) { // 500 is default
+                $result['config']['priority'] = $priority;
+            }
+        }
+
+        return $result;
+    }
+
+    private function extractWidget(Node\Expr\FuncCall $call): ?array
+    {
+        $handler = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
+            ? $call->args[0]->value->value : null;
+
+        if (!$handler) {
+            return null;
+        }
+
+        $result = ['handler' => $handler, 'config' => []];
+
+        // Name (2nd arg) - often elgg_echo() call, store handler as name
+        // Description (3rd arg) - often elgg_echo() call
+
+        return $result;
+    }
+
+    private function extractNotificationEvent(Node\Expr\FuncCall $call): ?array
+    {
+        $type = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
+            ? $call->args[0]->value->value : null;
+        $subtype = isset($call->args[1]) && $call->args[1]->value instanceof Node\Scalar\String_
+            ? $call->args[1]->value->value : null;
+
+        if (!$type || !$subtype) {
+            return null;
+        }
+
+        $result = ['type' => $type, 'subtype' => $subtype, 'actions' => []];
+
+        // Actions array (3rd arg)
+        if (isset($call->args[2]) && $call->args[2]->value instanceof Node\Expr\Array_) {
+            $result['actions'] = $this->arrayNodeToPhp($call->args[2]->value);
+        }
+
+        return $result;
+    }
+
+    private function extractEntityType(Node\Expr\FuncCall $call): ?array
+    {
+        $type = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
+            ? $call->args[0]->value->value : null;
+        $subtype = isset($call->args[1]) && $call->args[1]->value instanceof Node\Scalar\String_
+            ? $call->args[1]->value->value : null;
+
+        if (!$type || !$subtype) {
+            return null;
+        }
+
+        return [
+            'type' => $type,
+            'subtype' => $subtype,
+        ];
+    }
+
     /**
      * Extract entity class registrations from activate.php.
      */
@@ -407,6 +549,33 @@ final class GenerateElggPluginPhp extends AbstractRule
         }
 
         return $entities;
+    }
+
+    /**
+     * Format a callback string for the Elgg 4.x elgg-plugin.php format.
+     *
+     * Converts raw AST-printed callbacks like `[Hooks::class, 'entityMenu']`
+     * to the `Hooks::class . '::entityMenu' => [],` format used in core.
+     */
+    private function formatCallbackForPluginPhp(string $callback): string
+    {
+        // Match [ClassName::class, 'methodName'] pattern
+        if (preg_match('/^\[(.+?)::class,\s*[\'"](\w+)[\'"]\]$/', $callback, $m)) {
+            return "{$m[1]}::class . '::{$m[2]}' => [],";
+        }
+
+        // Match string callback 'ClassName::methodName'
+        if (preg_match('/^[\'"]([^\'"]+(::)\w+)[\'"]$/', $callback, $m)) {
+            return "{$callback} => [],";
+        }
+
+        // Invokable class: ClassName::class (no method)
+        if (preg_match('/^.+::class$/', $callback)) {
+            return "{$callback} => [],";
+        }
+
+        // Fallback: wrap as-is with => []
+        return "{$callback} => [],";
     }
 
     /**
@@ -469,17 +638,19 @@ final class GenerateElggPluginPhp extends AbstractRule
         if (!empty($config['entities'])) {
             $lines[] = "\t'entities' => [";
             foreach ($config['entities'] as $entity) {
-                $class = $entity['class'];
-                // Convert Class::class style
-                if (!str_contains($class, '\\') && !str_contains($class, '::')) {
-                    $class = "\\{$class}::class";
-                } elseif (!str_ends_with($class, '::class')) {
-                    $class = "\\{$class}::class";
-                }
                 $lines[] = "\t\t[";
                 $lines[] = "\t\t\t'type' => '{$entity['type']}',";
                 $lines[] = "\t\t\t'subtype' => '{$entity['subtype']}',";
-                $lines[] = "\t\t\t'class' => {$class},";
+                if (!empty($entity['class'])) {
+                    $class = $entity['class'];
+                    // Convert Class::class style
+                    if (!str_contains($class, '\\') && !str_contains($class, '::')) {
+                        $class = "\\{$class}::class";
+                    } elseif (!str_ends_with($class, '::class')) {
+                        $class = "\\{$class}::class";
+                    }
+                    $lines[] = "\t\t\t'class' => {$class},";
+                }
                 $lines[] = "\t\t],";
             }
             $lines[] = "\t],";
@@ -542,7 +713,8 @@ final class GenerateElggPluginPhp extends AbstractRule
                 foreach ($types as $typeName => $callbacks) {
                     $lines[] = "\t\t\t'{$typeName}' => [";
                     foreach ($callbacks as $cb) {
-                        $lines[] = "\t\t\t\t{$cb},";
+                        $formatted = $this->formatCallbackForPluginPhp($cb);
+                        $lines[] = "\t\t\t\t{$formatted}";
                     }
                     $lines[] = "\t\t\t],";
                 }
@@ -564,13 +736,79 @@ final class GenerateElggPluginPhp extends AbstractRule
                 foreach ($types as $typeName => $callbacks) {
                     $lines[] = "\t\t\t'{$typeName}' => [";
                     foreach ($callbacks as $cb) {
-                        $lines[] = "\t\t\t\t{$cb},";
+                        $formatted = $this->formatCallbackForPluginPhp($cb);
+                        $lines[] = "\t\t\t\t{$formatted}";
                     }
                     $lines[] = "\t\t\t],";
                 }
                 $lines[] = "\t\t],";
             }
             $lines[] = "\t],";
+            $lines[] = "";
+        }
+
+        // Notifications
+        if (!empty($config['notifications'])) {
+            $grouped = [];
+            foreach ($config['notifications'] as $notif) {
+                $actions = [];
+                foreach ($notif['actions'] as $action) {
+                    $actions[$action] = true;
+                }
+                $grouped[$notif['type']][$notif['subtype']] = $actions;
+            }
+            $lines[] = "\t'notifications' => [";
+            foreach ($grouped as $type => $subtypes) {
+                $lines[] = "\t\t'{$type}' => [";
+                foreach ($subtypes as $subtype => $actions) {
+                    $lines[] = "\t\t\t'{$subtype}' => [";
+                    foreach ($actions as $action => $val) {
+                        $lines[] = "\t\t\t\t'{$action}' => true,";
+                    }
+                    $lines[] = "\t\t\t],";
+                }
+                $lines[] = "\t\t],";
+            }
+            $lines[] = "\t],";
+            $lines[] = "";
+        }
+
+        // View extensions — group by view
+        if (!empty($config['view_extensions'])) {
+            $grouped = [];
+            foreach ($config['view_extensions'] as $ext) {
+                $grouped[$ext['view']][$ext['extension']] = $ext['config'];
+            }
+            $lines[] = "\t'view_extensions' => [";
+            foreach ($grouped as $view => $extensions) {
+                $lines[] = "\t\t'{$view}' => [";
+                foreach ($extensions as $extension => $extConfig) {
+                    if (empty($extConfig)) {
+                        $lines[] = "\t\t\t'{$extension}' => [],";
+                    } else {
+                        $lines[] = "\t\t\t'{$extension}' => [";
+                        foreach ($extConfig as $k => $v) {
+                            $lines[] = "\t\t\t\t'{$k}' => " . var_export($v, true) . ",";
+                        }
+                        $lines[] = "\t\t\t],";
+                    }
+                }
+                $lines[] = "\t\t],";
+            }
+            $lines[] = "\t],";
+            $lines[] = "";
+        }
+
+        // Widgets
+        if (!empty($config['widgets'])) {
+            $lines[] = "\t'widgets' => [";
+            foreach ($config['widgets'] as $widget) {
+                $lines[] = "\t\t'{$widget['handler']}' => [";
+                $lines[] = "\t\t\t'context' => ['profile', 'dashboard'],";
+                $lines[] = "\t\t],";
+            }
+            $lines[] = "\t],";
+            $lines[] = "";
         }
 
         $lines[] = "];";

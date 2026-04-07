@@ -63,6 +63,26 @@ final class GenerateElggPluginPhpTest extends TestCase
 
             // Should contain events (excluding init,system)
             $this->assertStringContainsString("'create'", $content);
+
+            // Should contain view_extensions
+            $this->assertStringContainsString("'view_extensions'", $content);
+            $this->assertStringContainsString("'myplugin/stylesheet.css'", $content);
+            $this->assertStringContainsString("'myplugin/init.js'", $content);
+            $this->assertStringContainsString("'priority' => 100", $content);
+
+            // Should contain widgets
+            $this->assertStringContainsString("'widgets'", $content);
+            $this->assertStringContainsString("'myplugin'", $content);
+
+            // Should contain notifications
+            $this->assertStringContainsString("'notifications'", $content);
+            $this->assertStringContainsString("'myplugin_item'", $content);
+            $this->assertStringContainsString("'publish' => true", $content);
+
+            // Hook callbacks should use '::method' => [] format, not array format
+            $this->assertStringContainsString("=> [],", $content);
+            // Should NOT contain array-style callbacks [Class, 'method']
+            $this->assertStringNotContainsString("[Hooks::class, 'entityMenu']", $content);
         } finally {
             $this->removeDir($workDir);
         }

@@ -19,4 +19,14 @@ elgg_register_event_handler('init', 'system', function () {
     elgg_register_plugin_hook_handler('entity:url', 'object', [Router::class, 'urlHandler']);
 
     elgg_register_event_handler('create', 'object', [Hooks::class, 'onCreate']);
+
+    elgg_extend_view('elgg.css', 'myplugin/stylesheet.css');
+    elgg_extend_view('elgg.js', 'myplugin/init.js');
+    elgg_extend_view('page/layouts/elements/filter', 'myplugin/container', 100);
+
+    elgg_register_widget_type('myplugin', elgg_echo('myplugin'), elgg_echo('myplugin:widget:desc'));
+
+    elgg_register_notification_event('object', 'myplugin_item', ['create', 'publish']);
+
+    elgg_register_entity_type('object', 'myplugin_item');
 });
