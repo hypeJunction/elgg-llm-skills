@@ -113,7 +113,7 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 
 **2.x → 3.x** (largest): metastrings removed, subtypes→strings, page handlers→routes, libraries→autoloading, ~50 functions removed, entity queries unified.
 
-**3.x → 4.x** (structural): start.php→elgg-plugin.php, `\DI\object()`→`\DI\create()`, `Zend\Mail`→`Laminas\Mail`, entity attribute setters changed, canWriteToContainer() requires type+subtype.
+**3.x → 4.x** (structural): start.php→elgg-plugin.php+Bootstrap, `\DI\object()`→`\DI\create()`, `Zend\Mail`→`Laminas\Mail`, entity attribute setters changed, canWriteToContainer() requires type+subtype, `run_sql_script()` removed, `forward()` removed, JS `elgg.action/get/getJSON/post` → `elgg/Ajax` module, plugin dirs must match composer.json lowercase name, `elgg_register_entity_type()` → entities key in elgg-plugin.php.
 
 **4.x → 5.x**: hooks+events merged, private settings→metadata, PHP 8.0+.
 
@@ -125,11 +125,61 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 
 | Mistake | Fix |
 |---------|-----|
-| Closures in elgg-plugin.php | Use `[ClassName::class, 'method']` or Bootstrap class |
+| Closures in elgg-plugin.php | Use `ClassName::class . '::method' => []` or Bootstrap class |
 | Plugin dir case mismatch | Dir must match composer.json `name` (usually lowercase) |
 | Skipping Docker gate | Always validate — catches serialization, missing deps, type errors |
 | Running 4.x rules on 2.x code | Migrate 2→3 first, commit, then 3→4 |
 | Not installing plugin deps | Run `composer install -d <plugin>` before Docker test |
+| `run_sql_script()` in activate.php | Removed in 4.x — use `elgg()->db->updateData()` with inline SQL |
+| `elgg_register_menu_item()` in elgg-plugin.php | Can't go in config — use Bootstrap::init() or register hook |
+| Auto-generated hooks use wrong format | Generator outputs `[Class, 'method']` — must be `Class::class . '::method' => []` |
+| `elgg_extend_view()` not in elgg-plugin.php | Generator now extracts to `view_extensions` key — verify after running |
+| Conditional hooks lost during migration | `elgg_is_active_plugin()` guards need Bootstrap class, not elgg-plugin.php |
+
+---
+
+## elgg-plugin.php Generation (3.x → 4.x)
+
+The `GenerateElggPluginPhp` rule extracts registrations from start.php into the Elgg 4.x config format. **Always review** the generated file:
+
+### What the rule extracts automatically
+- `elgg_register_action()` → `'actions'` key
+- `elgg_register_route()` → `'routes'` key
+- `elgg_set_entity_class()` / `elgg_register_entity_type()` → `'entities'` key
+- `elgg_register_plugin_hook_handler()` → `'hooks'` key (format: `Class::class . '::method' => []`)
+- `elgg_register_event_handler()` → `'events'` key
+- `elgg_extend_view()` → `'view_extensions'` key (with priority support)
+- `elgg_register_widget_type()` → `'widgets'` key
+- `elgg_register_notification_event()` → `'notifications'` key
+
+### What requires a Bootstrap class (NOT extractable)
+- `elgg_register_menu_item()` — must go in `Bootstrap::init()`
+- Conditional registrations (`elgg_is_active_plugin()` guards)
+- `elgg()->group_tools->register()` — must go in `Bootstrap::init()`
+- `elgg_register_ajax_view()` — must go in `Bootstrap::init()`
+- Upgrade event handlers — go in `Bootstrap::upgrade()`
+- activate.php logic — goes in `Bootstrap::activate()`
+
+### Correct hook format for Elgg 4.x
+```php
+// CORRECT (Elgg 4.x elgg-plugin.php)
+'hooks' => [
+    'register' => [
+        'menu:entity' => [
+            \MyPlugin\Menus::class . '::entityMenu' => [],
+        ],
+    ],
+],
+
+// WRONG (won't work)
+'hooks' => [
+    'register' => [
+        'menu:entity' => [
+            [\MyPlugin\Menus::class, 'entityMenu'],  // array syntax NOT supported
+        ],
+    ],
+],
+```
 
 ---
 
@@ -151,11 +201,11 @@ elgg-migrate/
 │   └── elgg-test-writer/SKILL.md   # Test writing skill
 ├── bin/migrate.php                  # CLI runner
 ├── bin/migrate-plugin.sh            # Batch script (branch + migrate + commit)
-├── src/Rules/V2ToV3/                # 12 automated rules
+├── src/Rules/V2ToV3/                # 18 automated rules
 ├── src/Rules/V3ToV4/                # 11 automated rules
 ├── rules/2x-to-3x/                 # 27 rules (12 auto + 15 LLM)
 ├── rules/3x-to-4x/                 # 18 rules (11 auto + 7 LLM)
-├── tests/                           # 201 tests, 955 assertions
+├── tests/                           # 212 tests, 1002 assertions
 ├── docker/elgg{3,4}/                # Docker environments
 └── tmp/                             # Guinea pig plugins (gitignored)
 ```

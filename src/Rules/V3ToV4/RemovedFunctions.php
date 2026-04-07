@@ -72,6 +72,16 @@ final class RemovedFunctions extends AbstractRule
 
         // Pages plugin
         'pages_is_page' => ['action' => 'warn', 'note' => 'Removed in 4.0'],
+
+        // SQL/Database helpers
+        'run_sql_script' => ['action' => 'warn', 'note' => 'Use elgg()->db->updateData() with inline SQL'],
+
+        // Subtype registration (removed: subtypes are strings in 3.x+)
+        'add_subtype' => ['action' => 'warn', 'note' => 'Subtypes are strings since 3.0 — remove this call'],
+        'get_subtype_id' => ['action' => 'warn', 'note' => 'Subtypes are strings since 3.0 — remove this call'],
+
+        // Entity type registration
+        'elgg_register_entity_type' => ['action' => 'warn', 'note' => "Use 'entities' key in elgg-plugin.php"],
     ];
 
     public function getId(): string
