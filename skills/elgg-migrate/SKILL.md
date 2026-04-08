@@ -148,6 +148,11 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 | `self::getInstance()` singleton pattern | Use DI container: `elgg()->{'service.key'}` per `elgg-services.php` |
 | Tables not created on activation | Docker fresh install doesn't run activate.php — create tables manually for testing |
 | Plugin activates but site 500s | Always test RENDER after activation — hooks fire on page load and can crash |
+| `elgg_trigger_event_results()` used in 4.x | That's Elgg 5.x only! In 4.x use `elgg_trigger_plugin_hook()` (deprecated but works) |
+| `elgg_register_event_handler` for view/view_vars | In 4.x, `view` and `view_vars` are HOOKS not events — use `elgg_register_plugin_hook_handler()` |
+| start.php still exists (even empty) | Elgg 4.x REJECTS plugins with ANY start.php file — delete it completely |
+| `::SUBTYPE` constant in elgg-plugin.php | Triggers autoload before classes registered — use string literals (::class is fine) |
+| `ElggEntity::save()` missing `: bool` return type | Elgg 4.x added return type hints — subclasses must match |
 
 ---
 
