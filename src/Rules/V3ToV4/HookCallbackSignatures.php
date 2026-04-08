@@ -164,11 +164,13 @@ final class HookCallbackSignatures extends AbstractRule
         $inSection = null;
 
         foreach (explode("\n", $code) as $line) {
-            if (preg_match("/^\s*'hooks'\s*=>/", $line)) {
+            // Only match top-level keys (single tab indent) to avoid false resets
+            // on nested keys like 'notifications' inside hooks
+            if (preg_match("/^\t'hooks'\s*=>/", $line)) {
                 $inSection = 'hook';
-            } elseif (preg_match("/^\s*'events'\s*=>/", $line)) {
+            } elseif (preg_match("/^\t'events'\s*=>/", $line)) {
                 $inSection = 'event';
-            } elseif (preg_match("/^\s*'(actions|routes|view_extensions|widgets|entities|notifications|group_tools|bootstrap|settings|plugin)'\s*=>/", $line)) {
+            } elseif (preg_match("/^\t'(actions|routes|view_extensions|widgets|entities|notifications|group_tools|bootstrap|settings|plugin)'\s*=>/", $line)) {
                 $inSection = null;
             }
 
