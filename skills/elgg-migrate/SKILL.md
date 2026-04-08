@@ -168,8 +168,9 @@ The `GenerateElggPluginPhp` rule extracts registrations from start.php into the 
 - activate.php logic — goes in `Bootstrap::activate()`
 
 ### Correct hook format for Elgg 4.x
+
+**elgg-plugin.php registration format:**
 ```php
-// CORRECT (Elgg 4.x elgg-plugin.php)
 'hooks' => [
     'register' => [
         'menu:entity' => [
@@ -177,16 +178,29 @@ The `GenerateElggPluginPhp` rule extracts registrations from start.php into the 
         ],
     ],
 ],
-
-// WRONG (won't work)
-'hooks' => [
-    'register' => [
-        'menu:entity' => [
-            [\MyPlugin\Menus::class, 'entityMenu'],  // array syntax NOT supported
-        ],
-    ],
-],
 ```
+
+**Handler signature — MUST use single-arg format:**
+```php
+// CORRECT (Elgg 4.x) — handlers get a single Hook/Event object
+public static function entityMenu(\Elgg\Hook $hook) {
+    $return = $hook->getValue();       // was: $return (3rd arg)
+    $entity = $hook->getParam('entity'); // was: $params['entity'] or elgg_extract('entity', $params)
+    // $hook->getType(), $hook->getName(), $hook->getParams() also available
+    return $return;
+}
+
+public static function onCreate(\Elgg\Event $event) {
+    $entity = $event->getObject();     // was: $entity (3rd arg)
+    // $event->getType(), $event->getName() also available
+}
+
+// WRONG — old multi-arg signatures cause "Too few arguments" fatal
+public static function entityMenu($hook, $type, $return, $params) { ... }
+public static function onCreate($event, $type, $entity) { ... }
+```
+
+The `018-hook-callback-signatures` rule automates this rewrite (AST-based).
 
 ---
 
