@@ -293,8 +293,8 @@ final class HookCallbackSignatures extends AbstractRule
         $bodyEnd = $methodBody['end'];
         $body = substr($code, $bodyStart, $bodyEnd - $bodyStart);
 
-        // Determine if $return is modified (assigned to or array-pushed)
-        $returnIsModified = (bool) preg_match('/\$' . preg_quote($returnVar) . '\s*(\[|=)/', $body);
+        // Determine if $return is modified (assigned to, array-pushed, or compound-assigned)
+        $returnIsModified = (bool) preg_match('/\$' . preg_quote($returnVar) . '\s*(\[|\.=|=|\+=|-=)/', $body);
 
         // 1. Replace $params['key'] → $hook->getParam('key')
         $body = preg_replace(
@@ -338,19 +338,30 @@ final class HookCallbackSignatures extends AbstractRule
         }
 
         // 6. Replace $type → $hook->getType()
-        $body = preg_replace(
-            '/\$' . preg_quote($typeVar) . '\b/',
-            '\$hook->getType()',
-            $body
-        );
+        // If $type is reassigned in the body, keep it as a local var
+        $typeIsModified = (bool) preg_match('/\$' . preg_quote($typeVar) . '\s*(\.=|=|\+=|-=)/', $body);
+        if ($typeIsModified) {
+            $body = "\n\t\t\$" . $typeVar . " = \$hook->getType();\n" . $body;
+        } else {
+            $body = preg_replace(
+                '/\$' . preg_quote($typeVar) . '\b/',
+                '\$hook->getType()',
+                $body
+            );
+        }
 
         // 7. Replace $hook used as string name (old first arg) — only if hookVar != 'hook'
         if ($hookVar !== 'hook') {
-            $body = preg_replace(
-                '/\$' . preg_quote($hookVar) . '\b/',
-                '\$hook->getName()',
-                $body
-            );
+            $hookIsModified = (bool) preg_match('/\$' . preg_quote($hookVar) . '\s*(\.=|=|\+=|-=)/', $body);
+            if ($hookIsModified) {
+                $body = "\n\t\t\$" . $hookVar . " = \$hook->getName();\n" . $body;
+            } else {
+                $body = preg_replace(
+                    '/\$' . preg_quote($hookVar) . '\b/',
+                    '\$hook->getName()',
+                    $body
+                );
+            }
         }
 
         $code = substr($code, 0, $bodyStart) . $body . substr($code, $bodyEnd);
@@ -392,26 +403,41 @@ final class HookCallbackSignatures extends AbstractRule
         $body = substr($code, $bodyStart, $bodyEnd - $bodyStart);
 
         // Replace $entity → $event->getObject()
-        $body = preg_replace(
-            '/\$' . preg_quote($entityVar) . '\b/',
-            '\$event->getObject()',
-            $body
-        );
+        $entityIsModified = (bool) preg_match('/\$' . preg_quote($entityVar) . '\s*(\.=|=|\+=|-=|\[)/', $body);
+        if ($entityIsModified) {
+            $body = "\n\t\t\$" . $entityVar . " = \$event->getObject();\n" . $body;
+        } else {
+            $body = preg_replace(
+                '/\$' . preg_quote($entityVar) . '\b/',
+                '\$event->getObject()',
+                $body
+            );
+        }
 
         // Replace $type → $event->getType()
-        $body = preg_replace(
-            '/\$' . preg_quote($typeVar) . '\b/',
-            '\$event->getType()',
-            $body
-        );
+        $typeIsModified = (bool) preg_match('/\$' . preg_quote($typeVar) . '\s*(\.=|=|\+=|-=)/', $body);
+        if ($typeIsModified) {
+            $body = "\n\t\t\$" . $typeVar . " = \$event->getType();\n" . $body;
+        } else {
+            $body = preg_replace(
+                '/\$' . preg_quote($typeVar) . '\b/',
+                '\$event->getType()',
+                $body
+            );
+        }
 
         // Replace $event used as string name (old first arg) — only if eventVar != 'event'
         if ($eventVar !== 'event') {
-            $body = preg_replace(
-                '/\$' . preg_quote($eventVar) . '\b/',
-                '\$event->getName()',
-                $body
-            );
+            $eventIsModified = (bool) preg_match('/\$' . preg_quote($eventVar) . '\s*(\.=|=|\+=|-=)/', $body);
+            if ($eventIsModified) {
+                $body = "\n\t\t\$" . $eventVar . " = \$event->getName();\n" . $body;
+            } else {
+                $body = preg_replace(
+                    '/\$' . preg_quote($eventVar) . '\b/',
+                    '\$event->getName()',
+                    $body
+                );
+            }
         }
 
         $code = substr($code, 0, $bodyStart) . $body . substr($code, $bodyEnd);
