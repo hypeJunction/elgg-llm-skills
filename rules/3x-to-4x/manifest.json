@@ -217,6 +217,30 @@
             "llm_instructions": "~80+ Elgg functions now have strict type hints. Passing wrong types (null, wrong int/string) causes TypeError.\n\nCommon pitfalls:\n- `elgg_get_plugin_from_id(null)` — now requires string\n- `elgg_register_action($action, $path, null)` — access must be string\n- `add_user_to_access_collection(null, $id)` — requires int\n- `elgg_error_response('msg', null)` — status_code must be int\n- `get_entity_statistics(null)` — requires int\n\nSearch for potential issues:\n```bash\ngrep -rn 'elgg_error_response\\|elgg_ok_response\\|elgg_redirect_response\\|elgg_register_action\\|elgg_get_plugin_from_id' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure all arguments match expected types. PHP 7.4+ will throw TypeError at runtime.",
             "breaking_change": "~80+ functions gained strict type hints — TypeError on wrong argument types",
             "priority": 270
+        },
+        {
+            "id": "026-jquery-deprecated-apis",
+            "name": "Replace jQuery APIs removed or deprecated in jQuery 3.5.x",
+            "automated": false,
+            "llm_instructions": "jQuery was updated to 3.5.x in Elgg 4.0. Several APIs were removed or deprecated.\n\n**Search for deprecated patterns:**\n```bash\ngrep -rn '\\.bind(\\|\\.unbind(\\|\\.delegate(\\|\\.undelegate(\\|\\.click(\\|\\.error(\\|\\.load(\\|\\.unload(\\|\\.size(\\|jQuery\\.parseJSON\\|jQuery\\.isArray\\|jQuery\\.unique\\|jQuery\\.holdReady\\|\\.andSelf(\\|\\.context\\b\\|\\.selector\\b' views/ --include='*.js'\n```\n\n**Replacements:**\n\n| Deprecated | Replacement |\n|------------|-------------|\n| `.bind('event', fn)` | `.on('event', fn)` |\n| `.unbind('event', fn)` | `.off('event', fn)` |\n| `.delegate(sel, 'event', fn)` | `.on('event', sel, fn)` |\n| `.undelegate(sel, 'event', fn)` | `.off('event', sel, fn)` |\n| `.click(fn)` | `.on('click', fn)` |\n| `.load(fn)` (as event) | `.on('load', fn)` |\n| `.error(fn)` | `.on('error', fn)` |\n| `.unload(fn)` | `.on('beforeunload', fn)` |\n| `.size()` | `.length` |\n| `$.parseJSON(str)` | `JSON.parse(str)` |\n| `$.isArray(obj)` | `Array.isArray(obj)` |\n| `$.unique(arr)` | `$.uniqueSort(arr)` |\n| `$.holdReady(hold)` | Remove — use proper AMD loading |\n| `.andSelf()` | `.addBack()` |\n| `$(el).context` | Not available — use direct DOM reference |\n| `$(el).selector` | Not available — store selector yourself |\n\n**jQuery 3.5 HTML parsing change (BREAKING):**\nSelf-closing HTML tags like `$('<div/>')` no longer work for non-void elements. Use `$('<div></div>')` or `$('<div>')` instead.\n\nSearch: `grep -rn \"\\$('<[a-z].*/>\\s*')\" views/ --include='*.js'`",
+            "breaking_change": "jQuery 3.5.x: .bind/.unbind/.delegate removed, self-closing HTML tags changed",
+            "priority": 280
+        },
+        {
+            "id": "027-jquery-ui-requires",
+            "name": "Add explicit requires for jQuery UI widgets",
+            "automated": false,
+            "llm_instructions": "jQuery UI is no longer fully loaded by default in Elgg 4.0. If your plugin uses jQuery UI features (sortable, draggable, datepicker, dialog, etc.), you must explicitly require the widget module.\n\n**Search for jQuery UI usage:**\n```bash\ngrep -rn '\\.sortable(\\|\\.draggable(\\|\\.droppable(\\|\\.resizable(\\|\\.datepicker(\\|\\.dialog(\\|\\.accordion(\\|\\.autocomplete(\\|\\.slider(\\|\\.tabs(\\|\\.tooltip(\\|\\.progressbar(\\|\\.selectable(' views/ --include='*.js'\n```\n\n**Fix: wrap in require or add dependency:**\n```javascript\n// Before (jQuery UI was globally available):\ndefine(['jquery'], function($) {\n    $('.my-list').sortable();\n});\n\n// After (must explicitly require the widget):\ndefine(['jquery', 'jquery-ui/widgets/sortable'], function($) {\n    $('.my-list').sortable();\n});\n```\n\n**Available widget modules:**\n- `jquery-ui/widgets/sortable`\n- `jquery-ui/widgets/draggable`\n- `jquery-ui/widgets/droppable`\n- `jquery-ui/widgets/resizable`\n- `jquery-ui/widgets/datepicker`\n- `jquery-ui/widgets/dialog`\n- `jquery-ui/widgets/accordion`\n- `jquery-ui/widgets/autocomplete`\n- `jquery-ui/widgets/slider`\n- `jquery-ui/widgets/tabs`\n- `jquery-ui/widgets/tooltip`\n- `jquery-ui/widgets/progressbar`\n- `jquery-ui/widgets/selectable`",
+            "breaking_change": "jQuery UI no longer fully loaded — must require individual widget modules",
+            "priority": 290
+        },
+        {
+            "id": "028-removed-js-deps",
+            "name": "Replace removed JavaScript dependencies",
+            "automated": false,
+            "llm_instructions": "Several JavaScript dependencies were removed from Elgg 4.0:\n\n**Search for usage:**\n```bash\ngrep -rn \"jquery-treeview\\|jquery\\.imgareaselect\\|formdata-polyfill\\|jquery-form\\|weakmap-polyfill\" views/ --include='*.js'\ngrep -rn \"require.*jquery-treeview\\|require.*imgareaselect\\|require.*formdata\\|require.*jquery-form\" views/ --include='*.js'\n```\n\n**Replacements:**\n\n| Removed | Replacement |\n|---------|-------------|\n| `jquery-treeview` | Use CSS-based tree or a modern alternative |\n| `jquery.imgareaselect` | Use `Cropper.js` or the built-in Elgg cropper |\n| `formdata-polyfill` | Remove — all modern browsers support `FormData` natively |\n| `jquery-form` | Use native `FormData` + `fetch()` or `elgg/Ajax` module |\n| `weakmap-polyfill` | Remove — all modern browsers support `WeakMap` natively |\n\nAlso check for `require(['simpletest/...'])` — SimpleTest was removed.\n\n**Elgg's widgets module change:**\nThe `elgg/widgets` AMD module no longer returns an object and no longer requires calling `.init()`. Remove any `widgets.init()` calls:\n```javascript\n// Before:\nrequire(['elgg/widgets'], function(widgets) {\n    widgets.init();\n});\n\n// After:\nrequire(['elgg/widgets'], function() {\n    // widgets are initialized automatically\n});\n```",
+            "breaking_change": "jquery-treeview, jquery.imgareaselect, jquery-form, polyfills removed from Elgg 4.0",
+            "priority": 300
         }
     ]
 }
