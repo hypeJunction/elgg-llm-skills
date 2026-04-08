@@ -153,6 +153,70 @@
             "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
             "breaking_change": "Plugin-local dependencies must be installed for activation",
             "priority": 150
+        },
+        {
+            "id": "018-hook-callback-signatures",
+            "name": "Rewrite hook/event handler signatures to Elgg 4.x single-arg format",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\HookCallbackSignatures",
+            "breaking_change": "Handlers registered via elgg-plugin.php receive single \\Elgg\\Hook or \\Elgg\\Event object",
+            "priority": 200
+        },
+        {
+            "id": "019-plugin-settings-vars",
+            "name": "Replace $vars['plugin'] with $vars['entity'] in settings forms",
+            "automated": false,
+            "llm_instructions": "In plugin settings forms (`views/default/plugins/{plugin_id}/settings` and `forms/` views):\n\nReplace `$vars['plugin']` with `$vars['entity']`.\n\n```php\n// Before:\n$plugin = $vars['plugin'];\n$setting = $plugin->getSetting('my_setting');\n\n// After:\n$entity = $vars['entity'];\n$setting = $entity->getSetting('my_setting');\n```\n\nSearch: `grep -rn \"\\$vars\\['plugin'\\]\" views/ forms/`",
+            "breaking_change": "$vars['plugin'] no longer available in plugin settings forms — use $vars['entity']",
+            "priority": 210
+        },
+        {
+            "id": "020-field-config-api",
+            "name": "Replace elgg_get_config() field lookups with elgg()->fields->get()",
+            "automated": false,
+            "llm_instructions": "Replace deprecated config-based field lookups:\n\n```php\n// Before:\n$fields = elgg_get_config('pages');\n$fields = elgg_get_config('group');\n$fields = elgg_get_config('profile_fields');\n\n// After:\n$fields = elgg()->fields->get('object', 'page');\n$fields = elgg()->fields->get('group', 'group');\n$fields = elgg()->fields->get('user', 'user');\n```\n\nAlso update related hooks:\n- `profile:fields, group` → `fields, group:group`\n- `profile:fields, user` → `fields, user:user`\n\nSearch: `grep -rn \"elgg_get_config.*'pages'\\|elgg_get_config.*'group'\\|elgg_get_config.*'profile_fields'\" classes/ views/`",
+            "breaking_change": "Config-based field lookups removed — use elgg()->fields->get()",
+            "priority": 220
+        },
+        {
+            "id": "021-callback-renames",
+            "name": "Update references to renamed core callback functions",
+            "automated": false,
+            "llm_instructions": "~150 core callback functions were renamed from `_elgg_*()` procedural functions to `Elgg\\ClassName::method()` class-based handlers.\n\nThis mainly affects plugins that UNREGISTER core hooks/events:\n```php\n// Before:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', '_elgg_entity_menu_setup');\n\n// After:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', 'Elgg\\Menus\\Entity::registerEdit');\n```\n\nSearch for `_elgg_` in elgg_unregister_* calls:\n`grep -rn 'elgg_unregister.*_elgg_\\|elgg_unregister.*_groups_\\|elgg_unregister.*_members_' classes/ views/`\n\nFull rename list: see https://learn.elgg.org/en/stable/appendix/upgrade-notes/3.x-to-4.0.html#renamed-hook-event-handler-callbacks",
+            "breaking_change": "~150 core callbacks renamed from _elgg_* to Class::method — breaks unregistration",
+            "priority": 230
+        },
+        {
+            "id": "022-notification-subscription-rename",
+            "name": "Update notification subscription relationship name",
+            "automated": false,
+            "llm_instructions": "The notification subscription relationship name changed:\n- Before: `notify{method}` (e.g., `notifyemail`, `notifysite`)\n- After: `notify:{method}` (e.g., `notify:email`, `notify:site`)\n\nSearch for the old format in SQL queries and relationship lookups:\n```bash\ngrep -rn 'notify[a-z]' classes/ views/ actions/ --include='*.php' | grep -v 'notify:' | grep -v 'notification'\n```\n\nAlso check for direct relationship queries:\n```php\n// Before:\nadd_entity_relationship($user_guid, 'notifyemail', $target_guid);\n\n// After:\nadd_entity_relationship($user_guid, 'notify:email', $target_guid);\n```",
+            "breaking_change": "Notification subscription relationship format changed: notifymethod → notify:method",
+            "priority": 240
+        },
+        {
+            "id": "023-database-class-rename",
+            "name": "Replace Elgg\\Database with Elgg\\Application\\Database",
+            "automated": false,
+            "llm_instructions": "The `Elgg\\Database` class was replaced by `Elgg\\Application\\Database` in the DI container.\n\nSearch for type hints and use statements:\n```bash\ngrep -rn 'use Elgg\\\\Database;\\|use Elgg\\\\Database as\\|Elgg\\\\Database \\$' classes/ --include='*.php'\n```\n\nReplace:\n```php\n// Before:\nuse Elgg\\Database as ElggDatabase;\n\n// After:\nuse Elgg\\Application\\Database as ElggDatabase;\n```\n\nNote: `Elgg\\Database\\*` sub-namespace classes (QueryBuilder, Select, Insert, etc.) are NOT affected.",
+            "breaking_change": "Elgg\\Database class renamed to Elgg\\Application\\Database — affects DI type hints",
+            "priority": 250
+        },
+        {
+            "id": "024-doctrine-dbal-v3",
+            "name": "Update Doctrine DBAL v2 → v3 usage",
+            "automated": false,
+            "llm_instructions": "Doctrine DBAL was updated from v2 to v3. Key change:\n\n- `$qb->fetch()` now returns an **array**, not an **object**\n- If you need object rows, use `elgg()->db->getData($qb)` instead\n- Query parameters should no longer have `:` prefix in the params array (but still use `:` in the query)\n\n```php\n// Before (DBAL v2):\n$row = $qb->fetch(); // returns object\n$row->name;\n\n// After (DBAL v3):\n$row = $qb->fetch(); // returns array\n$row['name'];\n\n// Or use Elgg wrapper:\n$rows = elgg()->db->getData($qb); // returns objects\n```\n\nSearch: `grep -rn '->fetch()\\|->fetchAll()\\|->fetchColumn()' classes/ --include='*.php'`",
+            "breaking_change": "Doctrine DBAL v3: $qb->fetch() returns array not object",
+            "priority": 260
+        },
+        {
+            "id": "025-type-hints",
+            "name": "Check for type-hint compatibility with strict parameter types",
+            "automated": false,
+            "llm_instructions": "~80+ Elgg functions now have strict type hints. Passing wrong types (null, wrong int/string) causes TypeError.\n\nCommon pitfalls:\n- `elgg_get_plugin_from_id(null)` — now requires string\n- `elgg_register_action($action, $path, null)` — access must be string\n- `add_user_to_access_collection(null, $id)` — requires int\n- `elgg_error_response('msg', null)` — status_code must be int\n- `get_entity_statistics(null)` — requires int\n\nSearch for potential issues:\n```bash\ngrep -rn 'elgg_error_response\\|elgg_ok_response\\|elgg_redirect_response\\|elgg_register_action\\|elgg_get_plugin_from_id' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure all arguments match expected types. PHP 7.4+ will throw TypeError at runtime.",
+            "breaking_change": "~80+ functions gained strict type hints — TypeError on wrong argument types",
+            "priority": 270
         }
     ]
 }
