@@ -75,6 +75,11 @@ final class RemovedFunctions extends AbstractRule
 
         // SQL/Database helpers
         'run_sql_script' => ['action' => 'warn', 'note' => 'Use elgg()->db->updateData() with inline SQL'],
+        'get_data' => ['action' => 'warn', 'note' => 'Use elgg()->db->getData()'],
+        'get_data_row' => ['action' => 'warn', 'note' => 'Use elgg()->db->getDataRow()'],
+        'insert_data' => ['action' => 'warn', 'note' => 'Use elgg()->db->insertData()'],
+        'update_data' => ['action' => 'warn', 'note' => 'Use elgg()->db->updateData()'],
+        'delete_data' => ['action' => 'warn', 'note' => 'Use elgg()->db->deleteData()'],
 
         // Subtype registration (removed: subtypes are strings in 3.x+)
         'add_subtype' => ['action' => 'warn', 'note' => 'Subtypes are strings since 3.0 — remove this call'],

@@ -142,6 +142,12 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 | Auto-generated hooks use wrong format | Generator outputs `[Class, 'method']` — must be `Class::class . '::method' => []` |
 | `elgg_extend_view()` not in elgg-plugin.php | Generator now extracts to `view_extensions` key — verify after running |
 | Conditional hooks lost during migration | `elgg_is_active_plugin()` guards need Bootstrap class, not elgg-plugin.php |
+| Old hook handler signatures | `($hook,$type,$return,$params)` → `(\Elgg\Hook $hook)` — rule 018 automates this |
+| `get_data()` / `insert_data()` etc. | Removed in 4.x — use `elgg()->db->getData()`, `insertData()`, etc. |
+| `Elgg\Database` type hints | Renamed to `Elgg\Application\Database` in 4.x — update `use` imports |
+| `self::getInstance()` singleton pattern | Use DI container: `elgg()->{'service.key'}` per `elgg-services.php` |
+| Tables not created on activation | Docker fresh install doesn't run activate.php — create tables manually for testing |
+| Plugin activates but site 500s | Always test RENDER after activation — hooks fire on page load and can crash |
 
 ---
 
@@ -226,7 +232,7 @@ elgg-migrate/
 ├── src/Rules/V3ToV4/                # 11 automated rules
 ├── rules/2x-to-3x/                 # 27 rules (12 auto + 15 LLM)
 ├── rules/3x-to-4x/                 # 18 rules (11 auto + 7 LLM)
-├── tests/                           # 212 tests, 1002 assertions
+├── tests/                           # 217 tests, 1021 assertions
 ├── docker/elgg{3,4}/                # Docker environments
 └── tmp/                             # Guinea pig plugins (gitignored)
 ```
