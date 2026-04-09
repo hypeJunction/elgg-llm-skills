@@ -15,8 +15,9 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 1. **NEVER SKIP A MAJOR VERSION** — 2.x→3.x→4.x→5.x→6.x. Skipping guarantees missed breaking changes.
 2. **NEVER MIGRATE WITHOUT A BRANCH** — Branch name is the TARGET version: `migrate/elgg-{TARGET}.x` (e.g., 3→4 = `migrate/elgg-4.x`).
 3. **VERIFY IN DOCKER** — Plugin must activate and site must render before proceeding.
-4. **CLOSURES CANNOT GO IN elgg-plugin.php** — Elgg 4+ serializes plugin config. Use class-based callbacks or Bootstrap.
-5. **DIRECTORY NAME MUST MATCH composer.json** — Elgg 4+ requires plugin dir matches the `name` field (lowercase).
+4. **NEVER MIGRATE WITHOUT TESTS** — Every migrated plugin MUST have test coverage. Use the `elgg-test-writer` skill or the `plugin-test-scaffold` formula. Migration is NOT complete until tests pass.
+5. **CLOSURES CANNOT GO IN elgg-plugin.php** — Elgg 4+ serializes plugin config. Use class-based callbacks or Bootstrap.
+6. **DIRECTORY NAME MUST MATCH composer.json** — Elgg 4+ requires plugin dir matches the `name` field (lowercase).
 
 ---
 
@@ -106,7 +107,38 @@ SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 ```
 
-**Step 2.6: Compare with reference** (if a manually-migrated version exists upstream)
+**Step 2.6: Write tests (GATE)**
+
+This is a **blocking gate**. Migration is NOT complete without test coverage.
+
+Use the `elgg-test-writer` skill or the `plugin-test-scaffold` formula:
+
+```bash
+# Scaffold test infrastructure for a plugin
+bd mol pour plugin-test-scaffold
+```
+
+**Minimum coverage required:**
+- [ ] Entity class mapping (each entity type activates correctly)
+- [ ] Entity CRUD (create, read, update, delete)
+- [ ] At least one test per action
+- [ ] Hook/event handlers execute without errors
+- [ ] Key views render without fatal errors
+- [ ] Permissions (owner can edit, non-owner cannot)
+
+**Run tests in Docker:**
+```bash
+docker exec <container> php /var/www/html/vendor/bin/phpunit \
+  --configuration /var/www/html/mod/<plugin-id>/tests/phpunit.xml
+```
+
+If the plugin has no tests directory, create one using the test-writer skill:
+1. Scaffold: `tests/phpunit.xml` + `tests/phpunit/integration/` directory
+2. Write entity test, action tests, hook tests
+3. Run in Docker, fix failures
+4. Commit tests separately: `git commit -m "test: add integration tests for <plugin>"`
+
+**Step 2.7: Compare with reference** (if a manually-migrated version exists upstream)
 
 ### Phase 3: FINALIZE
 
@@ -234,10 +266,10 @@ elgg-migrate/
 ├── bin/migrate.php                  # CLI runner
 ├── bin/migrate-plugin.sh            # Batch script (branch + migrate + commit)
 ├── src/Rules/V2ToV3/                # 18 automated rules
-├── src/Rules/V3ToV4/                # 11 automated rules
-├── rules/2x-to-3x/                 # 27 rules (12 auto + 15 LLM)
-├── rules/3x-to-4x/                 # 18 rules (11 auto + 7 LLM)
-├── tests/                           # 217 tests, 1021 assertions
+├── src/Rules/V3ToV4/                # 12 automated rules
+├── rules/2x-to-3x/                 # 28+ rules (18 auto + LLM)
+├── rules/3x-to-4x/                 # 30 rules (13 auto + 17 LLM)
+├── tests/                           # 217 tests, 1022 assertions
 ├── docker/elgg{3,4}/                # Docker environments
 └── tmp/                             # Guinea pig plugins (gitignored)
 ```
