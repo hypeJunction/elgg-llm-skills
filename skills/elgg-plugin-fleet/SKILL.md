@@ -131,6 +131,16 @@ Any cell where an upstream migration exists → mark as `upstream` and note the 
 
 ### Phase 1: CREATE BEADS — Issue Tracking Matrix
 
+This phase is also available as a beads formula:
+
+```bash
+# Install the formula (if not already present)
+cp formulas/elgg-plugin-fleet.formula.json .beads/formulas/
+
+# Pour it
+bd mol pour elgg-plugin-fleet --var plugins_dir=~/Data/hypejunction/plugins --var from=3.x --var to=7.x
+```
+
 For each plugin, create the **full dependency chain**: pre-migration tests → first migration step → next step → ...
 
 #### Step 1.1: Create pre-migration test issues (P0)

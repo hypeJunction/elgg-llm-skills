@@ -82,7 +82,7 @@
     {
       "id": "commit-tests",
       "title": "Commit test suite",
-      "description": "git add tests/ && git commit -m 'test: add integration tests for <plugin>'",
+      "description": "git add tests/ && git commit -m 'test: add integration tests for <plugin>'. Then close the pre-migration test beads issue if one exists. Verify that closing it unblocks the first migration step in the dependency chain.",
       "type": "task",
       "priority": 6,
       "depends_on": ["run-tests-docker"]

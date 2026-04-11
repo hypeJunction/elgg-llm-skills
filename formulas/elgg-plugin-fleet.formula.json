@@ -29,7 +29,7 @@
     {
       "id": "create-issues",
       "title": "Create beads issues for all 'todo' cells in the migration matrix",
-      "description": "For each 'todo' cell in the matrix, create a beads issue: 'Migrate <plugin> <from>→<to>'. Add dependencies so each version step depends on the previous (e.g., 4→5 depends on 3→4 for the same plugin). Use parallel subagents for bulk creation.",
+      "description": "For each 'todo' cell in the matrix, create beads issues with a full dependency chain per plugin:\n\n1. Create a pre-migration test issue (P0): 'Add pre-migration tests: <plugin>'\n2. Create migration issues (P2) for each version step: 'Migrate <plugin> <from>→<to>'\n3. Wire dependencies:\n   - Pre-migration test → blocks → first migration step (e.g., tests → 3.x→4.x)\n   - Each migration step → blocks → next step (e.g., 3.x→4.x → 4.x→5.x)\n   - If the plugin starts at 4.x (no 3→4 needed), pre-migration test → blocks → 4.x→5.x directly\n\nNaming conventions:\n- Test issues: 'Add pre-migration tests: <plugin>'\n- Migration issues: 'Migrate <plugin> <from>→<to>'\n\nUse parallel subagents for bulk creation. After creating all issues, verify with 'bd blocked' that the chains are correct.",
       "type": "task",
       "priority": 1,
       "depends_on": ["scan"]

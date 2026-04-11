@@ -40,7 +40,7 @@
     {
       "id": "test-baseline",
       "title": "Test baseline: write and run tests on {{from}}",
-      "description": "GATE: Write PHPUnit tests for each plugin using /elgg-test-writer skill (entity CRUD, registrations, permissions, view rendering). Run tests on current version Docker. All tests must pass before proceeding — this is the safety net.",
+      "description": "GATE: Write PHPUnit tests for each plugin using /elgg-test-writer skill (entity CRUD, registrations, permissions, view rendering). Run tests on current version Docker. All tests must pass before proceeding — this is the safety net. When tracking with beads, pre-migration test issues must block the first migration step, and each migration step must block the next (tests → 3→4 → 4→5 → ...).",
       "type": "task",
       "priority": 1,
       "depends_on": ["setup-workspace"]
