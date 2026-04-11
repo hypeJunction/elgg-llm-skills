@@ -339,12 +339,19 @@ ELGG_PORT=${ELGG_PORT} npx playwright test
 - `elgg_get_session()->setLoggedInUser($user)` for session
 - `_elgg_services()->hooks` for hook service
 
-### Elgg 4.x+
+### Elgg 4.x
 - Plugin boots via `elgg-plugin.php` — test framework handles activation
-- `_elgg_services()->session_manager->setLoggedInUser($user)` for session
-- `_elgg_services()->events` — hooks and events unified
+- **Session API**: `elgg_get_session()->setLoggedInUser($user)` — same as 3.x
+- `_elgg_services()->session_manager` does NOT exist in 4.x — that's 5.x+
+- `_elgg_services()->hooks` for hook service
 - No closures in elgg-plugin.php (use class callbacks)
 - `canWriteToContainer()` requires `($uid, $type, $subtype)`
+- IntegrationTestCase uses DB prefix `c_i_elgg_` — must create test tables first
+
+### Elgg 5.x+
+- `_elgg_services()->session_manager->setLoggedInUser($user)` for session
+- `_elgg_services()->events` — hooks and events unified into events
+- `\Elgg\Event` replaces `\Elgg\Hook`
 
 ---
 
@@ -419,6 +426,28 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
 ```
 
 Use PHPUnit 9.x for PHP 7.4 (Elgg 3.x/4.x), PHPUnit 10.x for PHP 8.1+ (Elgg 5.x+).
+
+### Test database setup (REQUIRED for IntegrationTestCase)
+
+Elgg's `IntegrationTestCase` uses a separate DB prefix (`c_i_elgg_`) for test isolation. These tables must exist before integration tests can run. Create them by cloning the production schema:
+
+```bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+\$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
+\$stmt = \$pdo->query(\"SHOW TABLES LIKE 'elgg_%'\");
+\$tables = \$stmt->fetchAll(PDO::FETCH_COLUMN);
+foreach (\$tables as \$table) {
+    \$newTable = str_replace('elgg_', 'c_i_elgg_', \$table);
+    \$pdo->exec(\"DROP TABLE IF EXISTS \$newTable\");
+    \$row = \$pdo->query(\"SHOW CREATE TABLE \$table\")->fetch(PDO::FETCH_ASSOC);
+    \$pdo->exec(str_replace(\$table, \$newTable, \$row['Create Table']));
+}
+\$pdo->exec('INSERT INTO c_i_elgg_config SELECT * FROM elgg_config');
+echo 'Test tables created.' . PHP_EOL;
+"
+```
+
+**This only needs to be done once per Docker environment.** The test tables persist across test runs.
 
 ### Unit tests vs Integration tests
 
@@ -516,6 +545,12 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | Elgg 4 rejects plugin with `start.php` | 3.x plugins with start.php can only be tested in Elgg 3 Docker, not Elgg 4 |
 | `PluginBootstrap` missing `load()` method | Elgg 4.x requires `load()` — add empty `public function load() {}` to Bootstrap class |
 | Namespaced Bootstrap calls `elgg_*()` without `\` | Must use `\elgg_*()` in namespaced code — PHP resolves to namespace otherwise |
+| `session_manager` service used in Elgg 4.x tests | Elgg 4.x has `session` not `session_manager` — use `elgg_get_session()->setLoggedInUser()` in 4.x, `_elgg_services()->session_manager` is 5.x+ only |
+| Integration tests need test DB tables | IntegrationTestCase uses `c_i_elgg_` prefix — tables must be created first (clone schema from `elgg_` tables) |
+| All tests skipped: plugin not active | IntegrationTestCase auto-skips if `getPluginID()` returns a non-active plugin — make sure plugin is activated in Docker first |
+| `$this->createUser(['username' => 'x'])` has random name | `createUser()` uses Faker for display name — assert on `username` or `guid`, not `display_name` |
+| Search tests fail in isolation | Search hooks (`search:user`, `search:group`) require the search plugin — ensure it's active, or register test hooks |
+| `$this->createObject()` needs `subtype` in 4.x | Always pass `['subtype' => '...']` — Elgg 4.x requires subtypes for entity creation |
 
 ---
 
