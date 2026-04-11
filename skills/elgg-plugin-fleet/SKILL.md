@@ -23,6 +23,35 @@ learnings back into the skill documentation.
 
 ---
 
+## Container Infrastructure
+
+All build/test/migration operations run inside Docker containers — nothing executes on the host.
+See `elgg-migrate` skill for container setup details.
+
+| Operation | Container | Command pattern |
+|-----------|-----------|----------------|
+| AST migration | `migrate` | `docker compose run --rm migrate bin/migrate.php ...` |
+| Plugin activation | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg php -r "..."` |
+| PHPUnit tests | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg vendor/bin/phpunit ...` |
+| Playwright tests | `node` | `docker compose -f docker/elgg{N}/... --profile test run --rm node ...` |
+| Composer | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg composer ...` |
+
+### Debugging
+
+```bash
+# Check Elgg container logs for PHP errors
+docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+
+# Interactive MySQL
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+
+# Interactive shell
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+```
+
+---
+
 ## Usage
 
 ```
@@ -123,7 +152,7 @@ For each `todo` cell, run the pre-flight checks from `elgg-migrate` Phase 1.5:
 1. **Local branches** — `git branch -a | grep migrate`
 2. **Upstream branches** — `gh api repos/<owner>/<plugin>/branches`
 3. **Forks** — `gh api repos/<owner>/<plugin>/forks`
-4. **Packagist** — `composer show <vendor>/<plugin> --all`
+4. **Packagist** — run in Elgg container: `docker compose -f docker/elgg{N}/docker-compose.yml exec elgg composer show <vendor>/<plugin> --all`
 5. **Version-prefixed repos** — `gh search repos --owner <org> "Elgg{N}-<plugin>"`
 6. **Elgg plugin directory** — check https://elgg.org/plugins
 

@@ -19,6 +19,41 @@ description: >
 
 ---
 
+## Container Infrastructure
+
+All operations run inside Docker containers — nothing executes on the host machine.
+
+| Service | Purpose | Location |
+|---------|---------|----------|
+| `migrate` | AST migration rules (PHP 8.1 + php-parser) | Root `docker-compose.yml` |
+| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap, composer | `docker/elgg{N}/docker-compose.yml` |
+| `node` | Playwright and Vitest tests | `docker/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database | `docker/elgg{N}/docker-compose.yml` |
+
+### Debugging inside containers
+
+```bash
+# PHP/Apache error log
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+
+# Elgg container logs (startup, plugin activation)
+docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+
+# Interactive shell in Elgg container
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+
+# MySQL interactive query
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+
+# Container status and health
+docker compose -f docker/elgg{N}/docker-compose.yml ps
+
+# Rebuild after changes
+docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+```
+
+---
+
 # PART A: PREPARE (Development Workflow)
 
 This is iterative, safe to break. Done in a development environment with Docker
@@ -30,7 +65,8 @@ version step that can be applied to production with confidence.
 ### Step 0.1: Detect Current Elgg Version
 
 ```bash
-cat <project>/composer.json | grep "elgg/elgg"
+# Check composer.json from host filesystem (read-only, no PHP needed)
+grep "elgg/elgg" <project>/composer.json
 # Or from manifest: grep -r "elgg_release" <project>/mod/*/manifest.xml | head -5
 ```
 
@@ -105,8 +141,9 @@ gh api "repos/<fork-owner>/<plugin>/contents/elgg-plugin.php" -q '.name' 2>/dev/
 
 The official Elgg plugin directory and Packagist may have updated versions:
 ```bash
-# Packagist (Composer registry)
-composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
+# Packagist (Composer registry) — run in Elgg container
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
 # Elgg plugin directory: https://elgg.org/plugins — search by name
 # Community plugins: https://github.com/topics/elgg-plugin
 ```
@@ -218,11 +255,8 @@ docker compose exec elgg php vendor/bin/phpunit \
 ### Step 3.1: Automated Migration
 
 ```bash
-# From elgg-migrate root
-php bin/migrate.php rules/{from}-to-{to}/manifest.json ~/plugins-workspace/<plugin>
-
-# Or batch
-./bin/migrate-plugin.sh ~/plugins-workspace/<plugin> rules/{from}-to-{to}/manifest.json
+# From elgg-migrate root — runs in the migrate container
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 ```
 
 ### Step 3.2: Commit Automated Changes
@@ -237,7 +271,7 @@ git -C ~/plugins-workspace/<plugin> commit -m "migrate({N}.x): automated AST tra
 Review the `--report` output and apply each fix:
 
 ```bash
-php bin/migrate.php rules/{from}-to-{to}/manifest.json ~/plugins-workspace/<plugin> --dry-run --report
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report
 ```
 
 Commit each category of fixes separately.
@@ -245,7 +279,7 @@ Commit each category of fixes separately.
 ### Step 3.4: Migrate Custom Plugins In-Place
 
 ```bash
-php bin/migrate.php rules/{from}-to-{to}/manifest.json <project>/mod/<plugin>
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 git -C <project> add mod/<plugin>
 git -C <project> commit -m "migrate({N}.x): <plugin>"
 ```
@@ -296,7 +330,8 @@ else { foreach (\$failed as \$f) echo 'FAIL: ' . \$f . PHP_EOL; }
 ### Step 4.3: Validate Site Renders (GATE)
 
 ```bash
-curl -sL http://localhost:${ELGG_PORT}/ | grep -oP '<title>[^<]*</title>'
+docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+  curl -sL http://localhost/ | grep -oP '<title>[^<]*</title>'
 # Must NOT contain "Fatal Error"
 ```
 
@@ -306,10 +341,12 @@ curl -sL http://localhost:${ELGG_PORT}/ | grep -oP '<title>[^<]*</title>'
 causing the entire site stylesheet to be empty. Always verify CSS loads after migration.
 
 ```bash
-# Get cache timestamp from page
-TS=$(curl -sL http://localhost:${ELGG_PORT}/ | grep -oP 'cache/\K\d+' | head -1)
+# Get cache timestamp from page (curl inside Elgg container)
+TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+  curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
 # CSS MUST be > 1000 bytes
-SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT}/cache/${TS}/default/elgg.css")
+SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+  curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 echo "elgg.css: ${SIZE} bytes"
 # If 0 or 1, a plugin CSS view is breaking css-crush. See references/REFERENCE.md §18.
 ```
@@ -328,7 +365,8 @@ setup details, correct Elgg URLs/selectors, and known pitfalls (hypeWall interce
 foreach-by-reference crashes, OPcache stale code, etc.).
 
 ```bash
-cd e2e && ELGG_URL=http://localhost:${ELGG_PORT} npx playwright test
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/e2e && npm ci && npx playwright test"
 ```
 
 ### Step 4.6: Fix Issues, Iterate
@@ -359,7 +397,8 @@ and ensures you're on supported, patched versions.
 ### Step 6.1: List Outdated PHP Packages
 
 ```bash
-composer outdated --direct 2>&1
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer outdated --direct 2>&1
 ```
 
 ### Step 6.2: Upgrade One Package at a Time
@@ -369,17 +408,21 @@ frameworks, then core dependencies last):
 
 ```bash
 # 1. Check what will change
-composer update <vendor>/<package> --dry-run
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer update <vendor>/<package> --dry-run
 
 # 2. Read the package changelog for breaking changes
 # Check GitHub releases or CHANGELOG.md
 
 # 3. Apply the update
-composer update <vendor>/<package>
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer update <vendor>/<package>
 
 # 4. Run ALL tests
-vendor/bin/phpunit
-cd e2e && npx playwright test
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/e2e && npm ci && npx playwright test"
 
 # 5. Commit if tests pass
 git add composer.json composer.lock
@@ -422,30 +465,37 @@ are managed via Composer (npm-asset packages from asset-packagist.org).
 
 ```bash
 # Elgg manages JS via Composer, not npm directly
-composer show | grep "npm-asset\|bower-asset"
-composer outdated | grep "npm-asset\|bower-asset"
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer show | grep "npm-asset\|bower-asset"
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer outdated | grep "npm-asset\|bower-asset"
 ```
 
 ### Step 7.2: Upgrade One JS Package at a Time
 
 ```bash
 # 1. Check current version
-composer show npm-asset/jquery
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer show npm-asset/jquery
 
 # 2. Update
-composer update npm-asset/jquery
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer update npm-asset/jquery
 
-# 3. Run PHP tests (they may test view output that includes JS)
-vendor/bin/phpunit
+# 3. Run PHP tests
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit
 
 # 4. Run JS unit tests (if plugin has them)
-npm run test:js
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm ci && npm run test:js"
 
 # 5. Run E2E tests (catches JS runtime errors in browser)
-cd e2e && npx playwright test
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/e2e && npm ci && npx playwright test"
 
-# 6. Manual smoke test in browser — check console for JS errors
-# Open http://localhost:8380/ and check browser DevTools console
+# 6. Manual smoke test — check container logs for JS/PHP errors
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail /var/log/apache2/error.log
 
 # 7. Commit
 git add composer.json composer.lock
@@ -469,10 +519,8 @@ git commit -m "deps(js): upgrade npm-asset/jquery from X.Y to A.B"
 If plugins have their own `package.json`:
 
 ```bash
-cd mod/<plugin>
-npm outdated
-npm update <package>
-npm run test:js
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm outdated && npm update <package> && npm run test:js"
 ```
 
 ### Step 7.5: CSS Dependencies

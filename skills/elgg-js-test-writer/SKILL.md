@@ -24,6 +24,32 @@ Plugin JS must bring its own test setup. This skill provides that.
 
 ---
 
+## Container Infrastructure
+
+All JS test operations run inside Docker containers via the `node` service.
+
+```bash
+# Run Vitest (JS unit tests)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm ci && npm run test:js"
+
+# Run Vitest in watch mode
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm ci && npm run test:js:watch"
+
+# Interactive shell for debugging
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node bash
+
+# Combined with Playwright (browser-level)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
+```
+
+The `node` service uses the official Playwright Docker image (includes Node.js 20).
+Plugin files are mounted at `/plugins/<plugin>` via the `PLUGINS_DIR` environment variable.
+
+---
+
 ## Phase 1: SCAN PLUGIN JS
 
 Inventory all JavaScript files in the plugin:
@@ -55,9 +81,8 @@ For each JS file, identify:
 ### For Elgg 6.x (ES Modules) — Use Vitest
 
 ```bash
-cd <plugin>
-npm init -y
-npm install -D vitest jsdom
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm init -y && npm install -D vitest jsdom"
 ```
 
 **vitest.config.ts:**
@@ -98,7 +123,8 @@ export default defineConfig({
 AMD modules need a shim since Vitest runs ES modules natively:
 
 ```bash
-npm install -D vitest jsdom
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm install -D vitest jsdom"
 ```
 
 **tests/js/mocks/amd-shim.mjs:**
@@ -374,11 +400,11 @@ describe('wall post submission', () => {
 
 ## Phase 5: RUN TESTS
 
-### Locally
+### In Docker
 
 ```bash
-cd <plugin>
-npm run test:js
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin> && npm ci && npm run test:js"
 ```
 
 ### In CI (GitHub Actions)
@@ -403,10 +429,11 @@ For testing JS behavior in a real Elgg instance:
 
 ```bash
 # Start Elgg in Docker
-docker compose up -d
+docker compose -f docker/elgg{N}/docker-compose.yml up -d
 
-# Run Playwright tests (these exercise the full JS stack)
-cd e2e && npx playwright test
+# Run Playwright tests inside Docker (shares network with Elgg + DB)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 Playwright tests are better for:
@@ -418,7 +445,7 @@ Playwright tests are better for:
 Vitest is better for:
 - Pure logic (no DOM/server needed)
 - Individual module behavior
-- Fast iteration (no Docker needed)
+- Fast iteration (uses jsdom, no Elgg server needed — but still runs in the node container)
 
 ---
 

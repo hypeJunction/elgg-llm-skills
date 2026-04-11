@@ -15,8 +15,54 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 1. **SCAN BEFORE WRITING** — Read every PHP file in the plugin first. Never write tests for functionality you haven't read.
 2. **TEST BEHAVIOR, NOT IMPLEMENTATION** — Test what the plugin does, not how it does it.
 3. **MATCH THE ELGG VERSION** — Use the correct base classes and session API for the target version.
-4. **RUN IN DOCKER** — Integration tests require a running Elgg instance with database.
+4. **RUN IN DOCKER** — ALL operations (PHPUnit, Playwright, npm) run inside containers. Nothing executes on the host.
 5. **UI TESTS ARE MANDATORY** — Every plugin with user-facing features MUST have Playwright tests that assert both UI state and database state.
+
+---
+
+## Container Infrastructure
+
+All test operations run inside Docker containers.
+
+| Service | Purpose | Compose file |
+|---------|---------|-------------|
+| `elgg` | PHPUnit integration tests, Elgg bootstrap | `docker/elgg{N}/docker-compose.yml` |
+| `node` | Playwright browser tests, npm operations | `docker/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database (shared by elgg + node) | `docker/elgg{N}/docker-compose.yml` |
+
+### Debugging inside containers
+
+```bash
+# PHP/Apache error log (most common: fatal errors, undefined methods)
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+
+# Elgg container logs (startup, plugin activation)
+docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+
+# Interactive shell in Elgg container (inspect files, run ad-hoc PHP)
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+
+# Check which plugins are active
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+  require 'vendor/autoload.php';
+  \$app = \Elgg\Application::getInstance(); \$app->bootCore();
+  foreach (elgg_get_plugins('active') as \$p) echo \$p->getID() . PHP_EOL;
+"
+
+# MySQL interactive query
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+
+# Check test DB tables exist (IntegrationTestCase)
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg \
+  -e "SHOW TABLES LIKE 'c_i_elgg_%'"
+
+# Node/Playwright container — debug browser tests
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --debug"
+
+# Rebuild after Dockerfile changes
+docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+```
 
 ---
 
@@ -193,9 +239,11 @@ Playwright tests verify UI features end-to-end against a running Elgg instance i
 // tests/playwright/playwright.config.ts
 import { defineConfig } from '@playwright/test';
 
+// In Docker: ELGG_BASE_URL=http://elgg (container networking)
+// On host (not recommended): ELGG_BASE_URL=http://localhost:8480
 export default defineConfig({
   testDir: './tests',
-  baseURL: process.env.ELGG_BASE_URL || `http://localhost:${process.env.ELGG_PORT || 8480}`,
+  baseURL: process.env.ELGG_BASE_URL || 'http://elgg',
   timeout: 30000,
   use: {
     ignoreHTTPSErrors: true,
@@ -207,10 +255,11 @@ export default defineConfig({
 ```
 
 **CRITICAL Playwright notes:**
-- Default port is `8480` for Elgg 4.x Docker (not 8380 — that's Elgg 3.x)
+- Tests run inside the `node` Docker service, NOT on the host machine
+- Default base URL is `http://elgg` (Docker container networking)
+- DB host is `db` on port `3306` (internal Docker networking, not host-mapped ports)
 - Use `workers: 1` — parallel workers cause DB race conditions with shared Elgg state
-- DB port from host is typically mapped (e.g., `3307` for Elgg 4 Docker, not `3306`)
-- Check `docker-compose.yml` for actual port mappings before writing helpers
+- Environment variables (`ELGG_BASE_URL`, `ELGG_DB_HOST`, etc.) are set in docker-compose.yml
 
 #### Elgg helpers
 
@@ -219,11 +268,11 @@ export default defineConfig({
 import { Page, expect } from '@playwright/test';
 import mysql from 'mysql2/promise';
 
-// DB port is the HOST-MAPPED port from docker-compose.yml, NOT 3306
-// Check: docker compose -f docker/elgg4/docker-compose.yml port db 3306
+// In Docker: node container connects to db service directly on port 3306
+// Environment variables are set in docker-compose.yml node service
 const DB_CONFIG = {
-  host: process.env.ELGG_DB_HOST || 'localhost',
-  port: Number(process.env.ELGG_DB_PORT || 3307),
+  host: process.env.ELGG_DB_HOST || 'db',
+  port: Number(process.env.ELGG_DB_PORT || 3306),
   user: process.env.ELGG_DB_USER || 'elgg',
   password: process.env.ELGG_DB_PASS || 'elgg',
   database: process.env.ELGG_DB_NAME || 'elgg',
@@ -411,14 +460,13 @@ echo 'Done.' . PHP_EOL;
 #### Running tests
 
 ```bash
-# PHPUnit — in Docker
+# PHPUnit — in Elgg container
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml --no-coverage
 
-# Playwright — from host (needs browser + network access to Docker)
-cd <plugin>/tests/playwright
-npm install
-ELGG_PORT=${ELGG_PORT} ELGG_DB_PORT=${DB_PORT} npx playwright test
+# Playwright — in node container (shares Docker network with elgg + db)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 #### After activating/deactivating plugins, refresh test data:
@@ -668,7 +716,7 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | Testing implementation details | Test behavior: "entity saved" not "SQL query ran" |
 | Missing `canWriteToContainer` args in 4.x | Always pass `($uid, $type, $subtype)` |
 | Playwright tests only assert UI | MUST also query database to verify side effects — UI can lie |
-| Hardcoded ports in Playwright tests | Use `ELGG_PORT` env var — Docker ports differ per Elgg version |
+| Hardcoded ports in Playwright tests | Use `ELGG_BASE_URL` env var — in Docker, base URL is `http://elgg` |
 | Playwright tests not cleaning up test data | Create unique test data per run, or use DB transactions/cleanup |
 | Playwright tests skip login | Most Elgg pages require auth — always `loginAs()` first |
 | No DB assertion after form submit | Form could "succeed" (200) without actually saving — always verify DB |
