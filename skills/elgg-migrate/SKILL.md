@@ -114,18 +114,29 @@ Quick heuristics to determine what version a plugin already targets:
 
 | Indicator | Version |
 |-----------|---------|
-| Has `start.php` with `elgg_register_event_handler('init', ...)` | 2.x or 3.x |
+| Has `start.php` with `elgg_register_event_handler('init', ...)` at top level | 2.x |
+| Has `start.php` that returns a closure + has `elgg-plugin.php` | 3.x |
 | Has `manifest.xml` but no `elgg-plugin.php` | 2.x |
-| Has `elgg-plugin.php` with `'hooks'` key | 3.x or 4.x |
+| Has `manifest.xml` AND `elgg-plugin.php` | 3.x |
+| Has `elgg-plugin.php` with `'hooks'` key, no start.php, no manifest.xml | 4.x |
 | Has `elgg-plugin.php` with `'events'` key only (no `'hooks'`) | 5.x+ |
-| Uses `\Elgg\Hook` type hint in callbacks | 4.x |
+| Has `'plugin'` key in elgg-plugin.php (replaces manifest.xml) | 4.x+ |
+| Has `'capabilities'` in entity registration | 4.x+ |
+| Has `'group_tools'` key in elgg-plugin.php | 4.x+ |
+| Has `'notifications'` key in elgg-plugin.php | 4.x+ |
+| Uses `\Elgg\Hook` type hint in callbacks | 3.x or 4.x |
 | Uses `\Elgg\Event` type hint in callbacks | 5.x+ |
-| Uses `elgg_register_plugin_hook_handler()` | ≤4.x (deprecated), removed in 6.x |
+| Uses `elgg_register_plugin_hook_handler()` in start.php | 2.x or 3.x |
+| Uses `elgg_register_page_handler()` | 2.x (removed in 3.x) |
+| Uses `elgg_register_library()` / `elgg_load_library()` | 2.x (removed in 3.x) |
+| Uses `add_group_tool_option()` | 2.x (use service in 3.x, declarative in 4.x) |
 | Uses `elgg_define_js()` / `elgg_require_js()` | ≤5.x, removed in 6.x |
 | Uses `elgg_register_esm()` / `elgg_import_esm()` | 6.x+ |
-| No `start.php`, no `manifest.xml`, no `views.php` | 4.x+ |
 | Uses AMD `define()/require()` in JS | ≤5.x |
 | Uses ES module `import/export` in JS | 6.x+ |
+| Has `'restorable'` in entity capabilities | 6.x+ |
+| Uses `elgg_generate_url()` for URLs | 3.x+ |
+| Uses hardcoded URL strings (e.g., `"blog/owner/$name"`) | 2.x |
 
 **Decision tree:**
 - If the plugin is already at the target version → **skip migration**
