@@ -26,7 +26,8 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 |------|-----------|-----------------|-------------|
 | 2.x | `PHPUnit\Framework\TestCase` | Custom bootstrap | N/A |
 | 3.x | `\Elgg\UnitTestCase` | `\Elgg\IntegrationTestCase` | `elgg_get_session()->setLoggedInUser()` |
-| 4.x+ | `\Elgg\UnitTestCase` | `\Elgg\IntegrationTestCase` | `_elgg_services()->session_manager->setLoggedInUser()` |
+| 4.x | `\Elgg\UnitTestCase` | `\Elgg\IntegrationTestCase` | `elgg_get_session()->setLoggedInUser()` |
+| 5.x+ | `\Elgg\UnitTestCase` | `\Elgg\IntegrationTestCase` | `_elgg_services()->session_manager->setLoggedInUser()` |
 
 ### What to test
 
@@ -66,40 +67,107 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 Use `\Elgg\IntegrationTestCase` for most tests. Key helpers:
 
 ```php
-$user = $this->createUser();          // auto-cleaned
+$user = $this->createUser();          // auto-cleaned after test
 $group = $this->createGroup();
-$object = $this->createObject(['subtype' => 'blog']);
-$response = $this->executeAction('action/name', ['key' => 'val']);
+$object = $this->createObject(['subtype' => 'blog']);  // subtype REQUIRED in 4.x
 ```
 
-**Entity CRUD:**
+**IMPORTANT**: `$this->executeAction()` does NOT exist in `IntegrationTestCase` — it's only in `ActionResponseTestCase`. For integration tests, test entity behavior directly instead of through actions.
+
+**Entity CRUD (4.x):**
 ```php
 public function testEntityClassMapping(): void {
-    $entity = $this->createObject(['subtype' => Post::SUBTYPE]);
-    $this->assertInstanceOf(Post::class, get_entity($entity->guid));
+    $entity = $this->createObject(['subtype' => 'blog']);
+    $loaded = get_entity($entity->guid);
+    $this->assertInstanceOf(\ElggObject::class, $loaded);
+    $this->assertEquals('blog', $loaded->getSubtype());
 }
 ```
 
-**Actions:**
+**Entity creation with metadata (4.x):**
 ```php
-public function testActionCreatesEntity(): void {
+public function testEntityMetadataPersists(): void {
     $user = $this->createUser();
-    _elgg_services()->session_manager->setLoggedInUser($user);
-    $this->executeAction('myplugin/save', ['title' => 'Test']);
-    $entities = elgg_get_entities(['type' => 'object', 'subtype' => 'mytype', 'owner_guid' => $user->guid]);
-    $this->assertCount(1, $entities);
+    $entity = new \ElggObject();
+    $entity->setSubtype('mytype');
+    $entity->owner_guid = $user->guid;
+    $entity->container_guid = elgg_get_site_entity()->guid;
+    $entity->access_id = ACCESS_PUBLIC;
+    $entity->title = 'Test Entity';
+    $entity->custom_field = 'custom_value';
+    $this->assertTrue($entity->save() !== false);
+
+    // Reload from DB to verify persistence
+    _elgg_services()->entityCache->delete($entity->guid);
+    $loaded = get_entity($entity->guid);
+    $this->assertEquals('custom_value', $loaded->custom_field);
+    $entity->delete();
 }
 ```
 
-**Permissions:**
+**Permissions (4.x):**
 ```php
 public function testNonOwnerCannotEdit(): void {
     $owner = $this->createUser();
     $other = $this->createUser();
-    $post = $this->createObject(['subtype' => Post::SUBTYPE, 'owner_guid' => $owner->guid]);
-    _elgg_services()->session_manager->setLoggedInUser($other);
-    $this->assertFalse($post->canEdit());
+    $post = $this->createObject(['subtype' => 'blog', 'owner_guid' => $owner->guid]);
+    $this->assertTrue($post->canEdit($owner->guid));
+    $this->assertFalse($post->canEdit($other->guid));
 }
+```
+
+**Relationships (4.x):**
+```php
+public function testRelationshipCreated(): void {
+    $user = $this->createUser();
+    $entity = $this->createObject(['subtype' => 'blog']);
+    $user->addRelationship($entity->guid, 'viewed');
+    $this->assertTrue($user->hasRelationship($entity->guid, 'viewed'));
+}
+```
+
+**Hook handler testing (4.x):**
+```php
+public function testHookModifiesValue(): void {
+    $hook_called = false;
+    $handler = function (\Elgg\Hook $hook) use (&$hook_called) {
+        $hook_called = true;
+        return $hook->getValue();
+    };
+    elgg_register_plugin_hook_handler('register', 'menu:test', $handler);
+    elgg_trigger_plugin_hook('register', 'menu:test', [], []);
+    $this->assertTrue($hook_called);
+    elgg_unregister_plugin_hook_handler('register', 'menu:test', $handler);
+}
+```
+
+**View rendering (4.x — integration tests only):**
+```php
+public function testViewRenders(): void {
+    $output = elgg_view('my_plugin/my_view', ['key' => 'value']);
+    $this->assertIsString($output);
+    $this->assertNotEmpty($output);
+}
+```
+
+**Plugin active skip workaround:**
+
+IntegrationTestCase auto-skips tests if the plugin isn't active in the test DB. This frequently happens because the test DB (`c_i_elgg_` prefix) has separate plugin state. Two fixes:
+
+```php
+// Option 1: Override getPluginID to disable the check
+public function getPluginID(): string {
+    return ''; // empty string = skip the plugin-active check
+}
+
+// Option 2: Load plugin functions manually in up()
+public function up() {
+    $libFile = dirname(__DIR__, 5) . '/lib/functions.php';
+    if (!function_exists('my_plugin_function')) {
+        require_once $libFile;
+    }
+}
+public function down() {}
 ```
 
 ### Phase 3.5: WRITE PLAYWRIGHT TESTS
@@ -127,13 +195,22 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  baseURL: process.env.ELGG_BASE_URL || `http://localhost:${process.env.ELGG_PORT || 8380}`,
+  baseURL: process.env.ELGG_BASE_URL || `http://localhost:${process.env.ELGG_PORT || 8480}`,
+  timeout: 30000,
   use: {
     ignoreHTTPSErrors: true,
   },
+  // Sequential — tests may share DB state
+  workers: 1,
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });
 ```
+
+**CRITICAL Playwright notes:**
+- Default port is `8480` for Elgg 4.x Docker (not 8380 — that's Elgg 3.x)
+- Use `workers: 1` — parallel workers cause DB race conditions with shared Elgg state
+- DB port from host is typically mapped (e.g., `3307` for Elgg 4 Docker, not `3306`)
+- Check `docker-compose.yml` for actual port mappings before writing helpers
 
 #### Elgg helpers
 
@@ -142,9 +219,11 @@ export default defineConfig({
 import { Page, expect } from '@playwright/test';
 import mysql from 'mysql2/promise';
 
+// DB port is the HOST-MAPPED port from docker-compose.yml, NOT 3306
+// Check: docker compose -f docker/elgg4/docker-compose.yml port db 3306
 const DB_CONFIG = {
   host: process.env.ELGG_DB_HOST || 'localhost',
-  port: Number(process.env.ELGG_DB_PORT || 3306),
+  port: Number(process.env.ELGG_DB_PORT || 3307),
   user: process.env.ELGG_DB_USER || 'elgg',
   password: process.env.ELGG_DB_PASS || 'elgg',
   database: process.env.ELGG_DB_NAME || 'elgg',
@@ -300,15 +379,59 @@ test('admin settings page renders', async ({ page }) => {
 
 ### Phase 4: RUN AND VERIFY
 
+#### PHPUnit setup checklist (one-time per Docker env)
+
+Before running PHPUnit for the first time in a Docker environment:
+
 ```bash
-# PHPUnit — in Docker (integration tests need database)
+# 1. Install PHPUnit (not included in Elgg Docker images)
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml
+  composer require --dev phpunit/phpunit:^9.6 --no-interaction
+
+# 2. Create test DB tables (IntegrationTestCase uses c_i_elgg_ prefix)
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+\$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
+\$tables = \$pdo->query(\"SHOW TABLES LIKE 'elgg_%'\")->fetchAll(PDO::FETCH_COLUMN);
+foreach (\$tables as \$t) {
+    \$new = str_replace('elgg_', 'c_i_elgg_', \$t);
+    \$pdo->exec(\"DROP TABLE IF EXISTS \$new\");
+    \$r = \$pdo->query(\"SHOW CREATE TABLE \$t\")->fetch(PDO::FETCH_ASSOC);
+    \$pdo->exec(str_replace(\$t, \$new, \$r['Create Table']));
+}
+foreach (['config','entities','metadata','private_settings','entity_relationships'] as \$t) {
+    \$pdo->exec(\"INSERT INTO c_i_elgg_\$t SELECT * FROM elgg_\$t\");
+}
+echo 'Done.' . PHP_EOL;
+"
+
+# 3. Deactivate plugins with unmigrated hook signatures (they crash tests)
+#    Common offender: images_ui (old 4-arg hook callbacks)
+```
+
+#### Running tests
+
+```bash
+# PHPUnit — in Docker
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml --no-coverage
 
 # Playwright — from host (needs browser + network access to Docker)
 cd <plugin>/tests/playwright
 npm install
-ELGG_PORT=${ELGG_PORT} npx playwright test
+ELGG_PORT=${ELGG_PORT} ELGG_DB_PORT=${DB_PORT} npx playwright test
+```
+
+#### After activating/deactivating plugins, refresh test data:
+
+```bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+\$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
+foreach (['entities','metadata','private_settings','entity_relationships','config'] as \$t) {
+    \$pdo->exec(\"TRUNCATE TABLE c_i_elgg_\$t\");
+    \$pdo->exec(\"INSERT INTO c_i_elgg_\$t SELECT * FROM elgg_\$t\");
+}
+echo 'Refreshed.' . PHP_EOL;
+"
 ```
 
 ### Coverage checklist
@@ -447,7 +570,20 @@ echo 'Test tables created.' . PHP_EOL;
 "
 ```
 
-**This only needs to be done once per Docker environment.** The test tables persist across test runs.
+**CRITICAL**: You must also copy entity/metadata/relationship data so plugins are recognized in the test environment:
+
+```bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+\$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
+foreach (['entities','metadata','private_settings','entity_relationships','config'] as \$t) {
+    \$pdo->exec(\"TRUNCATE TABLE c_i_elgg_\$t\");
+    \$pdo->exec(\"INSERT INTO c_i_elgg_\$t SELECT * FROM elgg_\$t\");
+}
+echo 'Test data refreshed.' . PHP_EOL;
+"
+```
+
+**Re-run this refresh** after activating/deactivating plugins or changing plugin settings. The test DB is a snapshot — it doesn't auto-sync with the production prefix.
 
 ### Unit tests vs Integration tests
 
@@ -526,7 +662,7 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 
 | Mistake | Fix |
 |---------|-----|
-| Using `elgg_get_session()` in 4.x tests | Use `_elgg_services()->session_manager` |
+| Using `_elgg_services()->session_manager` in 4.x tests | `session_manager` is 5.x+ only — use `elgg_get_session()->setLoggedInUser()` in 3.x/4.x |
 | Running integration tests without Docker | Integration tests need database — use Docker |
 | Not cleaning up entities | Use `$this->createObject()` — auto-cleaned by Seeding trait |
 | Testing implementation details | Test behavior: "entity saved" not "SQL query ran" |
@@ -551,6 +687,12 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | `$this->createUser(['username' => 'x'])` has random name | `createUser()` uses Faker for display name — assert on `username` or `guid`, not `display_name` |
 | Search tests fail in isolation | Search hooks (`search:user`, `search:group`) require the search plugin — ensure it's active, or register test hooks |
 | `$this->createObject()` needs `subtype` in 4.x | Always pass `['subtype' => '...']` — Elgg 4.x requires subtypes for entity creation |
+| Using `$this->executeAction()` in IntegrationTestCase | `executeAction()` is only in `ActionResponseTestCase`, not `IntegrationTestCase` — test entity behavior directly |
+| Other plugins' old-style hooks crash tests | Plugins with unmigrated 4-arg hook signatures (e.g., `images_ui`) crash during integration tests — deactivate them before running |
+| Test DB not refreshed after plugin changes | After activating/deactivating plugins, re-copy data from `elgg_` → `c_i_elgg_` tables or tests will skip/fail |
+| `$this->getAdmin()` returns null | Call `$this->createUser()` and `$user->makeAdmin()` instead — or check `$this->getAdmin()` result before using |
+| Entity delete in test causes cascade crashes | Other active plugins' event handlers fire on delete — if a handler has wrong signature, it crashes. Deactivate problematic plugins. |
+| `elgg_get_entities()` search by metadata title | Use `'metadata_name_value_pairs'` for metadata search, but `title` is an attribute, not metadata — query by owner_guid + subtype + sort instead |
 
 ---
 
