@@ -1,0 +1,54 @@
+{
+  "name": "elgg-plugin-fleet",
+  "description": "Migration matrix for a fleet of Elgg plugins across major versions. Creates one issue per plugin per version step with proper dependencies.",
+  "version": "1.0.0",
+  "phase": "liquid",
+  "variables": {
+    "plugins_dir": {
+      "description": "Path to the directory containing plugin repos",
+      "required": true
+    },
+    "from": {
+      "description": "Starting Elgg major version (e.g., 3.x)",
+      "required": true
+    },
+    "to": {
+      "description": "Target Elgg major version (e.g., 7.x)",
+      "required": true
+    }
+  },
+  "instructions": "This formula is dynamic — it scans {{plugins_dir}} to discover plugins and their current versions, then creates issues only for the migration steps that are needed. Run the scan step first, then create issues based on the matrix output.",
+  "steps": [
+    {
+      "id": "scan",
+      "title": "Scan: inventory plugins in {{plugins_dir}} and build migration matrix",
+      "description": "For each plugin in {{plugins_dir}}: (1) Detect current version from git branches, elgg-plugin.php, start.php, manifest.xml. (2) Check for existing migrate/elgg-* branches. (3) Check upstream GitHub for forks and branches with migrations. (4) Check Packagist for upgraded versions. (5) Output a matrix: plugin × version step with status (done/todo/skip/upstream). This step does NOT create migration issues — it produces the matrix for review.",
+      "type": "task",
+      "priority": 0
+    },
+    {
+      "id": "create-issues",
+      "title": "Create beads issues for all 'todo' cells in the migration matrix",
+      "description": "For each 'todo' cell in the matrix, create a beads issue: 'Migrate <plugin> <from>→<to>'. Add dependencies so each version step depends on the previous (e.g., 4→5 depends on 3→4 for the same plugin). Use parallel subagents for bulk creation.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["scan"]
+    },
+    {
+      "id": "migrate-batch",
+      "title": "Migrate: work through ready issues one version step at a time",
+      "description": "Pick issues from 'bd ready'. For each: (1) Run pre-flight checks (elgg-migrate Phase 1.5). (2) Execute migration (elgg-migrate Phase 2). (3) Document any learnings in the skill or manifest. (4) Close the issue. Repeat until all issues for the current version step are done, then advance to the next step.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["create-issues"]
+    },
+    {
+      "id": "review-learnings",
+      "title": "Review: update skills and manifests with learnings from this batch",
+      "description": "After each version step completes for all plugins: (1) Review bd memories for patterns. (2) Add new common mistakes to elgg-migrate/SKILL.md. (3) Add new rules to manifest.json if patterns repeat across 3+ plugins. (4) Update reference docs if new breaking changes discovered. (5) Commit skill/manifest changes to elgg-migrate repo.",
+      "type": "task",
+      "priority": 2,
+      "depends_on": ["migrate-batch"]
+    }
+  ]
+}

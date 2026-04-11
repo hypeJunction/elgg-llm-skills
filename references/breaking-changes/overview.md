@@ -10,6 +10,7 @@
 | 4.x     | >=7.4          | 4.3           | PHP 8 compat, elgg-plugin.php, type hints |
 | 5.x     | >=8.0          | 5.1           | Hooks/events merge, private settings removed |
 | 6.x     | >=8.1          | 6.1           | ES modules, deleted state, MySQL 8.0 |
+| 7.x     | >=8.3          | 7.0           | Abstract ElggObject, CSS Crush removed, Symfony Mailer, FA7 |
 
 ---
 
@@ -629,6 +630,87 @@ Even with all 45 plugins activating successfully, the site may still 500. Plugin
 
 ---
 
+## 6.x to 7.0 Breaking Changes
+
+### PHP & Infrastructure
+- PHP 8.3+ required (tests added for PHP 8.5)
+- PHPUnit 12.5
+- `laminas/laminas-mail` replaced by `symfony/mailer`
+- Font Awesome updated to v7
+- CKEditor updated to v47
+- CSS Crush preprocessing completely removed
+
+### ElggObject Now Abstract
+- Cannot directly instantiate `ElggObject` — must use subclasses
+- Every object entity requires a registered entity class
+
+### CSS Crush Removed
+- CSS files served as-is (no preprocessing)
+- CSS Crush variables (`$(var)`) must be replaced with native CSS custom properties (`var(--elgg-var)`)
+- Media query variables must be hardcoded
+- `'vars:compiler', 'css'` event removed
+- `css_compiler_options` config removed
+
+### Cache Backends Removed
+- Built-in Redis support removed
+- Built-in Memcached support removed
+- Config options removed: `memcache`, `memcache_namespace_prefix`, `memcache_servers`, `redis`, `redis_options`, `redis_servers`
+
+### Email System (Symfony Mailer)
+- `Elgg\Email\Address` removed → `Symfony\Component\Mime\Address`
+- `Elgg\Email\HtmlPart` removed
+- `Elgg\Email\PlainTextPart` removed
+- `'zend:message', 'system:email'` event → `'message', 'system:email'`
+- `emailer_sendmail_settings` and `emailer_smtp_settings` config removed
+
+### Notifications
+- Handler classes moved: `*EventHandler` → `Handlers\*` or `Events\*` subnamespaces
+- `elgg_register_notification_event()`: `array $actions` → `string $action` (singular)
+- `elgg_unregister_notification_event()` now requires `$handler` parameter
+
+### Core Plugin Changes
+- Forms/actions renamed: `save` → `edit`, `upload` → `edit` (blog, bookmarks, discussion, file)
+- Group routes dropped `subpage` variable
+- Members routes: `collection:user:user` → `collection:user:user:all`, `search:user:user` → `collection:user:user:search`
+- Messages: `recipients` → `recipient` (singular)
+- External pages plugin completely rewritten (single `external_page` subtype)
+- Twitter profile field removed
+- Likes visibility restricted to content owners by default
+
+### Response Events
+- `ajax_response` event → `ajax_results`
+- Response/ajax event types use `route_name` instead of path
+- Legacy `forward` event removed → use `response` event
+
+### Default Config Changes
+- Trash enabled by default
+- `min_password_length` changed to 16
+- `elgg_list_entities()` limit from query string clamped to min 1, max 100
+
+### River System
+- River activity controlled by `river_emittable` capability in `elgg-plugin.php`
+
+### Webservices
+- REST responses include `Content-Disposition: attachment` header
+- Error responses return proper HTTP status codes (404, 403, 500) instead of 200
+
+### Removed CSS Classes
+- `elgg-button-special`
+- `elgg-button-action-done`
+
+### Action Renames
+- `admin/site/flush_cache` → `admin/site/cache/clear`
+
+---
+
+## Plugin File Structure (7.x)
+Same as 6.x but:
+- CSS Crush preprocessing removed — native CSS only
+- `river_emittable` capability for entities
+- ES modules continue (no AMD)
+
+---
+
 ## Source URLs
 
 - Upgrade notes index: https://learn.elgg.org/en/stable/appendix/upgrade-notes.html
@@ -638,4 +720,5 @@ Even with all 45 plugins activating successfully, the site may still 500. Plugin
 - 4.x to 5.0: https://learn.elgg.org/en/stable/appendix/upgrade-notes/4.x-to-5.0.html
 - 5.x to 6.0: https://learn.elgg.org/en/stable/appendix/upgrade-notes/5.x-to-6.0.html
 - CHANGELOG: https://github.com/Elgg/Elgg/blob/6.1/CHANGELOG.md
-- Branches: 1.9, 1.10, 1.11, 1.12, 2.0-2.3, 3.0-3.3, 4.0-4.3, 5.0-5.1, 6.0-6.1
+- 6.x to 7.0: https://learn.elgg.org/en/latest/appendix/upgrade-notes/6.x-to-7.0.html
+- Branches: 1.9, 1.10, 1.11, 1.12, 2.0-2.3, 3.0-3.3, 4.0-4.3, 5.0-5.1, 6.0-6.1, 7.0

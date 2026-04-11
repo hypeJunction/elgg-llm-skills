@@ -1,0 +1,137 @@
+{
+  "name": "elgg-site-upgrade",
+  "description": "Upgrade an entire Elgg installation between major versions following the elgg-site-upgrade skill workflow",
+  "version": "1.0.0",
+  "phase": "liquid",
+  "variables": {
+    "project": {
+      "description": "Path to the Elgg project being upgraded",
+      "required": true
+    },
+    "from": {
+      "description": "Source Elgg major version (e.g. 2.x)",
+      "required": true
+    },
+    "to": {
+      "description": "Target Elgg major version (e.g. 3.x)",
+      "required": true
+    },
+    "port": {
+      "description": "Docker port for the target version environment",
+      "default": "8380"
+    }
+  },
+  "steps": [
+    {
+      "id": "assess",
+      "title": "Assess: detect version and inventory plugins ({{from}} → {{to}})",
+      "description": "Detect current Elgg version from composer.json/manifest.xml. Map upgrade path. Inventory all plugins (core, composer-managed, custom/private). Categorize each plugin. Find upgraded versions upstream if available.",
+      "type": "task",
+      "priority": 1
+    },
+    {
+      "id": "setup-workspace",
+      "title": "Setup workspace: branches and plugin repos for {{to}}",
+      "description": "Clone plugin repos to workspace. Symlink into project. Create migrate/elgg-{{to}} branches in project and each plugin repo. Record plugin activation order to mod/.plugin-order.txt.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["assess"]
+    },
+    {
+      "id": "test-baseline",
+      "title": "Test baseline: write and run tests on {{from}}",
+      "description": "GATE: Write PHPUnit tests for each plugin using /elgg-test-writer skill (entity CRUD, registrations, permissions, view rendering). Run tests on current version Docker. All tests must pass before proceeding — this is the safety net.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["setup-workspace"]
+    },
+    {
+      "id": "migrate-ast",
+      "title": "Migrate: run automated AST transformations for {{from}} → {{to}}",
+      "description": "Run: php bin/migrate.php rules/{{from}}-to-{{to}}/manifest.json <plugin> for each plugin. Commit: migrate({{to}}): automated AST transformations.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["test-baseline"]
+    },
+    {
+      "id": "migrate-llm",
+      "title": "Migrate: apply LLM-guided fixes for {{from}} → {{to}}",
+      "description": "Run --dry-run --report for each plugin. Apply fixes by category: subtable references, removed functions, entity constructors, raw SQL to QueryBuilder, removed hooks/events, layout views, metadata changes, icon handling, etc. Commit each category separately.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["migrate-ast"]
+    },
+    {
+      "id": "migrate-syntax",
+      "title": "Verify PHP syntax after migration",
+      "description": "Run: find <plugin> -name '*.php' -not -path '*/vendor/*' -exec php -l {} \\; for each plugin. Fix any syntax errors.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["migrate-llm"]
+    },
+    {
+      "id": "verify-docker",
+      "title": "GATE: verify all plugins activate in Docker ({{to}})",
+      "description": "Boot Docker for target version on port {{port}}. Activate all plugins in order from .plugin-order.txt. ALL must activate without fatal errors. Site must render (curl returns >100 bytes, no Fatal Error in title). No PHP errors in error.log.",
+      "type": "task",
+      "priority": 0,
+      "depends_on": ["migrate-syntax"]
+    },
+    {
+      "id": "run-phpunit",
+      "title": "GATE: PHPUnit tests pass on {{to}}",
+      "description": "Run PHPUnit tests for each plugin in Docker: docker compose exec elgg vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml. All tests must pass.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["verify-docker"]
+    },
+    {
+      "id": "run-e2e",
+      "title": "GATE: E2E smoke tests pass on {{to}}",
+      "description": "Run Playwright E2E tests: cd e2e && ELGG_URL=http://localhost:{{port}} npx playwright test. All tests must pass.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["verify-docker"]
+    },
+    {
+      "id": "fix-issues",
+      "title": "Fix failures from Docker/PHPUnit/E2E verification",
+      "description": "Iterate: fix each failure, commit the fix, re-run the failing gate. Repeat until all gates pass.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["run-phpunit", "run-e2e"]
+    },
+    {
+      "id": "expand-coverage",
+      "title": "Expand test coverage for {{to}}",
+      "description": "Add tests for untested plugin features using /elgg-test-writer skill. Coverage checklist: entity class mapping, entity CRUD, each action tested, each hook/event handler tested, key views render, routes resolve, permissions enforced.",
+      "type": "task",
+      "priority": 2,
+      "depends_on": ["fix-issues"]
+    },
+    {
+      "id": "harden-php-deps",
+      "title": "Harden PHP dependencies",
+      "description": "List outdated packages (composer outdated --direct). Upgrade one at a time in risk order: dev deps → utilities → mail/HTTP → image → template → database → framework → Elgg patch. Run all tests after each upgrade. Commit each separately.",
+      "type": "task",
+      "priority": 2,
+      "depends_on": ["fix-issues"]
+    },
+    {
+      "id": "harden-js-deps",
+      "title": "Harden JS/CSS dependencies",
+      "description": "List JS deps (composer show | grep npm-asset). Upgrade one at a time in risk order: normalize.css → sprintf-js → cropperjs → jquery-colorbox → jquery-ui → jQuery → tagify. Run PHP + E2E tests after each. Check browser console for JS errors.",
+      "type": "task",
+      "priority": 2,
+      "depends_on": ["harden-php-deps"]
+    },
+    {
+      "id": "final-verification",
+      "title": "Final verification: all gates pass for {{to}}",
+      "description": "Checklist: All version steps complete. All PHP deps at latest stable. All JS/CSS deps at latest stable. Full test suite green (PHPUnit + E2E). Docker boots with all plugins active. No PHP errors in logs. No JS console errors in browser.",
+      "type": "task",
+      "priority": 0,
+      "depends_on": ["expand-coverage", "harden-php-deps", "harden-js-deps"]
+    }
+  ]
+}

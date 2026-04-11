@@ -1,0 +1,91 @@
+{
+  "name": "plugin-test-scaffold",
+  "description": "Generate PHPUnit test infrastructure and initial tests for an Elgg plugin after migration",
+  "version": "1.0.0",
+  "phase": "liquid",
+  "variables": {
+    "plugin_path": {
+      "description": "Absolute path to the plugin directory",
+      "required": true
+    },
+    "plugin_id": {
+      "description": "Plugin ID (lowercase, matches composer.json name)",
+      "required": true
+    },
+    "elgg_version": {
+      "description": "Target Elgg major version (3, 4, 5, or 6)",
+      "required": true,
+      "default": "4"
+    },
+    "docker_container": {
+      "description": "Docker container name for running tests",
+      "required": true,
+      "default": "elgg4-elgg-1"
+    }
+  },
+  "steps": [
+    {
+      "id": "scan-plugin",
+      "title": "Scan plugin for testable features",
+      "description": "Read elgg-plugin.php, all classes, actions, views. Catalog: entity types, actions, hooks/events, routes, permissions hooks. Create a test plan listing what to test.",
+      "type": "task",
+      "priority": 1
+    },
+    {
+      "id": "create-test-dirs",
+      "title": "Create test directory structure",
+      "description": "Create: tests/phpunit.xml, tests/phpunit/integration/<Namespace>/. Use the template from elgg-test-writer skill. The phpunit.xml must reference the Elgg test bootstrap.",
+      "type": "task",
+      "priority": 2,
+      "depends_on": ["scan-plugin"]
+    },
+    {
+      "id": "write-entity-tests",
+      "title": "Write entity class and CRUD tests",
+      "description": "For each entity type in elgg-plugin.php 'entities' key: test class mapping (createObject + get_entity returns correct class), test save/delete lifecycle, test custom methods. Use $this->createObject(['subtype' => '...']).",
+      "type": "task",
+      "priority": 3,
+      "depends_on": ["create-test-dirs"]
+    },
+    {
+      "id": "write-action-tests",
+      "title": "Write action tests",
+      "description": "For each action in elgg-plugin.php 'actions' key: test with valid input (expect success), test with missing required input (expect error), test permission check (non-owner gets 403). Use $this->executeAction('action/name', [...]).",
+      "type": "task",
+      "priority": 3,
+      "depends_on": ["create-test-dirs"]
+    },
+    {
+      "id": "write-hook-tests",
+      "title": "Write hook/event handler tests",
+      "description": "For each hook/event registered in elgg-plugin.php or Bootstrap: test that the handler executes without errors when triggered with valid input. For menu hooks, verify menu items are added. For permission hooks, verify access control.",
+      "type": "task",
+      "priority": 3,
+      "depends_on": ["create-test-dirs"]
+    },
+    {
+      "id": "write-view-tests",
+      "title": "Write view render tests",
+      "description": "For key views (resource views, entity views, form views): test that elgg_view() returns non-empty output without PHP errors. Focus on views that have complex logic or use plugin-specific variables.",
+      "type": "task",
+      "priority": 4,
+      "depends_on": ["create-test-dirs"]
+    },
+    {
+      "id": "run-tests-docker",
+      "title": "Run tests in Docker and fix failures",
+      "description": "Copy plugin to Docker container, run phpunit. Fix any failures. Iterate until all tests pass. Command: docker exec <container> php /var/www/html/vendor/bin/phpunit --configuration /var/www/html/mod/<plugin-id>/tests/phpunit.xml",
+      "type": "task",
+      "priority": 5,
+      "depends_on": ["write-entity-tests", "write-action-tests", "write-hook-tests", "write-view-tests"]
+    },
+    {
+      "id": "commit-tests",
+      "title": "Commit test suite",
+      "description": "git add tests/ && git commit -m 'test: add integration tests for <plugin>'",
+      "type": "task",
+      "priority": 6,
+      "depends_on": ["run-tests-docker"]
+    }
+  ]
+}

@@ -47,6 +47,18 @@ final class ExceptionClassRenamesTest extends TestCase
             $this->assertStringNotContainsString('use Elgg\\BadRequestException;', $content);
             $this->assertStringNotContainsString('use Elgg\\EntityNotFoundException;', $content);
 
+            // Trait use imports renamed
+            $this->assertStringContainsString('use Elgg\\Traits\\Loggable;', $content);
+            $this->assertStringContainsString('use Elgg\\Traits\\TimeUsing;', $content);
+            $this->assertStringContainsString('use Elgg\\Traits\\Cacheable;', $content);
+            $this->assertStringContainsString('use Elgg\\Traits\\Di\\ServiceFacade;', $content);
+
+            // Old trait imports gone
+            $this->assertStringNotContainsString('use Elgg\\Loggable;', $content);
+            $this->assertStringNotContainsString('use Elgg\\TimeUsing;', $content);
+            $this->assertStringNotContainsString('use Elgg\\Cacheable;', $content);
+            $this->assertStringNotContainsString('use Elgg\\Di\\ServiceFacade;', $content);
+
             // Valid PHP
             exec("php -l " . escapeshellarg($workDir . '/code.php') . " 2>&1", $output, $exitCode);
             $this->assertSame(0, $exitCode, implode("\n", $output));

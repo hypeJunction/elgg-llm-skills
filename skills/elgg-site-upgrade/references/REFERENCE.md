@@ -7,6 +7,7 @@
 | < 2.0 | 2.x | Upgrade one minor at a time |
 | 2.x | 3.x | Must be on 2.3.x first |
 | 2.3+ | Any future | Can jump directly (but one-at-a-time is safer) |
+| 6.x | 7.x | PHP 8.3+, remove CSS Crush deps, switch to Symfony Mailer |
 
 ## PHP/MySQL Requirements
 
@@ -17,6 +18,7 @@
 | 4.3 | >=7.4 | >=5.7 | >=10.3 |
 | 5.1 | >=8.0 | >=5.7 | >=10.3 |
 | 6.1 | >=8.1 | >=8.0 | >=10.6 |
+| 7.0 | >=8.3 | >=8.0 | >=10.6 |
 
 ## Composer Commands Per Step
 
@@ -32,6 +34,9 @@ composer require elgg/elgg:~5.1.0 && composer update && vendor/bin/elgg-cli upgr
 
 # 5.x → 6.x
 composer require elgg/elgg:~6.1.0 && composer update && vendor/bin/elgg-cli upgrade async -v
+
+# 6.x → 7.x
+composer require elgg/elgg:~7.0.0 && composer update && vendor/bin/elgg-cli upgrade async -v
 ```
 
 ## Troubleshooting
@@ -261,6 +266,7 @@ ORDER BY CAST(ps.value AS UNSIGNED);
 | Step | Auto | LLM | Manifest |
 |------|:----:|:---:|---------|
 | 2.x→3.x | 13 | 17 | `rules/2x-to-3x/manifest.json` |
-| 3.x→4.x | 6 | 5 | `rules/3x-to-4x/manifest.json` |
-| 4.x→5.x | — | — | TODO |
-| 5.x→6.x | — | — | TODO |
+| 3.x→4.x | 6 | 22 | `rules/3x-to-4x/manifest.json` |
+| 4.x→5.x | 0 | 20 | `rules/4x-to-5x/manifest.json` |
+| 5.x→6.x | 0 | 12 | `rules/5x-to-6x/manifest.json` |
+| 6.x→7.x | 0 | 21 | `rules/6x-to-7x/manifest.json` |

@@ -9,7 +9,7 @@ description: >
 
 > **Purpose:** Upgrade an entire Elgg installation from one major version to the next.
 > **Two workflows:** PREPARE (dev) and EXECUTE (production)
-> **Usage:** `/elgg-site-upgrade <project-path> [--from=2.x] [--to=6.x] [--mode=prepare|execute]`
+> **Usage:** `/elgg-site-upgrade <project-path> [--from=2.x] [--to=7.x] [--mode=prepare|execute]`
 
 ## Iron Laws
 
@@ -38,9 +38,11 @@ cat <project>/composer.json | grep "elgg/elgg"
 
 | From | Target | Steps |
 |------|--------|-------|
-| 2.x | 6.x | 2.3→3.3→4.3→5.1→6.1 |
-| 3.x | 6.x | 3.3→4.3→5.1→6.1 |
-| 4.x | 6.x | 4.3→5.1→6.1 |
+| 2.x | 7.x | 2.3→3.3→4.3→5.1→6.1→7.0 |
+| 3.x | 7.x | 3.3→4.3→5.1→6.1→7.0 |
+| 4.x | 7.x | 4.3→5.1→6.1→7.0 |
+| 5.x | 7.x | 5.1→6.1→7.0 |
+| 6.x | 7.x | 6.1→7.0 |
 
 **Rule:** Must be on latest minor of current major before jumping. From 2.3+ you can technically jump to any future version, but upgrading one major at a time is safer and lets you test incrementally.
 
@@ -68,29 +70,78 @@ done | sort
 
 ### Step 0.5: Find Upgraded Plugin Versions
 
-For each plugin, check if a compatible version already exists:
+**Before migrating any plugin**, check whether an upgraded version already exists.
+Duplicate migration wastes time and can introduce regressions over a known-good upgrade.
 
-**Strategy 1: Check upstream branches**
+**Strategy 1: Check local git branches**
+
+Migration branches may already exist from previous work:
 ```bash
-gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '3\.x|4\.x'
+git -C <plugin-path> branch -a | grep -iE 'migrate|elgg|upgrade|[0-9]\.[0x]'
+# If found, inspect commits:
+git -C <plugin-path> log --oneline migrate/elgg-3.x..migrate/elgg-4.x
+# And check what version it targets:
+git -C <plugin-path> show migrate/elgg-4.x:composer.json 2>/dev/null | grep "elgg/elgg"
 ```
 
-**Strategy 2: Check Elgg3-* repos (if org publishes version-prefixed repos)**
+**Strategy 2: Check upstream branches**
+```bash
+gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '[3-7]\.|migrate|upgrade'
+```
+
+**Strategy 3: Check forks for migration work**
+
+Other developers may have forked and migrated the plugin:
+```bash
+# List forks
+gh api repos/<owner>/<plugin>/forks -q '.[].full_name' | head -20
+# Check each fork's branches
+gh api repos/<fork-owner>/<plugin>/branches -q '.[].name' | grep -iE '[3-7]\.|migrate|upgrade'
+# Check if fork has elgg-plugin.php (4.x+ indicator)
+gh api "repos/<fork-owner>/<plugin>/contents/elgg-plugin.php" -q '.name' 2>/dev/null
+```
+
+**Strategy 4: Check Elgg Plugin Directory and Packagist**
+
+The official Elgg plugin directory and Packagist may have updated versions:
+```bash
+# Packagist (Composer registry)
+composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
+# Elgg plugin directory: https://elgg.org/plugins — search by name
+# Community plugins: https://github.com/topics/elgg-plugin
+```
+
+**Strategy 5: Check version-prefixed repos (hypeJunction pattern)**
+
+Some orgs publish separate repos per Elgg version:
 ```bash
 gh search repos --owner <org> "Elgg3-<plugin>" --json name -q '.[].name'
+gh search repos --owner <org> "Elgg4-<plugin>" --json name -q '.[].name'
 ```
 
-**Strategy 3: Check Composer**
-```bash
-composer show <vendor>/<plugin> --all 2>/dev/null | grep versions
-```
+**Strategy 6: Quick version heuristics**
 
-**Strategy 4: Check manifest on branches**
-```bash
-gh api "repos/<owner>/<plugin>/contents/manifest.xml?ref=3.x" -q '.content' | base64 -d | grep -A1 'elgg_release'
-```
+If you can't check branches, read the code to detect the current version:
 
-**If no upgraded version exists:** Use elgg-migrate to create one.
+| Indicator | Likely Version |
+|-----------|---------------|
+| Has `start.php` with init handler, no `elgg-plugin.php` | 2.x |
+| Has both `start.php` and `elgg-plugin.php` | 3.x (transitional) |
+| Has `elgg-plugin.php` with `'hooks'` key, no `start.php` | 4.x |
+| Has `elgg-plugin.php` with `'events'` key only | 5.x+ |
+| Uses `\Elgg\Hook` type hints | 4.x |
+| Uses `\Elgg\Event` type hints | 5.x+ |
+| Uses `elgg_define_js()`/`elgg_require_js()` | ≤5.x |
+| Uses `elgg_register_esm()`/`elgg_import_esm()` | 6.x+ |
+| Uses AMD `define()/require()` in JS | ≤5.x |
+| Uses ES module `import/export` in JS | 6.x+ |
+
+**Decision tree:**
+- Already at target version → **skip migration for this plugin**
+- Migration branch exists but incomplete → **continue from that branch**
+- Upstream fork has a working migration → **use/merge that instead**
+- Upgraded version on Packagist → **`composer require` the new version**
+- No upgrade exists anywhere → **use elgg-migrate to create one**
 
 ---
 
@@ -578,10 +629,14 @@ curl -sL https://your-site.com/ | grep '<title>'
 This workflow is available as a beads formula for structured task tracking:
 
 ```bash
+# If using beads for issue tracking:
 bd mol pour elgg-site-upgrade --var project=/path/to/project --var from=2.x --var to=3.x --var port=8380
+
+# Or install the formula first:
+cp formulas/elgg-site-upgrade.formula.json .beads/formulas/
 ```
 
-The formula creates a hierarchy of issues with dependencies, ensuring each gate is verified before proceeding. The formula lives in `.beads/formulas/elgg-site-upgrade.formula.json`.
+The formula creates a hierarchy of issues with dependencies, ensuring each gate is verified before proceeding. The formula definition lives in `formulas/elgg-site-upgrade.formula.json`.
 
 ---
 

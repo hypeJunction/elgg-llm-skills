@@ -39,6 +39,99 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 1. Obtain plugin (clone or locate in `tmp/`)
 2. Detect current version: check `elgg-plugin.php` → `composer.json` → `manifest.xml`
 3. Determine path: e.g., 2.x → 3.x → 4.x
+4. **CHECK IF ALREADY MIGRATED** (see Phase 1.5 below)
+
+### Phase 1.5: PRE-FLIGHT — Check for Existing Migrations
+
+**Before writing any code**, check whether someone has already done the migration work.
+Duplicate migration wastes time and can introduce regressions over a known-good upgrade.
+
+#### Step 1.5.1: Check local git branches
+
+```bash
+git -C <plugin-path> branch -a | grep -iE 'migrate|elgg|upgrade|[0-9]\.[0x]'
+```
+
+Look for branches like `migrate/elgg-4.x`, `4.x`, `elgg4`, `upgrade/5.x`, etc.
+If a target branch exists, inspect it:
+
+```bash
+git -C <plugin-path> log --oneline migrate/elgg-3.x..migrate/elgg-4.x
+```
+
+If it has migration commits, **start from that branch** instead of re-migrating.
+
+#### Step 1.5.2: Check composer.json and manifest.xml on each branch
+
+```bash
+# Check what Elgg version a branch targets
+git -C <plugin-path> show migrate/elgg-4.x:composer.json 2>/dev/null | grep "elgg/elgg"
+git -C <plugin-path> show migrate/elgg-4.x:manifest.xml 2>/dev/null | grep -A1 'elgg_release'
+```
+
+#### Step 1.5.3: Check upstream GitHub for forks and branches
+
+People may have already forked and migrated the plugin:
+
+```bash
+# Check upstream branches
+gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '[4-7]\.|migrate|upgrade'
+
+# Check forks for migration work
+gh api repos/<owner>/<plugin>/forks -q '.[].full_name' | head -20
+# Then check each promising fork:
+gh api repos/<fork-owner>/<plugin>/branches -q '.[].name' | grep -iE '[4-7]\.|migrate|upgrade'
+```
+
+#### Step 1.5.4: Check the Elgg Plugin Directory
+
+Search the official Elgg plugin directory and Packagist for an updated version:
+
+```bash
+# Packagist (Composer registry)
+composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
+
+# Web search for updated versions
+# https://elgg.org/plugins — search for the plugin name
+# https://packagist.org/packages/<vendor>/<plugin>
+```
+
+#### Step 1.5.5: Check version-prefixed repos (hypeJunction pattern)
+
+Some organizations publish version-prefixed repos (e.g., `Elgg3-hypeDropzone` for the 3.x version):
+
+```bash
+# Search for version-prefixed variants
+gh search repos --owner <org> "Elgg3-<plugin>" --json name -q '.[].name'
+gh search repos --owner <org> "Elgg4-<plugin>" --json name -q '.[].name'
+# Or without prefix (may be the latest version)
+gh search repos --owner <org> "<plugin>" --json name -q '.[].name'
+```
+
+#### Step 1.5.6: Assess current state indicators
+
+Quick heuristics to determine what version a plugin already targets:
+
+| Indicator | Version |
+|-----------|---------|
+| Has `start.php` with `elgg_register_event_handler('init', ...)` | 2.x or 3.x |
+| Has `manifest.xml` but no `elgg-plugin.php` | 2.x |
+| Has `elgg-plugin.php` with `'hooks'` key | 3.x or 4.x |
+| Has `elgg-plugin.php` with `'events'` key only (no `'hooks'`) | 5.x+ |
+| Uses `\Elgg\Hook` type hint in callbacks | 4.x |
+| Uses `\Elgg\Event` type hint in callbacks | 5.x+ |
+| Uses `elgg_register_plugin_hook_handler()` | ≤4.x (deprecated), removed in 6.x |
+| Uses `elgg_define_js()` / `elgg_require_js()` | ≤5.x, removed in 6.x |
+| Uses `elgg_register_esm()` / `elgg_import_esm()` | 6.x+ |
+| No `start.php`, no `manifest.xml`, no `views.php` | 4.x+ |
+| Uses AMD `define()/require()` in JS | ≤5.x |
+| Uses ES module `import/export` in JS | 6.x+ |
+
+**Decision tree:**
+- If the plugin is already at the target version → **skip migration**
+- If a migration branch exists but is incomplete → **continue from that branch**
+- If an upstream fork has the migration → **use that instead of re-migrating**
+- If no migration exists anywhere → **proceed to Phase 2**
 
 ### Phase 2: MIGRATE (repeat per version step)
 

@@ -353,3 +353,73 @@ Use this as the definitive reference for building automated migration checks.
 
 - `x1`, `x2`, `y1`, `y2` (icon cropping) -> `ElggEntity::getIconCoordinates()`
 - `icontime` -> `ElggEntity::hasIcon()`
+
+---
+
+## 6.x to 7.0: Removed Classes
+
+- `\Elgg\Email\Address` -> `\Symfony\Component\Mime\Address`
+- `\Elgg\Email\HtmlPart` -> removed
+- `\Elgg\Email\PlainTextPart` -> removed
+
+## 6.x to 7.0: Renamed Notification Classes
+
+- `Elgg\Notifications\CreateCommentEventHandler` -> `Elgg\Notifications\Handlers\CreateComment`
+- `Elgg\Notifications\MakeAdminUserEventHandler` -> `Elgg\Notifications\Handlers\MakeAdminUser`
+- `Elgg\Notifications\MentionsEventHandler` -> `Elgg\Notifications\Handlers\Mentions`
+- `Elgg\Notifications\RemoveAdminUserEventHandler` -> `Elgg\Notifications\Handlers\RemoveAdminUser`
+- `Elgg\Notifications\UnbanUserEventHandler` -> `Elgg\Notifications\Handlers\UnbanUser`
+- `Elgg\Notifications\CreateContentEventHandler` -> `Elgg\Notifications\Events\CreateContent`
+- `Elgg\Notifications\EnqueueEventHandler` -> `Elgg\Notifications\Events\Enqueue`
+- `Elgg\Notifications\MentionsEnqueueEventHandler` -> `Elgg\Notifications\Events\MentionsEnqueue`
+
+## 6.x to 7.0: Removed Events
+
+- `vars:compiler, css` (CSS Crush event)
+- `zend:message, system:email` -> `message, system:email`
+- `ajax_response` -> `ajax_results`
+- Legacy `forward` event
+
+## 6.x to 7.0: Removed Config Options
+
+- `css_compiler_options`
+- `emailer_sendmail_settings`
+- `emailer_smtp_settings`
+- `memcache`
+- `memcache_namespace_prefix`
+- `memcache_servers`
+- `redis`
+- `redis_options`
+- `redis_servers`
+
+## 6.x to 7.0: Removed CSS Classes
+
+- `elgg-button-special`
+- `elgg-button-action-done`
+
+## 6.x to 7.0: Renamed Actions/Forms
+
+- `forms/blog/save` -> `forms/blog/edit`
+- `forms/bookmarks/save` -> `forms/bookmarks/edit`
+- `forms/discussion/save` -> `forms/discussion/edit`
+- `forms/file/upload` -> `forms/file/edit`
+- `action/blog/save` -> `action/blog/edit`
+- `action/bookmarks/save` -> `action/bookmarks/edit`
+- `action/discussion/save` -> `action/discussion/edit`
+- `action/file/upload` -> `action/file/edit`
+- `admin/site/flush_cache` -> `admin/site/cache/clear`
+
+## 6.x to 7.0: Renamed Routes
+
+- `collection:user:user` -> `collection:user:user:all`
+- `search:user:user` -> `collection:user:user:search`
+
+## 6.x to 7.0: Changed Function Signatures
+
+- `elgg_register_notification_event()` changed `array $actions` to `string $action`
+- `elgg_unregister_notification_event()` now requires `$handler` parameter
+- `elgg_register_external_file()` now returns void
+- `elgg_register_pam_handler()` now returns void
+- `elgg_register_route()` now returns void
+- `elgg_unregister_external_file()` now returns void
+- `elgg_unregister_menu_item()` now returns void

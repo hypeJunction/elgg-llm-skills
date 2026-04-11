@@ -1,0 +1,110 @@
+{
+    "from": "5.x",
+    "to": "6.x",
+    "rules": [
+        {
+            "id": "000-update-manifest-version",
+            "name": "Update composer.json to target Elgg 6.x",
+            "automated": false,
+            "llm_instructions": "Update the plugin's `composer.json` to require Elgg 6.x:\n\n```json\n\"require\": {\n    \"elgg/elgg\": \"~6.1.0\"\n}\n```\n\nAlso ensure PHP >=8.1 is required and `ext-intl` is listed.",
+            "breaking_change": "Plugin must declare Elgg 6.x compatibility, PHP 8.1+, intl required",
+            "priority": 1
+        },
+        {
+            "id": "001-amd-to-esm",
+            "name": "Replace RequireJS/AMD modules with ES modules",
+            "automated": false,
+            "llm_instructions": "RequireJS/AMD has been replaced with native ECMAScript modules.\n\n**PHP function replacements:**\n\n| Removed | Replacement |\n|---------|-------------|\n| `elgg_define_js('name', [...])` | `elgg_register_esm('name', $url)` |\n| `elgg_require_js('name')` | `elgg_import_esm('name')` |\n| `elgg_unrequire_js('name')` | Removed — no replacement |\n\n**In elgg-plugin.php:**\n```php\n// Before (5.x):\nreturn [\n    'views' => [\n        'default' => [\n            'js/myplugin/module.js' => [],\n        ],\n    ],\n];\n\n// After (6.x): Register as ESM\n// Views with .mjs extension or registered via elgg_register_esm()\n```\n\n**JavaScript module syntax:**\n```javascript\n// Before (AMD):\ndefine(['jquery', 'elgg'], function($, elgg) {\n    return {\n        init: function() { ... }\n    };\n});\n\n// After (ESM):\nimport 'jquery';\nimport elgg from 'elgg';\n\nexport function init() { ... }\n```\n\n**Note:** The `'config', 'amd'` event is removed. The `'elgg.data', 'site'` event is removed — use `'elgg.data', 'page'` instead.\n\nSearch:\n```bash\ngrep -rn 'elgg_define_js\\|elgg_require_js\\|elgg_unrequire_js' classes/ views/ elgg-plugin.php --include='*.php'\ngrep -rn 'define(\\[\\|require(\\[' views/ --include='*.js'\ngrep -rn \"config.*amd\\|elgg\\.data.*site\" classes/ elgg-plugin.php --include='*.php'\n```",
+            "breaking_change": "RequireJS/AMD removed — use native ES modules, elgg_define_js/elgg_require_js removed",
+            "priority": 10
+        },
+        {
+            "id": "002-annotation-changes",
+            "name": "Update annotation queries and remove enable/disable usage",
+            "automated": false,
+            "llm_instructions": "Three annotation changes in Elgg 6.0:\n\n**1. Default join alias changed from `n_table` to `a_table`:**\n```php\n// Before (5.x):\n'wheres' => [function($qb, $alias) {\n    return \"n_table.value > 5\";\n}]\n\n// After (6.x):\n'wheres' => [function($qb, $alias) {\n    return \"a_table.value > 5\";\n}]\n```\n\n**2. `enabled` column removed — annotations can no longer be enabled/disabled:**\n```php\n// These functions are removed:\nelgg_disable_annotations($options);\nelgg_enable_annotations($options);\n$entity->disableAnnotations($name);\n$entity->enableAnnotations($name);\n$annotation->enable();\n$annotation->disable();\n```\n\n**3. If using QueryBuilder, you should be OK** — only raw SQL using `n_table` alias needs updating.\n\nSearch:\n```bash\ngrep -rn 'n_table' classes/ views/ actions/ --include='*.php'\ngrep -rn 'elgg_disable_annotations\\|elgg_enable_annotations\\|disableAnnotations\\|enableAnnotations' classes/ views/ actions/ --include='*.php'\ngrep -rn '->enable()\\|->disable()' classes/ --include='*.php' | grep -i annot\n```",
+            "breaking_change": "Annotation join alias n_table→a_table, enabled column removed, enable/disable API removed",
+            "priority": 20
+        },
+        {
+            "id": "003-entity-icons",
+            "name": "Update entity icon coordinate and icontime usage",
+            "automated": false,
+            "llm_instructions": "Entity icon storage changed in Elgg 6.0:\n\n**Cropping coordinates:**\n- `x1`, `x2`, `y1`, `y2` metadata removed\n- Use `ElggEntity::getIconCoordinates()` instead\n\n```php\n// Before:\n$x1 = $entity->x1;\n$y1 = $entity->y1;\n$x2 = $entity->x2;\n$y2 = $entity->y2;\n\n// After:\n$coords = $entity->getIconCoordinates();\n$x1 = $coords['x1'];\n$y1 = $coords['y1'];\n```\n\n**Icontime removed:**\n- `icontime` metadata no longer exists\n- Use `ElggEntity::hasIcon()` to check if an icon was uploaded\n\n```php\n// Before:\nif ($entity->icontime) { ... }\n\n// After:\nif ($entity->hasIcon('small')) { ... }\n```\n\nSearch:\n```bash\ngrep -rn 'icontime\\|->x1\\b\\|->x2\\b\\|->y1\\b\\|->y2\\b' classes/ views/ actions/ --include='*.php'\ngrep -rn \"getMetadata.*'x1'\\|getMetadata.*'icontime'\" classes/ views/ --include='*.php'\n```",
+            "breaking_change": "Icon x1/x2/y1/y2 and icontime metadata removed — use getIconCoordinates()/hasIcon()",
+            "priority": 30
+        },
+        {
+            "id": "004-removed-functions-6x",
+            "name": "Replace functions removed in 6.0",
+            "automated": false,
+            "llm_instructions": "The following functions were removed in Elgg 6.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `elgg_define_js()` | `elgg_register_esm()` |\n| `elgg_require_js()` | `elgg_import_esm()` |\n| `elgg_unrequire_js()` | No replacement |\n| `elgg_disable_annotations()` | Removed — annotations always enabled |\n| `elgg_enable_annotations()` | Removed — annotations always enabled |\n| `elgg_set_view_location()` | Removed |\n| `elgg_strrchr()` | Use PHP `mb_strrchr()` |\n| `elgg_strripos()` | Use PHP `mb_strripos()` |\n| `elgg_unrequire_css()` | `elgg_unregister_external_file('css', $view)` |\n\nRemoved class methods:\n| Removed | Replacement |\n|---------|-------------|\n| `ElggAnnotation->enable()` | N/A |\n| `ElggAnnotation->disable()` | N/A |\n| `ElggEntity->disableAnnotations()` | N/A |\n| `ElggEntity->enableAnnotations()` | N/A |\n| `ElggEntity->getTags()` | `elgg_get_metadata()` |\n\nSearch:\n```bash\ngrep -rn 'elgg_define_js\\|elgg_require_js\\|elgg_unrequire_js\\|elgg_disable_annotations\\|elgg_enable_annotations\\|elgg_set_view_location\\|elgg_strrchr\\|elgg_strripos\\|elgg_unrequire_css' classes/ views/ actions/ --include='*.php'\ngrep -rn 'getTags()' classes/ views/ --include='*.php'\n```",
+            "breaking_change": "9 functions and 5 class methods removed in 6.0",
+            "priority": 40
+        },
+        {
+            "id": "005-deprecated-hook-functions-removed",
+            "name": "Replace deprecated hook registration functions (now removed)",
+            "automated": false,
+            "llm_instructions": "The hook functions deprecated in 5.0 are now removed in 6.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `elgg_register_plugin_hook_handler()` | `elgg_register_event_handler()` |\n| `elgg_unregister_plugin_hook_handler()` | `elgg_unregister_event_handler()` |\n| `elgg_trigger_plugin_hook()` | `elgg_trigger_event_results()` |\n| `elgg_clear_plugin_hook_handlers()` | `elgg_clear_event_handlers()` |\n\nThese were deprecated but functional in 5.x. In 6.x they are completely removed.\n\nSearch:\n```bash\ngrep -rn 'elgg_register_plugin_hook_handler\\|elgg_unregister_plugin_hook_handler\\|elgg_trigger_plugin_hook\\|elgg_clear_plugin_hook_handlers' classes/ views/ actions/ elgg-plugin.php --include='*.php'\n```\n\nAlso check `elgg-plugin.php` for any remaining `'hooks'` key — it must be `'events'` only.",
+            "breaking_change": "Hook registration/trigger functions removed — must use event equivalents",
+            "priority": 50
+        },
+        {
+            "id": "006-entity-deleted-state",
+            "name": "Handle new entity soft-delete (deleted state) behavior",
+            "automated": false,
+            "llm_instructions": "Entities can now be soft-deleted (marked as deleted) and restored. This affects:\n\n1. **`ElggFile::delete()`** now always deletes both symlink AND target file (previously could delete only symlink)\n\n2. **Entity queries** may need to account for deleted entities:\n```php\n// Entities in deleted state are excluded by default from queries\n// To include deleted entities:\nelgg_get_entities([\n    'metadata_name_value_pairs' => [...],\n    // Check Elgg 6.x docs for exact option to include deleted\n]);\n```\n\n3. If your plugin has custom delete logic, verify it works with the new soft-delete behavior.\n\nSearch:\n```bash\ngrep -rn '->delete()\\|ElggFile.*delete' classes/ --include='*.php'\ngrep -rn 'elgg_call.*ELGG_SHOW_DELETED' classes/ --include='*.php'\n```",
+            "breaking_change": "Entities support soft-delete state, ElggFile::delete() always deletes target file",
+            "priority": 60
+        },
+        {
+            "id": "007-css-html-restructure",
+            "name": "Update CSS/HTML for structural changes",
+            "automated": false,
+            "llm_instructions": "HTML structure and CSS classes changed in Elgg 6.0:\n\n**Removed CSS classes:**\n- `elgg-grid`, `elgg-col`, `elgg-row` → use CSS `display: grid`\n- Duplicate classes like `elgg-body` + `elgg-layout-body` deduplicated\n\n**HTML element changes:**\n- Entity summaries wrapped in `<article>`\n- Sidebar uses `<aside>` instead of `<div>`\n- Modules (widgets, info-modules) use `<section>` instead of `<div>`\n\n**Heading changes:**\n- H1 = always page title (not logo/site name)\n- H2 = modules (info, sidebar, widgets)\n- H3 on entity summaries replaced by regular text\n\nIf your plugin has custom CSS targeting these elements/classes:\n```bash\ngrep -rn 'elgg-grid\\|elgg-col\\|elgg-row' views/ --include='*.css' --include='*.php'\ngrep -rn 'elgg-body\\|elgg-layout-body' views/ --include='*.css' --include='*.php'\ngrep -rn '<div class=\"elgg-module\\|<div class=\"elgg-sidebar' views/ --include='*.php'\n```",
+            "breaking_change": "Grid helper classes removed, HTML uses semantic elements, heading hierarchy changed",
+            "priority": 70
+        },
+        {
+            "id": "008-view-name-changes",
+            "name": "Use full view names for CSS/JS views",
+            "automated": false,
+            "llm_instructions": "View names from `css/` or `js/` folders must now use their full view name. Previously you could omit the first folder.\n\n```php\n// Before (5.x):\nelgg_extend_view('elgg.css', 'myplugin/custom.css');\n// This would match views/default/css/myplugin/custom.css\n\n// After (6.x):\nelgg_extend_view('elgg.css', 'css/myplugin/custom.css');\n// Must use full path including css/ prefix\n```\n\nSearch:\n```bash\ngrep -rn 'elgg_extend_view\\|elgg_view(' classes/ views/ elgg-plugin.php --include='*.php' | grep -E '\\.(css|js)'\n```\n\nCheck if any view references omit the `css/` or `js/` prefix.",
+            "breaking_change": "CSS/JS views must use full view name including folder prefix",
+            "priority": 80
+        },
+        {
+            "id": "009-removed-interface-entity-icon",
+            "name": "Replace EntityIcon interface with Icons trait",
+            "automated": false,
+            "llm_instructions": "The `\\Elgg\\EntityIcon` interface has been removed. Functions that were in this interface are now in `\\Elgg\\Traits\\Entity\\Icons`.\n\nIf your code implements or references this interface:\n```php\n// Before:\nclass MyEntity extends ElggObject implements \\Elgg\\EntityIcon { ... }\n\n// After: The trait is already used by ElggEntity, so just remove the interface\nclass MyEntity extends ElggObject { ... }\n```\n\nSearch:\n```bash\ngrep -rn 'Elgg\\\\EntityIcon\\|implements.*EntityIcon' classes/ --include='*.php'\n```",
+            "breaking_change": "\\Elgg\\EntityIcon interface removed — implementations moved to \\Elgg\\Traits\\Entity\\Icons",
+            "priority": 90
+        },
+        {
+            "id": "010-function-parameter-changes",
+            "name": "Update changed function signatures",
+            "automated": false,
+            "llm_instructions": "Two function signatures changed in Elgg 6.0:\n\n**1. `elgg_get_entity_statistics()`** now requires an `array` of options (compatible with `elgg_get_entities()`):\n```php\n// Before:\n$stats = elgg_get_entity_statistics($owner_guid);\n\n// After:\n$stats = elgg_get_entity_statistics(['owner_guid' => $owner_guid]);\n```\n\n**2. `elgg_get_simplecache_url()`** second argument removed:\n```php\n// Before:\n$url = elgg_get_simplecache_url('css', 'elgg');\n\n// After:\n$url = elgg_get_simplecache_url('css/elgg');\n// Or for JS:\n$url = elgg_get_simplecache_url('js/elgg/module');\n```\n\nSearch:\n```bash\ngrep -rn 'elgg_get_entity_statistics\\|elgg_get_simplecache_url' classes/ views/ actions/ --include='*.php'\n```",
+            "breaking_change": "elgg_get_entity_statistics() requires array, elgg_get_simplecache_url() lost second arg",
+            "priority": 100
+        },
+        {
+            "id": "011-phpunit-10",
+            "name": "Update PHPUnit tests for PHPUnit 10.5",
+            "automated": false,
+            "llm_instructions": "Elgg 6.x uses PHPUnit 10.5 (up from 9.x). Key changes:\n\n- `phpunit.xml` schema changed — use `--migrate-configuration` to auto-update\n- `@dataProvider` annotation → use `#[DataProvider]` attribute\n- `@test` annotation → use `#[Test]` attribute\n- `getMockBuilder()->setMethods()` → `getMockBuilder()->onlyMethods()`\n- `withConsecutive()` removed — use `willReturnCallback()` with counter\n- `assertFileNotExists()` → `assertFileDoesNotExist()`\n- `expectWarning()` → removed\n\n```bash\n# Auto-migrate configuration:\nphpunit --migrate-configuration\n\n# Search for deprecated patterns:\ngrep -rn '@dataProvider\\|@test\\|setMethods\\|withConsecutive\\|assertFileNotExists\\|expectWarning' tests/ --include='*.php'\n```",
+            "breaking_change": "PHPUnit 10.5 — several assertion and mock methods renamed/removed",
+            "priority": 110
+        },
+        {
+            "id": "012-mysql-8-requirements",
+            "name": "Verify MySQL 8.0 / MariaDB 10.6 compatibility",
+            "automated": false,
+            "llm_instructions": "Elgg 6.x requires MySQL 8.0+ or MariaDB 10.6+.\n\n**Key MySQL 8.0 changes that may affect plugins:**\n- `GROUP BY` requires all selected non-aggregated columns (ONLY_FULL_GROUP_BY enabled by default)\n- Reserved words added: `RANK`, `ROW_NUMBER`, `GROUPS`, `JSON_TABLE`, etc.\n- `utf8` now means `utf8mb4` in MySQL 8.0.29+\n\nIf your plugin has raw SQL:\n```bash\ngrep -rn 'GROUP BY\\|ORDER BY\\|RANK\\|ROW_NUMBER\\b' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure column names don't clash with new reserved words and GROUP BY clauses are complete.",
+            "breaking_change": "MySQL 8.0+ required — ONLY_FULL_GROUP_BY, new reserved words, utf8mb4 default",
+            "priority": 120
+        }
+    ]
+}

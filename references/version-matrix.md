@@ -7,6 +7,7 @@
 | 4.3 | >=7.4 | >=5.7 | >=10.3 | ~9.x | Laminas\Mail, RequireJS, jQuery 3.5, Doctrine DBAL ~3.0 |
 | 5.1 | >=8.0 | >=5.7 | >=10.3 | ~9.x | Laminas\Mail, RequireJS, jQuery 3.x, Doctrine DBAL ~3.x |
 | 6.1 | >=8.1 | >=8.0 | >=10.6 | ~10.5 | Laminas\Mail, ES Modules, jQuery 3.7, Doctrine DBAL ~4.0 |
+| 7.0 | >=8.3 | >=8.0 | >=10.6 | ~12.5 | Symfony\Mailer, ES Modules, jQuery 3.7, Doctrine DBAL ~4.0, Font Awesome 7 |
 
 ## Required PHP Extensions (all versions)
 
@@ -15,7 +16,7 @@
 - `ext-json`
 - `ext-xml`
 - `ext-mbstring`
-- `ext-intl` (optional in 3.x, required from 6.x)
+- `ext-intl` (optional in 3.x, required from 6.x+)
 
 ## Plugin Installation
 
@@ -34,3 +35,4 @@
 | 4.x | `php:7.4-apache` | `mysql:5.7` |
 | 5.x | `php:8.0-apache` | `mysql:5.7` |
 | 6.x | `php:8.1-apache` | `mysql:8.0` |
+| 7.x | `php:8.3-apache` | `mysql:8.0` |
