@@ -21,14 +21,70 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 
 ---
 
+## Container Infrastructure
+
+All operations run inside Docker containers — nothing executes on the host machine.
+
+| Service | Purpose | Location |
+|---------|---------|----------|
+| `migrate` | AST migration rules (PHP 8.1 + php-parser) | Root `docker-compose.yml` |
+| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap | `docker/elgg{N}/docker-compose.yml` |
+| `node` | Playwright and Vitest tests | `docker/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database | `docker/elgg{N}/docker-compose.yml` |
+
+### Quick setup
+
+```bash
+# Build the migration tool (once)
+docker compose build migrate
+
+# Start target Elgg environment
+docker compose -f docker/elgg{N}/docker-compose.yml up -d
+
+# Run migration
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
+
+# Run tests
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
+```
+
+### Debugging inside containers
+
+```bash
+# Elgg container logs (PHP errors, Apache errors)
+docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+
+# Interactive shell in Elgg container
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+
+# Check PHP error log
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg cat /var/log/apache2/error.log
+
+# MySQL queries (interactive)
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+
+# Check container status
+docker compose -f docker/elgg{N}/docker-compose.yml ps
+
+# Node container — debug Playwright
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --debug"
+
+# Rebuild containers after Dockerfile changes
+docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+```
+
+---
+
 ## Quick Reference
 
 | Step | Command |
 |------|---------|
-| Analyze | `php bin/migrate.php rules/{from}-to-{to}/manifest.json <plugin> --dry-run` |
-| Apply | `php bin/migrate.php rules/{from}-to-{to}/manifest.json <plugin>` |
-| Batch script | `./bin/migrate-plugin.sh <plugin-path> rules/{from}-to-{to}/manifest.json` |
-| LLM report | `php bin/migrate.php rules/{from}-to-{to}/manifest.json <plugin> --dry-run --report` |
+| Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
+| Apply | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>` |
+| LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
 
 ---
 
@@ -88,8 +144,9 @@ gh api repos/<fork-owner>/<plugin>/branches -q '.[].name' | grep -iE '[4-7]\.|mi
 Search the official Elgg plugin directory and Packagist for an updated version:
 
 ```bash
-# Packagist (Composer registry)
-composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
+# Packagist (Composer registry) — run in Elgg container
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
 
 # Web search for updated versions
 # https://elgg.org/plugins — search for the plugin name
@@ -216,8 +273,9 @@ docker cp <plugin-path>/. $(docker compose -f docker/elgg{CURRENT}/docker-compos
 docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
 
-# Run Playwright tests — ALL must pass
-cd <plugin-path>/tests/playwright && npx playwright test
+# Run Playwright tests — ALL must pass (inside Docker)
+docker compose -f docker/elgg{CURRENT}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 **All tests (PHPUnit AND Playwright) MUST pass before proceeding to Phase 2.** If tests fail, fix them — they represent real bugs in the current plugin that would be carried forward (or masked) by migration.
@@ -231,8 +289,9 @@ Record the test count and passing status for both PHPUnit and Playwright. After 
 docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml 2>&1 | tail -5
 
-# Save Playwright baseline
-cd <plugin-path>/tests/playwright && npx playwright test --reporter=list 2>&1 | tail -10
+# Save Playwright baseline (inside Docker)
+docker compose -f docker/elgg{CURRENT}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --reporter=list" 2>&1 | tail -10
 ```
 
 ### Phase 2: MIGRATE (repeat per version step)
@@ -249,8 +308,8 @@ git checkout -b migrate/elgg-{TARGET}.x
 
 **Step 2.1: Run automated rules**
 ```bash
-cd /path/to/elgg-migrate
-php -r 'require "vendor/autoload.php"; $r = new ElggMigrate\RuleRunner(); $r->applyAll("rules/{from}-to-{to}/manifest.json", "<plugin-path>");'
+# Run from elgg-migrate root
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 cd <plugin-path> && git add -A && git commit -m "migrate({TARGET}.x): automated AST transformations"
 ```
 
@@ -258,12 +317,15 @@ cd <plugin-path> && git add -A && git commit -m "migrate({TARGET}.x): automated 
 
 **Step 2.3: Verify syntax**
 ```bash
-find <plugin> -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; | grep -v "No syntax errors"
+# Syntax-check against the TARGET PHP version inside the Elgg container
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  find mod/<plugin-id> -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; | grep -v "No syntax errors"
 ```
 
 **Step 2.4: Install plugin dependencies** (if plugin has its own `composer.json`)
 ```bash
-composer install -d <plugin> --no-interaction
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer install -d mod/<plugin-id> --no-interaction
 ```
 
 **Step 2.5: Validate in Docker (GATE)**
@@ -285,8 +347,9 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
   catch (\Throwable \$e) { echo 'FAIL: '.\$e->getMessage().PHP_EOL; exit(1); }
 "
 
-# Site renders — MUST return >100 bytes
-curl -sL http://localhost:${ELGG_PORT}/ | wc -c
+# Site renders — MUST return >100 bytes (curl from inside the Elgg container)
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  curl -sL http://localhost/ | wc -c
 
 # No PHP errors
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
@@ -297,12 +360,15 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
 
 # Verify simplecache CSS is non-empty (css-crush v2.4 silently fails on some CSS)
-TS=$(curl -sL http://localhost:${ELGG_PORT}/ | grep -oP 'cache/\K\d+' | head -1)
-SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT}/cache/${TS}/default/elgg.css")
+TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+  curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
+SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+  curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 
-# Run Playwright tests against the TARGET version
-cd <plugin-path>/tests/playwright && ELGG_PORT=${ELGG_PORT} npx playwright test
+# Run Playwright tests against the TARGET version (inside Docker)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 **Step 2.6: Adapt and verify tests (GATE)**
@@ -323,8 +389,9 @@ Pre-migration tests (from Phase 1.8) were written against the old API. After mig
 docker compose -f docker/elgg{TARGET}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
 
-# Playwright
-cd <plugin-path>/tests/playwright && ELGG_PORT=${ELGG_PORT} npx playwright test
+# Playwright (inside Docker)
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 5. **Compare with baseline** from Phase 1.8.4 — same test count, all passing
@@ -479,6 +546,7 @@ Same structure as 5.x with:
 **3.x → 4.x: Go fully declarative**
 - [ ] Move ALL hook/event registrations from start.php → elgg-plugin.php declarative arrays
 - [ ] Delete start.php, manifest.xml, activate.php, deactivate.php
+- [ ] If activate.php has SQL table creation: move to `Bootstrap::activate()` method, register bootstrap in elgg-plugin.php
 - [ ] Add `'plugin'` key with name and metadata (replaces manifest.xml)
 - [ ] Extract menu handlers → dedicated namespaced classes (e.g., `Menus\Site`, `Menus\OwnerBlock`)
 - [ ] Extract notification handlers → dedicated classes (e.g., `Notifications\PublishEventHandler`)
@@ -526,8 +594,8 @@ Same structure as 5.x with:
 | `get_data()` / `insert_data()` etc. | Removed in 4.x — use `elgg()->db->getData()`, `insertData()`, etc. |
 | `Elgg\Database` type hints | Renamed to `Elgg\Application\Database` in 4.x — update `use` imports |
 | `self::getInstance()` singleton pattern | Use DI container: `elgg()->{'service.key'}` per `elgg-services.php` |
-| Tables not created on activation | Docker fresh install doesn't run activate.php — create tables manually for testing |
-| Plugin activates but site 500s | Always test RENDER after activation — hooks fire on page load and can crash |
+| Tables not created on activation | Elgg 4.x does NOT run `activate.php` — it calls `Bootstrap::activate()` instead. Move all activate.php logic (table creation, schema setup) into `Bootstrap::activate()` method. Delete activate.php after migration. Use `catch (\Throwable $e)` not `catch (DatabaseException)` because Doctrine DBAL throws PDOException that Elgg doesn't wrap. Also fix TEXT columns: MySQL strict mode rejects `DEFAULT ''` on TEXT — remove the DEFAULT |
+| Plugin activates but site 500s | Always test RENDER after activation — hooks fire on page load and can crash. Common cause: plugin registers `head`/`page` or `view_vars` hooks that query custom tables not yet created. Add try/catch around DB queries for custom tables as defense-in-depth |
 | `elgg_trigger_event_results()` used in 4.x | That's Elgg 5.x only! In 4.x use `elgg_trigger_plugin_hook()` (deprecated but works) |
 | `elgg_register_event_handler` for view/view_vars | In 4.x, `view` and `view_vars` are HOOKS not events — use `elgg_register_plugin_hook_handler()` |
 | start.php still exists (even empty) | Elgg 4.x REJECTS plugins with ANY start.php file — delete it completely |
@@ -645,16 +713,28 @@ The `018-hook-callback-signatures` rule automates this rewrite (AST-based).
 
 ```
 elgg-migrate/
+├── docker-compose.yml               # Root: migrate service (AST tool)
+├── docker/
+│   ├── migrate/Dockerfile           # PHP 8.1 + php-parser for AST rules
+│   ├── elgg3/                       # Elgg 3.x: elgg + db + node services
+│   │   ├── docker-compose.yml
+│   │   ├── docker-compose.override.yml
+│   │   └── Dockerfile
+│   └── elgg4/                       # Elgg 4.x: elgg + db + node services
+│       ├── docker-compose.yml
+│       ├── docker-compose.override.yml
+│       └── Dockerfile
 ├── skills/
-│   ├── elgg-migrate/SKILL.md       # This file
-│   └── elgg-test-writer/SKILL.md   # Test writing skill
-├── bin/migrate.php                  # CLI runner
-├── bin/migrate-plugin.sh            # Batch script (branch + migrate + commit)
-├── src/Rules/V2ToV3/                # 18 automated rules
-├── src/Rules/V3ToV4/                # 12 automated rules
-├── rules/2x-to-3x/                 # 28+ rules (18 auto + LLM)
-├── rules/3x-to-4x/                 # 30 rules (13 auto + 17 LLM)
-├── tests/                           # 217 tests, 1022 assertions
-├── docker/elgg{3,4}/                # Docker environments
-└── tmp/                             # Guinea pig plugins (gitignored)
+│   ├── elgg-migrate/SKILL.md        # This file
+│   ├── elgg-test-writer/SKILL.md    # PHPUnit + Playwright test writing
+│   ├── elgg-js-test-writer/SKILL.md # Vitest JS test writing
+│   ├── elgg-site-upgrade/SKILL.md   # Full site upgrade workflow
+│   └── elgg-plugin-fleet/SKILL.md   # Batch plugin migration
+├── bin/migrate.php                   # CLI runner (runs in migrate container)
+├── src/Rules/V2ToV3/                 # 18 automated rules
+├── src/Rules/V3ToV4/                 # 12 automated rules
+├── rules/2x-to-3x/                  # 28+ rules (18 auto + LLM)
+├── rules/3x-to-4x/                  # 30 rules (13 auto + 17 LLM)
+├── tests/                            # 217 tests, 1022 assertions
+└── tmp/                              # Guinea pig plugins (gitignored)
 ```

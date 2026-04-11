@@ -1,0 +1,33 @@
+services:
+  elgg:
+    volumes:
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-actions_feature:/var/www/html/mod/actions_feature
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-cropper:/var/www/html/mod/cropper
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_api:/var/www/html/mod/forms_api
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_register:/var/www/html/mod/forms_register
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-images_ui:/var/www/html/mod/images_ui
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/elgg_lightbox:/var/www/html/mod/elgg_lightbox
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_api:/var/www/html/mod/menus_api
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_dropdown:/var/www/html/mod/menus_dropdown
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-modal_info:/var/www/html/mod/modal_info
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-prototyper_group:/var/www/html/mod/prototyper_group
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/elgg_tokeninput:/var/www/html/mod/elgg_tokeninput
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_grid:/var/www/html/mod/ui_grid
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_responsive_tabs:/var/www/html/mod/ui_responsive_tabs
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_tabs:/var/www/html/mod/ui_tabs
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-user_settings:/var/www/html/mod/user_settings
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeAttachments:/var/www/html/mod/hypeattachments
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDirectory:/var/www/html/mod/hypedirectory
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDropzone:/var/www/html/mod/hypedropzone
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeEmbed:/var/www/html/mod/hypeembed
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFolders:/var/www/html/mod/hypefolders
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeIcons:/var/www/html/mod/hypeicons
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeInteractions:/var/www/html/mod/hypeinteractions
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeInvite:/var/www/html/mod/hypeinvite
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeLists:/var/www/html/mod/hypelists
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeNotifications:/var/www/html/mod/hypenotifications
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypePrototyperValidators:/var/www/html/mod/hypeprototypervalidators
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeScraper:/var/www/html/mod/hypescraper
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeSeo:/var/www/html/mod/hypeseo
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeWall:/var/www/html/mod/hypewall
+      - /home/ismayilkhayredinov/Data/elgg-migrate/docker/elgg4/plugin-order.txt:/var/www/html/mod/.plugin-order.txt

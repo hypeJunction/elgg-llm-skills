@@ -64,25 +64,59 @@ SETTINGS_VALUES
         echo 'Elgg 4.x installed successfully.' . PHP_EOL;
     " 2>&1 || echo "Install completed (check for errors above)."
 
-    # Activate plugins
+    # Activate plugins in priority order
     echo "Activating plugins..."
-    php -r "
-        require_once 'vendor/autoload.php';
-        \$app = \Elgg\Application::getInstance();
-        \$app->bootCore();
-        _elgg_services()->plugins->generateEntities();
-        \$plugins = elgg_get_plugins('inactive');
-        \$failed = [];
-        foreach (\$plugins as \$plugin) {
-            try { \$plugin->activate(); }
-            catch (\Throwable \$e) { \$failed[] = \$plugin->getID() . ': ' . \$e->getMessage(); }
-        }
-        if (empty(\$failed)) { echo 'All plugins activated.' . PHP_EOL; }
-        else {
-            echo count(\$failed) . ' plugin(s) failed:' . PHP_EOL;
-            foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
-        }
-    " 2>&1 || echo "Plugin activation completed (check for errors above)."
+    PLUGIN_ORDER_FILE="/var/www/html/mod/.plugin-order.txt"
+    if [ -f "$PLUGIN_ORDER_FILE" ]; then
+        echo "Using ordered activation from .plugin-order.txt"
+        php -r "
+            require_once 'vendor/autoload.php';
+            \$app = \Elgg\Application::getInstance();
+            \$app->bootCore();
+            _elgg_services()->plugins->generateEntities();
+            \$order = file('$PLUGIN_ORDER_FILE', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            \$activated = 0;
+            \$failed = [];
+            foreach (\$order as \$id) {
+                \$id = trim(\$id);
+                if (empty(\$id) || \$id[0] === '#') continue;
+                \$plugin = elgg_get_plugin_from_id(\$id);
+                if (!\$plugin) { echo 'Plugin not found: ' . \$id . PHP_EOL; continue; }
+                if (\$plugin->isActive()) { \$activated++; continue; }
+                try {
+                    \$plugin->activate();
+                    \$activated++;
+                    echo '  + ' . \$id . PHP_EOL;
+                } catch (\Throwable \$e) {
+                    \$failed[] = \$id . ': ' . \$e->getMessage();
+                }
+            }
+            echo \$activated . ' plugin(s) activated.' . PHP_EOL;
+            if (!empty(\$failed)) {
+                echo count(\$failed) . ' plugin(s) failed:' . PHP_EOL;
+                foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
+            }
+        " 2>&1 || echo "Plugin activation completed (check for errors above)."
+    else
+        echo "No .plugin-order.txt found, activating all plugins..."
+        php -r "
+            require_once 'vendor/autoload.php';
+            \$app = \Elgg\Application::getInstance();
+            \$app->bootCore();
+            _elgg_services()->plugins->generateEntities();
+            \$plugins = elgg_get_plugins('inactive');
+            \$failed = [];
+            foreach (\$plugins as \$plugin) {
+                try { \$plugin->activate(); }
+                catch (\Throwable \$e) { \$failed[] = \$plugin->getID() . ': ' . \$e->getMessage(); }
+            }
+            if (empty(\$failed)) { echo 'All plugins activated.' . PHP_EOL; }
+            else {
+                echo count(\$failed) . ' plugin(s) failed:' . PHP_EOL;
+                foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
+            }
+        " 2>&1 || echo "Plugin activation completed (check for errors above)."
+    fi
 
     touch /var/www/html/.elgg-installed
     echo "Elgg 4.x setup complete."

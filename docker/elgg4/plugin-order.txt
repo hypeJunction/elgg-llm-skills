@@ -1,0 +1,36 @@
+# Base/utility plugins (no dependencies on other hype plugins)
+menus_api
+menus_dropdown
+ui_tabs
+ui_grid
+ui_responsive_tabs
+elgg_lightbox
+elgg_tokeninput
+actions_feature
+user_settings
+cropper
+forms_api
+forms_register
+modal_info
+
+# Core hype framework
+hypelists
+hypeprototypervalidators
+
+# Utility hype plugins
+hypedropzone
+hypeembed
+hypeattachments
+hypeicons
+hypescraper
+
+# Feature plugins (may depend on framework)
+hypeseo
+hypewall
+hypeinteractions
+hypefolders
+hypeinvite
+hypenotifications
+hypedirectory
+images_ui
+prototyper_group
