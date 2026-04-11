@@ -185,6 +185,11 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 | start.php still exists (even empty) | Elgg 4.x REJECTS plugins with ANY start.php file — delete it completely |
 | `::SUBTYPE` constant in elgg-plugin.php | Triggers autoload before classes registered — use string literals (::class is fine) |
 | `ElggEntity::save()` missing `: bool` return type | Elgg 4.x added return type hints — subclasses must match |
+| `elgg_unregister_css()` in Bootstrap | Removed in 4.x — just delete the call (was defensive cleanup) |
+| `elgg_register_js()` / `elgg_define_js()` in Bootstrap | Removed in 4.x — JS views under `views/default/js/` auto-discover as AMD modules |
+| `elgg_register_simplecache_view()` in Bootstrap | Removed in 4.x — static `.js`/`.css` views auto-discovered by simplecache |
+| `views.php` alias in `view_extensions` | When views.php is removed, update `view_extensions` to use actual view paths |
+| Global Elgg functions in namespaced Bootstrap | Must use `\elgg_*()` prefix — namespace resolution fails without backslash |
 
 ---
 
