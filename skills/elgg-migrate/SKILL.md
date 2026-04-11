@@ -155,6 +155,7 @@ bd mol pour plugin-test-scaffold
 
 Scan the plugin source to identify all testable features, then write tests covering:
 
+**PHPUnit tests (backend):**
 - [ ] Entity class mapping (each registered entity type resolves to correct class)
 - [ ] Entity CRUD (create, read, update, delete for each entity subtype)
 - [ ] At least one test per action (validates input, creates/modifies entities, checks permissions)
@@ -162,12 +163,23 @@ Scan the plugin source to identify all testable features, then write tests cover
 - [ ] Key views render without fatal errors
 - [ ] Permissions (owner can edit, non-owner cannot)
 
+**Playwright tests (UI + database):**
+- [ ] Each user-facing feature has at least one Playwright test
+- [ ] Forms: fill and submit, assert success response AND verify entity created in database
+- [ ] Listings: navigate to list pages, assert items render, pagination works
+- [ ] Modals/widgets: trigger UI elements, assert they appear and function
+- [ ] Permissions: test as owner vs non-owner, assert correct visibility/access
+- [ ] AJAX interactions: trigger async actions, assert UI updates AND database state changes
+- [ ] Admin pages: if plugin registers admin views, navigate and assert they render
+
+See `elgg-test-writer` skill for Playwright test templates and patterns.
+
 **Commit tests on the CURRENT branch** (not the migration branch):
 
 ```bash
 cd <plugin-path>
 git add tests/
-git commit -m "test: add pre-migration test suite"
+git commit -m "test: add pre-migration test suite (PHPUnit + Playwright)"
 ```
 
 #### Step 1.8.3: Run tests in Docker against CURRENT Elgg version
@@ -176,21 +188,27 @@ git commit -m "test: add pre-migration test suite"
 # Copy plugin into the CURRENT version's Docker container
 docker cp <plugin-path>/. $(docker compose -f docker/elgg{CURRENT}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
 
-# Run tests — ALL must pass
+# Run PHPUnit tests — ALL must pass
 docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
+
+# Run Playwright tests — ALL must pass
+cd <plugin-path>/tests/playwright && npx playwright test
 ```
 
-**All tests MUST pass before proceeding to Phase 2.** If tests fail, fix them — they represent real bugs in the current plugin that would be carried forward (or masked) by migration.
+**All tests (PHPUnit AND Playwright) MUST pass before proceeding to Phase 2.** If tests fail, fix them — they represent real bugs in the current plugin that would be carried forward (or masked) by migration.
 
 #### Step 1.8.4: Establish baseline
 
-Record the test count and passing status. After migration (Phase 2.6), the same tests must still pass (adapted for the new API if needed).
+Record the test count and passing status for both PHPUnit and Playwright. After migration (Phase 2.6), the same tests must still pass (adapted for the new API if needed).
 
 ```bash
-# Save baseline
+# Save PHPUnit baseline
 docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml 2>&1 | tail -5
+
+# Save Playwright baseline
+cd <plugin-path>/tests/playwright && npx playwright test --reporter=list 2>&1 | tail -10
 ```
 
 ### Phase 2: MIGRATE (repeat per version step)
@@ -258,27 +276,35 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
 TS=$(curl -sL http://localhost:${ELGG_PORT}/ | grep -oP 'cache/\K\d+' | head -1)
 SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT}/cache/${TS}/default/elgg.css")
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
+
+# Run Playwright tests against the TARGET version
+cd <plugin-path>/tests/playwright && ELGG_PORT=${ELGG_PORT} npx playwright test
 ```
 
 **Step 2.6: Adapt and verify tests (GATE)**
 
-This is a **blocking gate**. Migration is NOT complete until the pre-migration tests pass against the new version.
+This is a **blocking gate**. Migration is NOT complete until ALL pre-migration tests (PHPUnit + Playwright) pass against the new version.
 
 Pre-migration tests (from Phase 1.8) were written against the old API. After migration, they need adaptation:
 
 1. **Copy tests to migration branch** (if not already there)
-2. **Update test API calls** for the target version:
+2. **Update PHPUnit test API calls** for the target version:
    - 3.x→4.x: `elgg_get_session()->setLoggedInUser()` → `_elgg_services()->session_manager->setLoggedInUser()`
    - 4.x→5.x: `\Elgg\Hook` → `\Elgg\Event`, hook registrations → event registrations
-3. **Run adapted tests in Docker** against the TARGET version:
+3. **Update Playwright tests** if routes/URLs changed between versions
+4. **Run all tests** against the TARGET version:
 
 ```bash
+# PHPUnit
 docker compose -f docker/elgg{TARGET}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
+
+# Playwright
+cd <plugin-path>/tests/playwright && ELGG_PORT=${ELGG_PORT} npx playwright test
 ```
 
-4. **Compare with baseline** from Phase 1.8.4 — same test count, all passing
-5. **Commit adapted tests:**
+5. **Compare with baseline** from Phase 1.8.4 — same test count, all passing
+6. **Commit adapted tests:**
 
 ```bash
 git commit -m "test: adapt tests for Elgg {TARGET}.x"

@@ -16,6 +16,7 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 2. **TEST BEHAVIOR, NOT IMPLEMENTATION** — Test what the plugin does, not how it does it.
 3. **MATCH THE ELGG VERSION** — Use the correct base classes and session API for the target version.
 4. **RUN IN DOCKER** — Integration tests require a running Elgg instance with database.
+5. **UI TESTS ARE MANDATORY** — Every plugin with user-facing features MUST have Playwright tests that assert both UI state and database state.
 
 ---
 
@@ -29,14 +30,19 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 
 ### What to test
 
-| Category | Source | Test type |
-|----------|--------|-----------|
-| Entity types | `elgg-plugin.php`, `activate.php` | CRUD lifecycle, class mapping |
-| Actions | `actions/` directory | Input validation, side effects, permissions |
-| Routes | route registrations | URL resolution, response codes |
-| Hooks/Events | handler registrations | Handler execution, return values |
-| Views | `views/` directory | Render without errors |
-| Permissions | permission hooks | Owner can edit, non-owner cannot |
+| Category | Source | PHPUnit | Playwright |
+|----------|--------|---------|------------|
+| Entity types | `elgg-plugin.php`, `activate.php` | CRUD lifecycle, class mapping | — |
+| Actions | `actions/` directory | Input validation, side effects, permissions | Form submit → assert DB state |
+| Routes | route registrations | URL resolution, response codes | Navigate → assert page renders |
+| Hooks/Events | handler registrations | Handler execution, return values | — |
+| Views | `views/` directory | Render without errors | Assert UI elements visible |
+| Permissions | permission hooks | Owner can edit, non-owner cannot | Login as different users, assert access |
+| Forms | form views + actions | — | Fill form, submit, assert UI + DB |
+| Listings | list views | — | Navigate, assert items, pagination |
+| Modals/Widgets | JS-driven UI | — | Trigger, assert appear/function |
+| Admin pages | `views/default/admin/` | — | Navigate, assert renders |
+| AJAX | async actions | — | Trigger action, assert UI update + DB |
 
 ---
 
@@ -96,16 +102,218 @@ public function testNonOwnerCannotEdit(): void {
 }
 ```
 
+### Phase 3.5: WRITE PLAYWRIGHT TESTS
+
+Playwright tests verify UI features end-to-end against a running Elgg instance in Docker. They assert both **UI state** (elements visible, text content, navigation) and **database state** (entities created, metadata set, relationships formed).
+
+#### Test structure
+
+```
+<plugin>/tests/
+  playwright/
+    playwright.config.ts
+    package.json
+    tests/
+      <feature>.spec.ts
+    helpers/
+      elgg.ts           # Elgg-specific helpers (login, DB queries, etc.)
+```
+
+#### Playwright config
+
+```typescript
+// tests/playwright/playwright.config.ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests',
+  baseURL: process.env.ELGG_BASE_URL || `http://localhost:${process.env.ELGG_PORT || 8380}`,
+  use: {
+    ignoreHTTPSErrors: true,
+  },
+  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+});
+```
+
+#### Elgg helpers
+
+```typescript
+// tests/playwright/helpers/elgg.ts
+import { Page, expect } from '@playwright/test';
+import mysql from 'mysql2/promise';
+
+const DB_CONFIG = {
+  host: process.env.ELGG_DB_HOST || 'localhost',
+  port: Number(process.env.ELGG_DB_PORT || 3306),
+  user: process.env.ELGG_DB_USER || 'elgg',
+  password: process.env.ELGG_DB_PASS || 'elgg',
+  database: process.env.ELGG_DB_NAME || 'elgg',
+};
+
+export async function loginAs(page: Page, username: string, password: string = 'testpass123') {
+  await page.goto('/login');
+  await page.fill('input[name="username"]', username);
+  await page.fill('input[name="password"]', password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\//);
+}
+
+export async function queryDb(sql: string, params: any[] = []) {
+  const conn = await mysql.createConnection(DB_CONFIG);
+  const [rows] = await conn.execute(sql, params);
+  await conn.end();
+  return rows;
+}
+
+export async function getEntity(guid: number) {
+  return queryDb(
+    'SELECT * FROM elgg_entities WHERE guid = ?', [guid]
+  );
+}
+
+export async function getEntitiesBySubtype(subtype: string, ownerGuid?: number) {
+  let sql = 'SELECT * FROM elgg_entities WHERE subtype = ?';
+  const params: any[] = [subtype];
+  if (ownerGuid) {
+    sql += ' AND owner_guid = ?';
+    params.push(ownerGuid);
+  }
+  return queryDb(sql, params);
+}
+
+export async function getMetadata(entityGuid: number, name: string) {
+  return queryDb(
+    'SELECT * FROM elgg_metadata WHERE entity_guid = ? AND name = ?',
+    [entityGuid, name]
+  );
+}
+
+export async function getRelationship(guid_one: number, relationship: string, guid_two: number) {
+  return queryDb(
+    'SELECT * FROM elgg_entity_relationships WHERE guid_one = ? AND relationship = ? AND guid_two = ?',
+    [guid_one, relationship, guid_two]
+  );
+}
+```
+
+#### Test patterns
+
+**Form submission — assert UI + database:**
+```typescript
+import { test, expect } from '@playwright/test';
+import { loginAs, getEntitiesBySubtype, getMetadata } from '../helpers/elgg';
+
+test.describe('Blog plugin', () => {
+  test('create blog post via form', async ({ page }) => {
+    await loginAs(page, 'testuser');
+    await page.goto('/blog/add');
+
+    // Fill form
+    await page.fill('input[name="title"]', 'Test Blog Post');
+    await page.fill('textarea[name="description"]', 'This is test content');
+    await page.selectOption('select[name="status"]', 'published');
+    await page.click('button[type="submit"]');
+
+    // Assert UI: redirected to blog view
+    await expect(page).toHaveURL(/\/blog\/view\//);
+    await expect(page.locator('h1, .elgg-heading-main')).toContainText('Test Blog Post');
+
+    // Assert database: entity created with correct metadata
+    const entities = await getEntitiesBySubtype('blog');
+    const blog = entities[entities.length - 1];
+    expect(blog).toBeTruthy();
+    expect(blog.type).toBe('object');
+
+    const status = await getMetadata(blog.guid, 'status');
+    expect(status[0]?.value).toBe('published');
+  });
+});
+```
+
+**Listing page — assert items render:**
+```typescript
+test('blog listing shows posts', async ({ page }) => {
+  await loginAs(page, 'testuser');
+  await page.goto('/blog/all');
+
+  // Assert UI: list renders with items
+  await expect(page.locator('.elgg-list')).toBeVisible();
+  const items = page.locator('.elgg-list > .elgg-item');
+  await expect(items).toHaveCount.greaterThan(0);
+
+  // Assert pagination if enough items
+  const pagination = page.locator('.elgg-pagination');
+  // (only assert if expected)
+});
+```
+
+**Permissions — test as different users:**
+```typescript
+test('non-owner cannot edit post', async ({ page }) => {
+  // Login as owner, create post, get URL
+  await loginAs(page, 'owner_user');
+  await page.goto('/blog/add');
+  await page.fill('input[name="title"]', 'Owner Only Post');
+  await page.fill('textarea[name="description"]', 'Content');
+  await page.click('button[type="submit"]');
+  const postUrl = page.url();
+  const editUrl = postUrl.replace('/view/', '/edit/');
+
+  // Login as different user, try to access edit page
+  await loginAs(page, 'other_user');
+  const response = await page.goto(editUrl);
+
+  // Assert: forbidden or redirected
+  expect([403, 302]).toContain(response?.status() ?? 0);
+});
+```
+
+**AJAX interactions — assert UI update + DB:**
+```typescript
+test('like button updates UI and database', async ({ page }) => {
+  await loginAs(page, 'testuser');
+  await page.goto('/blog/all');
+
+  // Click like on first item
+  const likeButton = page.locator('.elgg-item').first().locator('.elgg-button-like');
+  await likeButton.click();
+
+  // Assert UI: button state changed
+  await expect(likeButton).toHaveClass(/elgg-state-active/);
+
+  // Assert database: annotation created
+  // (get entity guid from DOM data attribute or URL)
+});
+```
+
+**Admin pages — assert render:**
+```typescript
+test('admin settings page renders', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto('/admin/plugin_settings/<plugin-id>');
+
+  // Assert: page renders without error
+  await expect(page.locator('.elgg-form-settings')).toBeVisible();
+  await expect(page.locator('.elgg-system-messages .elgg-message-error')).toHaveCount(0);
+});
+```
+
 ### Phase 4: RUN AND VERIFY
 
 ```bash
-# In Docker (integration tests need database)
+# PHPUnit — in Docker (integration tests need database)
 docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml
+
+# Playwright — from host (needs browser + network access to Docker)
+cd <plugin>/tests/playwright
+npm install
+ELGG_PORT=${ELGG_PORT} npx playwright test
 ```
 
 ### Coverage checklist
 
+**PHPUnit (backend):**
 - [ ] Entity class mapped correctly
 - [ ] Entity CRUD (create, read, update, delete)
 - [ ] Each action has at least one test
@@ -113,6 +321,14 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
 - [ ] Key views render without errors
 - [ ] Routes registered and resolve
 - [ ] Permissions enforced
+
+**Playwright (UI + database):**
+- [ ] Each user-facing form: fill, submit, assert UI response + DB entity created
+- [ ] Each listing page: navigate, assert items render
+- [ ] Permissions: owner vs non-owner access
+- [ ] AJAX interactions: trigger, assert UI update + DB state
+- [ ] Admin pages: navigate, assert render without errors
+- [ ] Modals/widgets: trigger, assert visible and functional
 
 ---
 
@@ -187,6 +403,39 @@ class PluginTest extends IntegrationTestCase {
 
 In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test framework.
 
+### package.json (Playwright)
+```json
+{
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "mysql2": "^3.6.0"
+  }
+}
+```
+
+### Test directory structure (complete)
+```
+<plugin>/tests/
+  bootstrap.php              # PHPUnit bootstrap
+  phpunit.xml                # PHPUnit config
+  phpunit/
+    unit/<Namespace>/        # Unit tests (no DB)
+    integration/<Namespace>/ # Integration tests (needs DB)
+  playwright/
+    package.json             # Playwright deps
+    playwright.config.ts     # Playwright config
+    helpers/
+      elgg.ts                # loginAs(), queryDb(), getEntity(), etc.
+    tests/
+      <feature>.spec.ts      # One file per feature area
+```
+
 ---
 
 ## Common Mistakes
@@ -198,6 +447,11 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | Not cleaning up entities | Use `$this->createObject()` — auto-cleaned by Seeding trait |
 | Testing implementation details | Test behavior: "entity saved" not "SQL query ran" |
 | Missing `canWriteToContainer` args in 4.x | Always pass `($uid, $type, $subtype)` |
+| Playwright tests only assert UI | MUST also query database to verify side effects — UI can lie |
+| Hardcoded ports in Playwright tests | Use `ELGG_PORT` env var — Docker ports differ per Elgg version |
+| Playwright tests not cleaning up test data | Create unique test data per run, or use DB transactions/cleanup |
+| Playwright tests skip login | Most Elgg pages require auth — always `loginAs()` first |
+| No DB assertion after form submit | Form could "succeed" (200) without actually saving — always verify DB |
 
 ---
 
