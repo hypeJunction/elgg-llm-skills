@@ -15,7 +15,7 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 1. **NEVER SKIP A MAJOR VERSION** — 2.x→3.x→4.x→5.x→6.x. Skipping guarantees missed breaking changes.
 2. **NEVER MIGRATE WITHOUT A BRANCH** — Branch name is the TARGET version: `migrate/elgg-{TARGET}.x` (e.g., 3→4 = `migrate/elgg-4.x`).
 3. **VERIFY IN DOCKER** — Plugin must activate and site must render before proceeding.
-4. **NEVER MIGRATE WITHOUT TESTS** — Every migrated plugin MUST have test coverage. Use the `elgg-test-writer` skill or the `plugin-test-scaffold` formula. Migration is NOT complete until tests pass.
+4. **TESTS BEFORE MIGRATION** — Write tests against the CURRENT working version BEFORE running any migration rules. Tests are your regression safety net. If tests don't exist, write them first (Phase 1.8). Migration CANNOT start until pre-migration tests pass in Docker.
 5. **CLOSURES CANNOT GO IN elgg-plugin.php** — Elgg 4+ serializes plugin config. Use class-based callbacks or Bootstrap.
 6. **DIRECTORY NAME MUST MATCH composer.json** — Elgg 4+ requires plugin dir matches the `name` field (lowercase).
 
@@ -131,7 +131,67 @@ Quick heuristics to determine what version a plugin already targets:
 - If the plugin is already at the target version → **skip migration**
 - If a migration branch exists but is incomplete → **continue from that branch**
 - If an upstream fork has the migration → **use that instead of re-migrating**
-- If no migration exists anywhere → **proceed to Phase 2**
+- If no migration exists anywhere → **proceed to Phase 1.8**
+
+### Phase 1.8: PRE-MIGRATION TESTS (BLOCKING GATE)
+
+**Before touching ANY migration code**, the plugin MUST have passing tests against its CURRENT version. These tests become the regression safety net — if migration breaks something, the tests catch it.
+
+**This gate is MANDATORY. Do NOT skip to Phase 2 without passing tests.**
+
+#### Step 1.8.1: Check for existing tests
+
+```bash
+ls <plugin-path>/tests/phpunit.xml 2>/dev/null && echo "HAS TESTS" || echo "NO TESTS"
+```
+
+#### Step 1.8.2: If no tests exist — write them
+
+Use the `elgg-test-writer` skill or the `plugin-test-scaffold` formula:
+
+```bash
+bd mol pour plugin-test-scaffold
+```
+
+Scan the plugin source to identify all testable features, then write tests covering:
+
+- [ ] Entity class mapping (each registered entity type resolves to correct class)
+- [ ] Entity CRUD (create, read, update, delete for each entity subtype)
+- [ ] At least one test per action (validates input, creates/modifies entities, checks permissions)
+- [ ] Hook/event handlers execute without errors
+- [ ] Key views render without fatal errors
+- [ ] Permissions (owner can edit, non-owner cannot)
+
+**Commit tests on the CURRENT branch** (not the migration branch):
+
+```bash
+cd <plugin-path>
+git add tests/
+git commit -m "test: add pre-migration test suite"
+```
+
+#### Step 1.8.3: Run tests in Docker against CURRENT Elgg version
+
+```bash
+# Copy plugin into the CURRENT version's Docker container
+docker cp <plugin-path>/. $(docker compose -f docker/elgg{CURRENT}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
+
+# Run tests — ALL must pass
+docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
+```
+
+**All tests MUST pass before proceeding to Phase 2.** If tests fail, fix them — they represent real bugs in the current plugin that would be carried forward (or masked) by migration.
+
+#### Step 1.8.4: Establish baseline
+
+Record the test count and passing status. After migration (Phase 2.6), the same tests must still pass (adapted for the new API if needed).
+
+```bash
+# Save baseline
+docker compose -f docker/elgg{CURRENT}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml 2>&1 | tail -5
+```
 
 ### Phase 2: MIGRATE (repeat per version step)
 
@@ -200,36 +260,33 @@ SIZE=$(curl -sL -o /dev/null -w "%{size_download}" "http://localhost:${ELGG_PORT
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 ```
 
-**Step 2.6: Write tests (GATE)**
+**Step 2.6: Adapt and verify tests (GATE)**
 
-This is a **blocking gate**. Migration is NOT complete without test coverage.
+This is a **blocking gate**. Migration is NOT complete until the pre-migration tests pass against the new version.
 
-Use the `elgg-test-writer` skill or the `plugin-test-scaffold` formula:
+Pre-migration tests (from Phase 1.8) were written against the old API. After migration, they need adaptation:
+
+1. **Copy tests to migration branch** (if not already there)
+2. **Update test API calls** for the target version:
+   - 3.x→4.x: `elgg_get_session()->setLoggedInUser()` → `_elgg_services()->session_manager->setLoggedInUser()`
+   - 4.x→5.x: `\Elgg\Hook` → `\Elgg\Event`, hook registrations → event registrations
+3. **Run adapted tests in Docker** against the TARGET version:
 
 ```bash
-# Scaffold test infrastructure for a plugin
-bd mol pour plugin-test-scaffold
+docker compose -f docker/elgg{TARGET}/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/<plugin-id>/tests/phpunit.xml
 ```
 
-**Minimum coverage required:**
-- [ ] Entity class mapping (each entity type activates correctly)
-- [ ] Entity CRUD (create, read, update, delete)
-- [ ] At least one test per action
-- [ ] Hook/event handlers execute without errors
-- [ ] Key views render without fatal errors
-- [ ] Permissions (owner can edit, non-owner cannot)
+4. **Compare with baseline** from Phase 1.8.4 — same test count, all passing
+5. **Commit adapted tests:**
 
-**Run tests in Docker:**
 ```bash
-docker exec <container> php /var/www/html/vendor/bin/phpunit \
-  --configuration /var/www/html/mod/<plugin-id>/tests/phpunit.xml
+git commit -m "test: adapt tests for Elgg {TARGET}.x"
 ```
 
-If the plugin has no tests directory, create one using the test-writer skill:
-1. Scaffold: `tests/phpunit.xml` + `tests/phpunit/integration/` directory
-2. Write entity test, action tests, hook tests
-3. Run in Docker, fix failures
-4. Commit tests separately: `git commit -m "test: add integration tests for <plugin>"`
+**If pre-migration tests don't exist** (legacy — plugin was migrated before this gate was added):
+- STOP. Go back to Phase 1.8 and write tests against the CURRENT version first.
+- Only exception: if the plugin has zero PHP logic (pure views/CSS/JS only), document why tests are skipped in the commit message.
 
 **Step 2.7: Compare with reference** (if a manually-migrated version exists upstream)
 
@@ -293,6 +350,13 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 | `elgg_add_subscription()` | Removed in 4.x — use `$entity->addRelationship($user_guid, 'notify'.$method)` |
 | Conditional view extensions in elgg-plugin.php | `elgg_is_active_plugin()` guards must go in Bootstrap::init(), not elgg-plugin.php |
 | Symfony Response + exit in AJAX actions | Replace with `return elgg_ok_response($data)` / `elgg_error_response($msg, '', 422)` |
+| `elgg_get_registered_tag_metadata_names()` | Removed in 4.x — use `elgg_get_config('registered_tag_metadata_names') ?? ['tags']` |
+| `require(['jquery-ui'])` in JS | Elgg 4.x uses granular jQuery UI — use `require(['jquery-ui/widgets/sortable'])` etc. |
+| XHR JSON echo + exit in action files | Replace manual `echo json_encode(); exit;` with `return elgg_ok_response($data)` — response system handles content negotiation |
+| `views.php` removed but views key lost | When AST rule removes `views.php`, verify the `'views'` key in `elgg-plugin.php` preserves JS/CSS path mappings |
+| Helper functions in start.php | Move to `lib/functions.php` and load via `Bootstrap::boot()` — don't put in elgg-plugin.php |
+| `elgg_get_config('dbprefix')` in raw SQL | Removed in 4.x — use QueryBuilder `$qb->subquery()` or `elgg()->db->getTablePrefix()` |
+| `elgg.action()` in JS | Removed in 4.x — use `elgg/Ajax` module: `var ajax = new Ajax(); ajax.action(...)` |
 
 ---
 
