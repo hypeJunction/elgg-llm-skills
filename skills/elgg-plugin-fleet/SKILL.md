@@ -131,16 +131,25 @@ Any cell where an upstream migration exists → mark as `upstream` and note the 
 
 ### Phase 1: CREATE BEADS — Issue Tracking Matrix
 
-Create one beads issue per plugin×version cell that is `todo`:
+For each plugin, create the **full dependency chain**: pre-migration tests → first migration step → next step → ...
+
+#### Step 1.1: Create pre-migration test issues (P0)
+
+Every plugin needs a pre-migration test issue before any migration work begins:
 
 ```bash
-# If using beads, install the formula first:
-cp formulas/elgg-plugin-fleet.formula.json .beads/formulas/
+bd create \
+  --title="Add pre-migration tests: <plugin>" \
+  --description="Write PHPUnit + Playwright test suite before migration. Tests act as regression safety net." \
+  --type=task \
+  --priority=0
+```
 
-# Then pour it:
-bd mol pour elgg-plugin-fleet --var plugins_dir=~/Data/hypejunction/plugins --var from=3.x --var to=7.x
+#### Step 1.2: Create migration issues (P2/P3)
 
-# Or create issues manually:
+Create one issue per plugin×version step that is `todo`:
+
+```bash
 bd create \
   --title="Migrate <plugin> <from>→<to>" \
   --description="Migrate <plugin> from Elgg <from> to <to> using elgg-migrate skill. Plugin path: <plugins-dir>/<plugin>" \
@@ -148,15 +157,45 @@ bd create \
   --priority=2
 ```
 
-**Naming convention:** `Migrate <plugin> <from>→<to>`
+**Naming conventions:**
+- Test issues: `Add pre-migration tests: <plugin>`
+- Migration issues: `Migrate <plugin> <from>→<to>`
 
-**Dependencies:** Each version step depends on the previous:
+#### Step 1.3: Wire the full dependency chain
+
+Each plugin's issues must form a linear chain:
+
 ```bash
-# migrate 4→5 depends on migrate 3→4
+# Pre-migration tests block the FIRST migration step
+bd dep add <issue-3to4> <issue-tests>
+
+# Each migration step blocks the next
 bd dep add <issue-4to5> <issue-3to4>
+bd dep add <issue-5to6> <issue-4to5>
 ```
 
-Create all issues for the current version step in parallel (use subagents).
+**If a plugin starts at 4.x** (no 3→4 needed), tests block 4→5 directly:
+```bash
+bd dep add <issue-4to5> <issue-tests>
+```
+
+**Example full chain for hypeInbox (starting at 3.x, targeting 5.x):**
+```
+Add pre-migration tests: hypeInbox (P0)
+  → blocks: Migrate hypeInbox 3.x→4.x (P2)
+    → blocks: Migrate hypeInbox 4.x→5.x (P3)
+```
+
+#### Step 1.4: Verify dependency graph
+
+After creating all issues, verify the chains are correct:
+
+```bash
+bd blocked          # All migration issues should show their blockers
+bd orphans          # Should return no orphaned issues
+```
+
+Create all issues for a version step in parallel (use subagents).
 Only create the next version step's issues after the current step is complete.
 
 ### Phase 2: MIGRATE — One Version Step at a Time

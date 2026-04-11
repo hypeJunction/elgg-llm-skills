@@ -150,6 +150,19 @@ Quick heuristics to determine what version a plugin already targets:
 
 **This gate is MANDATORY. Do NOT skip to Phase 2 without passing tests.**
 
+#### Beads dependency tracking
+
+When using beads for issue tracking (fleet migration), the pre-migration test issue MUST block the first migration step. If a plugin requires multiple version steps (e.g., 3→4→5), the chain must be fully wired:
+
+```bash
+# Tests block the first migration
+bd dep add <migrate-3to4> <tests-issue>
+# Each step blocks the next
+bd dep add <migrate-4to5> <migrate-3to4>
+```
+
+Never create a migration issue without wiring it to its predecessor. A 4.x→5.x migration that doesn't depend on the 3.x→4.x migration (for the same plugin directory) is a broken graph.
+
 #### Step 1.8.1: Check for existing tests
 
 ```bash
