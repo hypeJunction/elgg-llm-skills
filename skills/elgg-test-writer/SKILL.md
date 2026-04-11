@@ -350,21 +350,47 @@ ELGG_PORT=${ELGG_PORT} npx playwright test
 
 ## File Templates
 
-### bootstrap.php (3.x)
+### bootstrap.php (3.x and 4.x — SAME bootstrap works for both)
+
+**CRITICAL**: The path from `tests/` to the Elgg root is always 3 levels up: `tests/` → `mod/plugin/` → `mod/` → `elgg_root/`. Use `dirname(__DIR__, 3)` or `dirname(dirname(dirname(__DIR__)))`.
+
 ```php
 <?php
+/**
+ * PHPUnit bootstrap for Elgg plugin tests.
+ * Plugin must be installed at {elgg_root}/mod/{plugin_id}/
+ */
+
+// tests/ -> mod/plugin/ -> mod/ -> elgg_root/
 $elggRoot = dirname(dirname(dirname(__DIR__)));
+
 require_once $elggRoot . '/vendor/autoload.php';
+
+// Load Elgg test classes (UnitTestCase, IntegrationTestCase, etc.)
 $testClassesDir = $elggRoot . '/vendor/elgg/elgg/engine/tests/classes';
 spl_autoload_register(function ($class) use ($testClassesDir) {
     $file = $testClassesDir . '/' . str_replace('\\', '/', $class) . '.php';
     if (file_exists($file)) require_once $file;
 });
-require_once dirname(__DIR__) . '/autoloader.php';
+
+// Load plugin autoloader if present
+$pluginRoot = dirname(__DIR__);
+if (file_exists($pluginRoot . '/vendor/autoload.php')) {
+    require_once $pluginRoot . '/vendor/autoload.php';
+} elseif (file_exists($pluginRoot . '/autoloader.php')) {
+    require_once $pluginRoot . '/autoloader.php';
+}
+
 \Elgg\Application::loadCore();
 ```
 
+**DO NOT** use `dirname(__DIR__, 4)` — that goes one level too high.
+**DO NOT** try to locate `engine/tests/phpunit/bootstrap.php` — load autoloader + test classes + `loadCore()` directly.
+
 ### phpunit.xml (3.x/4.x)
+
+**CRITICAL**: Only include `<directory>` entries for test suite directories that EXIST. PHPUnit errors if a directory is missing. If the plugin only has integration tests, omit the unit suite.
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit bootstrap="bootstrap.php" colors="true">
@@ -376,11 +402,40 @@ require_once dirname(__DIR__) . '/autoloader.php';
         <env name="ELGG_DB_PASS" value="elgg"/>
     </php>
     <testsuites>
-        <testsuite name="unit"><directory>phpunit/unit</directory></testsuite>
+        <!-- ONLY include suites whose directories exist -->
         <testsuite name="integration"><directory>phpunit/integration</directory></testsuite>
+        <!-- <testsuite name="unit"><directory>phpunit/unit</directory></testsuite> -->
     </testsuites>
 </phpunit>
 ```
+
+### PHPUnit must be installed in Elgg's vendor
+
+The Elgg Docker images do NOT include PHPUnit by default. Before running tests:
+
+```bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  composer require --dev phpunit/phpunit:^9.6 --no-interaction
+```
+
+Use PHPUnit 9.x for PHP 7.4 (Elgg 3.x/4.x), PHPUnit 10.x for PHP 8.1+ (Elgg 5.x+).
+
+### Unit tests vs Integration tests
+
+**Unit tests** (`\Elgg\UnitTestCase`):
+- Do NOT boot the full Elgg app — no database, no plugins loaded
+- `elgg_view_exists()` returns false for plugin views (view system not initialized)
+- Use for testing pure PHP logic (string manipulation, data transforms, etc.)
+- Do NOT test view existence, hook registration, or entity operations in unit tests
+
+**Integration tests** (`\Elgg\IntegrationTestCase`):
+- Boot the full Elgg app with database
+- Plugins are loaded and activated
+- `elgg_view_exists()`, `elgg_trigger_plugin_hook()`, entity CRUD all work
+- Require database connection (Docker)
+- Use `$this->createUser()`, `$this->createObject()` — auto-cleaned after test
+
+**Rule of thumb**: If your test needs Elgg functions, it's an integration test. Most plugin tests are integration tests.
 
 ### Test class with plugin boot (3.x only)
 ```php
@@ -452,6 +507,15 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | Playwright tests not cleaning up test data | Create unique test data per run, or use DB transactions/cleanup |
 | Playwright tests skip login | Most Elgg pages require auth — always `loginAs()` first |
 | No DB assertion after form submit | Form could "succeed" (200) without actually saving — always verify DB |
+| Wrong bootstrap path: `dirname(__DIR__, 4)` | Use `dirname(__DIR__, 3)` — tests/ → plugin/ → mod/ → elgg_root/ (3 levels) |
+| Using `elgg_view_exists()` in UnitTestCase | View system not initialized in unit tests — move to IntegrationTestCase |
+| phpunit.xml references missing directory | Only include `<directory>` for suites that exist — PHPUnit errors on missing dirs |
+| PHPUnit not installed in Docker | Run `composer require --dev phpunit/phpunit:^9.6` in container first |
+| PHPUnit version mismatch | PHP 7.4 = PHPUnit 9.x, PHP 8.1+ = PHPUnit 10.x |
+| Bootstrap loads `engine/tests/phpunit/bootstrap.php` | Don't search for Elgg's bootstrap — load autoloader + test classes + `loadCore()` directly |
+| Elgg 4 rejects plugin with `start.php` | 3.x plugins with start.php can only be tested in Elgg 3 Docker, not Elgg 4 |
+| `PluginBootstrap` missing `load()` method | Elgg 4.x requires `load()` — add empty `public function load() {}` to Bootstrap class |
+| Namespaced Bootstrap calls `elgg_*()` without `\` | Must use `\elgg_*()` in namespaced code — PHP resolves to namespace otherwise |
 
 ---
 
