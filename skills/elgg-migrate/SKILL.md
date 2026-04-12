@@ -10,6 +10,21 @@ description: >
 
 Migrate Elgg plugins one major version at a time using automated AST rules + LLM-guided fixes, verified in Docker.
 
+## Required Reading
+
+Before starting any migration, the agent MUST consult the relevant docs in `docs/`:
+
+| Doc | When to read |
+|-----|--------------|
+| `docs/version-api-boundaries.md` | Before applying any rules — confirms which APIs are valid for the target version |
+| `docs/plugin-architecture-by-version.md` | Phase 1 (SETUP) and Phase 2.8 (Document) — defines target structure |
+| `docs/coding-standards.md` | Phase 1.7 (baseline) and Phase 2.10 (verify) — version-specific style rules |
+| `docs/security-review-checklist.md` | After running `--security` — interpret findings |
+| `docs/llm-security-review.md` | Phase 2.9 — second-stage LLM security review workflow |
+| `docs/post-migration-documentation.md` | Phase 2.8 — generate ARCHITECTURE.md template |
+
+**Linear knowledge rule**: When migrating from version N to N+1, only read the sections of these docs relevant to N and N+1. Do NOT read sections about versions beyond N+1 — that knowledge will leak into your migration and cause version drift.
+
 ## Iron Laws
 
 1. **NEVER SKIP A MAJOR VERSION** — 2.x→3.x→4.x→5.x→6.x. Skipping guarantees missed breaking changes.
@@ -18,6 +33,10 @@ Migrate Elgg plugins one major version at a time using automated AST rules + LLM
 4. **TESTS BEFORE MIGRATION** — Write tests against the CURRENT working version BEFORE running any migration rules. Tests are your regression safety net. If tests don't exist, write them first (Phase 1.8). Migration CANNOT start until pre-migration tests pass in Docker.
 5. **CLOSURES CANNOT GO IN elgg-plugin.php** — Elgg 4+ serializes plugin config. Use class-based callbacks or Bootstrap.
 6. **DIRECTORY NAME MUST MATCH composer.json** — Elgg 4+ requires plugin dir matches the `name` field (lowercase).
+7. **LINEAR VERSION KNOWLEDGE ONLY** — When migrating from version N to N+1, the agent MUST only apply N+1 APIs, patterns, and conventions. Do NOT use APIs from version N+2 or later. Example: when migrating 3.x→4.x, use `\Elgg\Hook` (4.x), NOT `\Elgg\Event` (5.x); use `elgg_trigger_plugin_hook()` (4.x, deprecated), NOT `elgg_trigger_event_results()` (5.x). Run `--verify` after every migration to catch leakage.
+8. **SECURITY SWEEP AFTER EVERY MIGRATION** — Run `--security` after applying rules. Fix critical findings before committing. Security debt from legacy code gets inherited — catch it at the version boundary.
+9. **DOCUMENT AFTER MIGRATION** — After each version step, generate a plugin architecture summary documenting the current structure, registered hooks/events, entities, routes, and any migration notes for future reference.
+10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `docs/coding-standards.md` for version-specific rules.
 
 ---
 
@@ -83,8 +102,66 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 | Step | Command |
 |------|---------|
 | Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
-| Apply | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>` |
+| Apply + verify | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security` |
 | LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
+| Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security` |
+
+### CLI Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Analyze only, don't modify files |
+| `--report` | Show LLM instructions for manual rules |
+| `--verify` | Run post-migration version boundary check (catches future-version API leakage) |
+| `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
+| `--no-guard` | Skip version guard validation (not recommended) |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Usage error |
+| 2 | Version mismatch (plugin version doesn't match manifest "from") |
+| 3 | Post-migration verification failed (future-version APIs detected) |
+| 4 | Security sweep found critical issues |
+
+---
+
+## Beads Acceptance Criteria (MANDATORY for every migration issue)
+
+Every `Migrate <plugin> N.x→M.x` issue MUST satisfy ALL of these gates before being closed. If any gate is skipped, the migration is INCOMPLETE — re-open the issue.
+
+```
+[ ] 1. Pre-migration tests written + passing on CURRENT version (Phase 1.8)
+[ ] 2. Migration branch created: migrate/elgg-{TARGET}.x
+[ ] 3. Automated rules applied (bin/migrate.php with --verify --security)
+[ ] 4. LLM-guided manual fixes applied (no warnings remaining in report)
+[ ] 5. PHP syntax check clean (php -l on all .php files)
+[ ] 6. PostMigrationVerifier passes (no future-version API leakage, no forbidden files)
+[ ] 7. SecuritySweep passes (no critical findings)
+[ ] 8. Pre-migration tests adapted + passing on TARGET version (Phase 2.6)
+[ ] 9. Plugin activates in Docker (elgg{TARGET} container)
+[ ] 10. Site renders HTTP 200 with full page (>1000 bytes) — both homepage AND login
+[ ] 11. PHP_CodeSniffer passes for target version standards
+[ ] 12. ARCHITECTURE.md generated (Phase 2.8)
+[ ] 13. CHANGELOG.md updated with migration notes
+[ ] 14. Elgg\Upgrade\Batch script added if data migration needed
+[ ] 15. Commit message follows format: migrate({TARGET}.x): <summary>
+[ ] 16. Issue closed with --reason summarizing what changed
+```
+
+**Skill invocation order**:
+1. `elgg-test-writer` skill — write pre-migration tests (gate 1)
+2. `elgg-migrate` skill — execute migration (gates 2-15)
+3. `bd close` — only after ALL gates pass
+
+**Subagent contract**: When dispatching migration to a subagent, the prompt MUST include the full gate checklist above and the subagent MUST report on each gate explicitly (PASS/FAIL/SKIP-WITH-REASON). A migration commit without a gates report is INCOMPLETE and the work must be redone.
+
+**Tools that enforce gates**:
+- Gate 6: `php bin/migrate.php ... --verify` (PostMigrationVerifier)
+- Gate 7: `php bin/migrate.php ... --security` (SecuritySweep)
+- Gate 9-10: `docker compose -f docker/elgg{N}/docker-compose.yml exec elgg ...`
 
 ---
 
@@ -201,6 +278,21 @@ Quick heuristics to determine what version a plugin already targets:
 - If an upstream fork has the migration → **use that instead of re-migrating**
 - If no migration exists anywhere → **proceed to Phase 1.8**
 
+### Phase 1.7: Establish Coding Style Baseline
+
+Before migration, capture the plugin's current style state and ensure a `.phpcs.xml` configuration exists for the target version.
+
+```bash
+# Check if .phpcs.xml exists, create one if not (see docs/coding-standards.md for template)
+ls <plugin-path>/.phpcs.xml 2>/dev/null || echo "Need to create .phpcs.xml"
+
+# Generate baseline report
+cd <plugin-path>
+vendor/bin/phpcs --standard=PSR12 classes/ actions/ lib/ > /tmp/style-baseline.txt 2>&1
+```
+
+The post-migration code MUST maintain or improve style compliance — never regress. See `docs/coding-standards.md` for version-specific rules and the full `.phpcs.xml` template.
+
 ### Phase 1.8: PRE-MIGRATION TESTS (BLOCKING GATE)
 
 **Before touching ANY migration code**, the plugin MUST have passing tests against its CURRENT version. These tests become the regression safety net — if migration breaks something, the tests catch it.
@@ -306,10 +398,13 @@ docker compose -f docker/elgg{CURRENT}/docker-compose.yml --profile test run --r
 git checkout -b migrate/elgg-{TARGET}.x
 ```
 
-**Step 2.1: Run automated rules**
+**Step 2.1: Run automated rules (with verification + security)**
 ```bash
-# Run from elgg-migrate root
-docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
+# Run from elgg-migrate root — always include --verify and --security
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security
+
+# If verification fails (exit code 3): future-version APIs detected — fix before committing
+# If security fails (exit code 4): critical security issues found — fix before committing
 cd <plugin-path> && git add -A && git commit -m "migrate({TARGET}.x): automated AST transformations"
 ```
 
@@ -407,9 +502,75 @@ git commit -m "test: adapt tests for Elgg {TARGET}.x"
 
 **Step 2.7: Compare with reference** (if a manually-migrated version exists upstream)
 
+**Step 2.8: Generate plugin architecture documentation**
+
+After successful migration and verification, document the plugin's current state for future reference:
+
+```bash
+# Create or update ARCHITECTURE.md in the plugin root
+```
+
+The documentation should include:
+- **Plugin summary**: What the plugin does, its entity types and subtypes
+- **Directory structure**: Current file layout matching the target version's conventions
+- **Registered hooks/events**: All handlers declared in elgg-plugin.php
+- **Routes**: All registered routes with their handlers
+- **Entities**: All registered entity types with capabilities
+- **Actions**: All registered actions
+- **Views**: Key views and view extensions
+- **Dependencies**: Other plugins this plugin depends on
+- **Migration notes**: What changed in this version step, any known issues or workarounds
+
+Commit the documentation:
+```bash
+git commit -m "docs: add plugin architecture summary for Elgg {TARGET}.x"
+```
+
+**Step 2.9: LLM-based deep security review**
+
+After the automated security sweep passes, run the `/security-review` skill on the migrated plugin for deeper analysis the pattern matcher cannot do:
+
+```
+/security-review --files=<plugin-path>
+```
+
+The LLM review covers:
+- **Data flow analysis**: trace user input from `get_input()` through to outputs
+- **Authorization gaps**: actions that don't verify ownership before privileged operations
+- **Business logic flaws**: IDOR, race conditions, mass assignment
+- **Hook/event handler trust**: handlers that trust hook data without validation
+- **Migration-introduced issues**: Bootstrap classes with privileged operations, missing CSRF on custom endpoints
+
+Address all HIGH and MEDIUM confidence findings before committing. See `docs/llm-security-review.md` for the full two-stage security workflow.
+
+**Step 2.10: Verify coding standards**
+
+Run PHP_CodeSniffer against the migrated code using Elgg's coding standards:
+
+```bash
+# Check coding style
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpcs --standard=./vendor/elgg/elgg/engine/lib/..../phpcs.xml mod/<plugin-id>/classes/ mod/<plugin-id>/actions/ mod/<plugin-id>/views/
+
+# Fix auto-fixable issues
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+  vendor/bin/phpcbf --standard=./vendor/elgg/elgg/engine/lib/..../phpcs.xml mod/<plugin-id>/classes/
+```
+
+Key style rules by version:
+- **3.x+**: PSR-2 base, Elgg extensions (no tabs, 4-space indent, opening brace on same line for classes)
+- **4.x+**: Strict types declaration, return type hints on all methods, property type hints
+- **5.x+**: Union types, named arguments where they improve readability
+- **6.x+**: Readonly properties, enums where applicable
+
+Commit style fixes:
+```bash
+git commit -m "style: fix coding standards for Elgg {TARGET}.x"
+```
+
 ### Phase 3: FINALIZE
 
-Review branch history, run security scan (unescaped output, missing CSRF, raw SQL), generate report.
+Review branch history, run `--security` sweep on the final state, generate report.
 
 ---
 

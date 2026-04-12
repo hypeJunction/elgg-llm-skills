@@ -5,7 +5,12 @@ services:
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-cropper:/var/www/html/mod/cropper
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_api:/var/www/html/mod/forms_api
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_register:/var/www/html/mod/forms_register
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_validation:/var/www/html/mod/forms_validation
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-images_ui:/var/www/html/mod/images_ui
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_entity:/var/www/html/mod/menus_entity
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-notifications_mass_mail:/var/www/html/mod/notifications_mass_mail
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-prototyper_profile:/var/www/html/mod/prototyper_profile
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-site_search:/var/www/html/mod/site_search
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/elgg_lightbox:/var/www/html/mod/elgg_lightbox
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_api:/var/www/html/mod/menus_api
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_dropdown:/var/www/html/mod/menus_dropdown
