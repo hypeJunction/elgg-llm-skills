@@ -9,6 +9,13 @@ namespace ElggMigrate;
  */
 final class RuleRunner
 {
+    private ?VersionGuard $versionGuard;
+
+    public function __construct(?VersionGuard $versionGuard = null)
+    {
+        $this->versionGuard = $versionGuard;
+    }
+
     /**
      * Load a manifest.json and return the parsed structure.
      *
@@ -41,6 +48,7 @@ final class RuleRunner
     public function analyzeAll(string $manifestPath, string $pluginPath): array
     {
         $manifest = $this->loadManifest($manifestPath);
+        $this->guardVersion($pluginPath, $manifest);
         $results = [];
 
         foreach ($manifest['rules'] as $ruleConfig) {
@@ -63,6 +71,7 @@ final class RuleRunner
     public function applyAll(string $manifestPath, string $pluginPath): array
     {
         $manifest = $this->loadManifest($manifestPath);
+        $this->guardVersion($pluginPath, $manifest);
         $results = [];
 
         foreach ($manifest['rules'] as $ruleConfig) {
@@ -106,6 +115,17 @@ final class RuleRunner
         }
 
         return $instructions;
+    }
+
+    /**
+     * Validate that the plugin's detected version matches the manifest's "from" version.
+     * Skipped if no VersionGuard was provided (backwards compatibility).
+     */
+    private function guardVersion(string $pluginPath, array $manifest): void
+    {
+        if ($this->versionGuard !== null) {
+            $this->versionGuard->validate($pluginPath, $manifest);
+        }
     }
 
     private function instantiateRule(array $ruleConfig): MigrationRule

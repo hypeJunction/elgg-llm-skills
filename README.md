@@ -6,9 +6,23 @@ Automated migration toolkit for upgrading Elgg CMS plugins across major versions
 
 - **AST-based automated rules** that transform PHP code for breaking API changes
 - **LLM-guided migration instructions** for changes that require human/AI judgment
+- **Version guard** that detects plugin version and prevents wrong-manifest application
+- **Post-migration verification** that catches future-version API leakage (e.g., 5.x APIs in 4.x code)
+- **Security sweep** for SQL injection, XSS, command injection, and other common issues
+- **Dependency audit** via `composer audit` for CVE-rated vulnerabilities in third-party packages
 - **Docker verification environments** for testing plugin activation and site rendering
 - **Skills for AI agents** (Claude Code, etc.) with full migration workflows
 - **Structured formulas** for tracking multi-plugin, multi-version migrations
+
+## Safety Gates
+
+Each migration step is protected by five gates:
+
+1. **Version Guard** — `VersionGuard` detects the plugin's current version and rejects manifests that don't target it. Prevents version-skipping (e.g., applying 4x→5x rules to a 2.x plugin).
+2. **Post-Migration Verifier** — `PostMigrationVerifier` scans the migrated code for APIs that belong to versions beyond the target. Catches the most common consistency failure: agents applying future-version patterns.
+3. **Security Sweep** — `SecuritySweep` runs after migration to flag SQL injection, XSS, command injection, hardcoded credentials, weak crypto, and other security issues. Optionally invokes `semgrep` for taint analysis.
+4. **Dependency Audit** — `DependencyAudit` runs `composer audit` against the plugin's `composer.lock` to find CVE-rated vulnerabilities in third-party dependencies. Walks up the directory tree to find a parent Elgg installation's lock file if the plugin doesn't have its own.
+5. **Docker Verification** — Plugin must activate AND site must render in a real Elgg container before the migration is considered complete.
 
 ## Quick Start
 
@@ -17,15 +31,40 @@ Automated migration toolkit for upgrading Elgg CMS plugins across major versions
 git clone <repo-url> && cd elgg-migrate
 composer install
 
-# Analyze a plugin (dry run)
+# Analyze a plugin (dry run) — version guard runs automatically
 php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run
 
-# Apply automated transformations
-php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin
+# Apply automated transformations with full verification + security sweep
+php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --verify --security
 
 # See LLM-guided fixes needed
 php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --report
+
+# Verify-only mode (no file changes)
+php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --verify --security
 ```
+
+### CLI Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Analyze only, don't modify files |
+| `--report` | Show LLM instructions for manual rules |
+| `--verify` | Run post-migration version boundary check |
+| `--security` | Run automated security sweep (pattern + optional semgrep) |
+| `--audit` | Run `composer audit` for dependency CVEs |
+| `--no-guard` | Skip version guard (not recommended) |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Usage error |
+| 2 | Version mismatch (plugin doesn't match manifest "from") |
+| 3 | Post-migration verification failed (future-version APIs detected) |
+| 4 | Security sweep found critical issues |
+| 5 | Dependency audit found critical/high severity CVEs |
 
 ## Available Migration Rules
 
@@ -101,6 +140,19 @@ bd stats        # Project health overview
 ### Without Beads
 
 The skills and rules work perfectly without beads. Use whatever task tracking you prefer -- the migration rules and skill instructions are self-contained markdown and JSON files.
+
+## Documentation
+
+The `docs/` directory contains the canonical documentation for the migration toolkit:
+
+| Document | Content |
+|----------|---------|
+| `docs/version-api-boundaries.md` | Which APIs belong to which Elgg version (enforced by `--verify`) |
+| `docs/plugin-architecture-by-version.md` | Ideal directory structure and file conventions per version |
+| `docs/coding-standards.md` | Elgg coding standards by version (PSR-12 + Elgg extensions) |
+| `docs/security-review-checklist.md` | Security checks performed by `--security` |
+| `docs/llm-security-review.md` | Two-stage security workflow (automated + LLM deep review) |
+| `docs/post-migration-documentation.md` | How to document a plugin after migration (ARCHITECTURE.md) |
 
 ## Reference Documentation
 

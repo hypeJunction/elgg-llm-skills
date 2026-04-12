@@ -102,9 +102,9 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 | Step | Command |
 |------|---------|
 | Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
-| Apply + verify | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security` |
+| Apply + all gates | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
 | LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
-| Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security` |
+| Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
 
 ### CLI Flags
 
@@ -114,6 +114,7 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 | `--report` | Show LLM instructions for manual rules |
 | `--verify` | Run post-migration version boundary check (catches future-version API leakage) |
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
+| `--audit` | Run `composer audit` for dependency CVEs |
 | `--no-guard` | Skip version guard validation (not recommended) |
 
 ### Exit Codes
@@ -125,6 +126,7 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 | 2 | Version mismatch (plugin version doesn't match manifest "from") |
 | 3 | Post-migration verification failed (future-version APIs detected) |
 | 4 | Security sweep found critical issues |
+| 5 | Dependency audit found critical/high CVEs |
 
 ---
 
