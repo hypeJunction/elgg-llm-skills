@@ -31,6 +31,14 @@ one and a bad upgrade stops being a rollback and becomes a restoration.
 Everything else in Part A is judgment and should be adapted to your project.
 Part B is a safety-critical checklist and stays strict.
 
+Four sections in `elgg-migrate` apply to site upgrades too — read them
+before starting Part A: **Cost of failure**, **When to stop and escalate**,
+**Agent failure modes**, and **Recovery playbook**. They cover the
+cross-cutting guidance about which gates to never cut, when to surface a
+block to the human instead of forging ahead, the invisible mistakes the
+acceptance gates can't catch, and how to recover from the common failure
+shapes.
+
 ---
 
 ## Container Infrastructure

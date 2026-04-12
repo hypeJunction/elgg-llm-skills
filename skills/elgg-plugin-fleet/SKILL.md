@@ -28,6 +28,27 @@ strict because getting them wrong corrupts the fleet.
 
 Everything else in this skill is guidance — apply judgment.
 
+## Cross-cutting guidance (read once, applies to everything below)
+
+Three sections in `elgg-migrate` apply to fleet work too and won't be
+repeated here:
+
+- **Cost of failure** — which gates are cheap to cut and which are
+  catastrophic. The fleet is where you'll be tempted to cut the cheap ones
+  to keep moving; knowing the asymmetry means cutting the right ones.
+- **When to stop and escalate** — signals that a plugin isn't a "keep
+  trying" case but a "flag and move on" case. Iron Law 4 (fail fast, fix
+  forward) is the fleet expression of this.
+- **Agent failure modes** — hallucinated APIs, fabricated gate results,
+  cross-version knowledge leakage, shortcutting under context pressure.
+  These compound in fleet work because each mistake gets repeated across
+  plugins before anyone notices.
+- **Recovery playbook** — what to do when a migration goes sideways
+  mid-plugin, including the mid-session-handoff pattern that's essential
+  for long fleet runs.
+
+Read those sections in `elgg-migrate` before starting a fleet run.
+
 ---
 
 ## Container Infrastructure
