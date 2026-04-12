@@ -19,6 +19,7 @@ site_search
 # Core hype framework
 hypeapps
 hypelists
+hypeprototyper
 hypeprototypervalidators
 
 # Utility hype plugins
