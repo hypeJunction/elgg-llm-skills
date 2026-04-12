@@ -252,6 +252,44 @@ bd blocked    # Each migration issue should list its blockers
 bd orphans    # Should be empty
 ```
 
+### Cross-plugin dependencies
+
+Most plugins migrate independently, but some genuinely depend on others —
+plugin A requires plugin B to be installed, or plugin A extends plugin B's
+views or hooks. Miss these and you'll migrate A, fail to activate it, and
+waste hours debugging before realizing B isn't ready yet.
+
+Detect cross-plugin dependencies by reading:
+
+- **`composer.json` `require`** — the authoritative source from 3.x on.
+  Any `"hypejunction/hypeX": "..."` line is a declared dependency.
+- **`manifest.xml` `<requires><type>plugin</type>`** — the 2.x equivalent;
+  same meaning. 3→4 translates these into composer requires.
+- **`elgg-plugin.php` `'plugin'` key's `requires` array** — occasionally
+  used in 4.x+ for runtime checks.
+- **Actual code** — `elgg_is_active_plugin('X')` guards, `use` statements
+  referencing classes in another plugin's namespace, view extensions
+  targeting another plugin's views. The grep-level check:
+  `grep -rn "elgg_is_active_plugin\|hypejunction\\\\\|coldtrick\\\\" <plugin>`.
+
+Encode what you find as beads dependencies:
+
+```bash
+# hypeInbox's 3→4 migration blocks on hypePrototyper's 3→4 being done first
+bd dep add <hypeinbox-3to4> <hypeprototyper-3to4>
+```
+
+**Circular dependencies are a red flag.** If A requires B and B requires A,
+that's almost always a bug in one of them — surface it to the human rather
+than trying to break the cycle yourself. In practice circularity usually
+means one plugin should be merged into the other, or a shared library
+extracted.
+
+**Activation order matters for verification.** Record the order from the
+running site (or from the plugin manager's priority) into
+`mod/.plugin-order.txt` and reproduce it in Docker. A plugin that activates
+fine in isolation can fail when activated before its dependency.
+
 ---
 
 ## Phase 2: Migrate — the inner loop
@@ -320,6 +358,79 @@ dependency order, and verify:
 
 Any fleet-wide issue found here is its own beads issue, not a reopening of the
 per-plugin ones.
+
+---
+
+## The first plugin is different from the twentieth
+
+The first plugin of a version step is a learning exercise: you're
+discovering which manifest rules are wrong, which breaking changes aren't
+yet in the tables, which patterns are going to recur. By the twentieth
+plugin in the same step, most of that work should be done — the remaining
+plugins should be nearly mechanical.
+
+This asymmetry is worth front-loading deliberately. On the first plugin:
+
+- **Invest in understanding, not speed.** Read the AST rule output fully,
+  even for rules you've seen before. Watch for surprises.
+- **Pick an easy first target.** A small, well-structured plugin with an
+  upstream reference is the ideal first pick — it gives you a clean signal
+  for what the rules should produce. Save the weird ones for later.
+- **Push learnings into the manifest immediately.** If you hit a hand-fix
+  on plugin #1, update the rule's `llm_instructions` before moving on.
+  Plugin #2 should benefit from what you learned on plugin #1, not
+  rediscover it.
+- **Expect the first to take 3–5× longer than the average.** That's not
+  a bug — it's where the investment happens.
+
+By the time you've done three or four plugins of a given version step, the
+rules and skill documentation should be in their final shape for that step.
+If you're on plugin ten and still finding new breaking changes, something
+is wrong — either the rules are undercooked or the plugins are unusually
+diverse. Surface that to the human.
+
+## Mid-session handoff
+
+Fleet runs are long. Sessions hit context limits. The agent that started
+isn't always the agent that finishes. Handoff done badly is worse than
+starting fresh — the next session inherits half-finished work with no
+clear picture of what state it's in.
+
+The minimum state a handoff must preserve:
+
+- **Which plugin × version cell is currently open** — recorded in beads as
+  `in_progress` with the assignee set, not held in session memory.
+- **The last gate that passed** — in the beads issue's notes. "Docker
+  activation PASS, tests not yet adapted" is enough; the next session
+  reads this and knows where to start.
+- **The branch name and the last commit** — also in the notes. A plugin
+  repo with uncommitted changes in the workspace is a landmine for the
+  next session.
+- **Known blockers or surprises hit but not yet addressed** — `bd remember`
+  any insight that would save the next session from re-deriving it.
+
+Before letting a session end (voluntarily or not):
+
+```bash
+# Commit and push every plugin worktree
+for d in "$PLUGINS_DIR"/*/; do
+  if [ -n "$(git -C "$d" status --porcelain)" ]; then
+    echo "UNCOMMITTED: $(basename "$d")"
+  fi
+done
+
+# Update in-progress beads issues with current state
+bd list --status=in_progress
+bd update <id> --notes="<what gate just passed, what's next, what blocked>"
+
+# Capture learnings before they evaporate
+bd remember "<key>" "<insight>"
+```
+
+If you're running out of context mid-migration, commit even broken
+intermediate state — a partial commit with a clear message ("WIP:
+activation fails with X, needs investigation") is recoverable. An
+uncommitted buffer you planned to "clean up at the end" is not.
 
 ---
 
