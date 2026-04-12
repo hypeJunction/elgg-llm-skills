@@ -9,3 +9,8 @@ composer.lock
 .dolt/
 *.db
 .beads-credential-key
+
+# OpenWolf context-management tool (local-only)
+.wolf/
+.claude/rules/openwolf.md
+.claude/scheduled_tasks.lock
