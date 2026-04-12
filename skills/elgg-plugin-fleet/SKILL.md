@@ -138,6 +138,42 @@ If any of these turn up a usable migration, mark the cell `upstream` and note
 the source. This is the highest-leverage step in the entire fleet workflow —
 one hit saves an entire migration.
 
+### Trust but verify: adopting an upstream migration
+
+Finding an upstream migration is not the same as adopting one. Upstream
+work can be broken, stale, targeting a different fork of Elgg, or aimed at
+a version you're not migrating to. Before merging an upstream branch or
+`composer require`-ing a new version:
+
+- **Check what it actually targets.** Read the upstream's `composer.json`
+  `require.elgg/elgg` — if it says `^5.0` and you're migrating to 4.x,
+  it's not useful. If it says `^4.0` but the code already uses `\Elgg\Event`,
+  the metadata is lying.
+- **Look at the commit history, not just the branch name.** A branch
+  called `migrate/elgg-4.x` that hasn't been touched in two years and
+  has three commits is probably abandoned work, not a done migration.
+  Check the latest commit date, and how complete it looks.
+- **Run the same Docker activation gate on it that you'd run on your own
+  migration.** If it doesn't activate cleanly in your elgg{N} container,
+  it isn't a working migration regardless of who wrote it.
+- **Run your pre-migration tests against it.** If you've already written
+  tests for the plugin, point them at the upstream version. Failing tests
+  against an upstream migration tells you the upstream regressed
+  something — sometimes fixable, sometimes a sign to walk away.
+- **Check for unrelated changes.** Upstream branches often contain new
+  features mixed with the migration. If the upstream "migration" also adds
+  a feature you don't want, the branch isn't a pure migration — you're
+  adopting both.
+- **Check the license and authorship.** A fork in a random org with no
+  attribution is a licensing risk; a fork on the original author's account
+  usually isn't.
+
+When an upstream migration passes all these, adopt it with confidence and
+note the source in your commit message ("Adopted from
+<fork-url>@<sha>"). When it fails any of them, document what failed and
+fall back to migrating yourself — but keep the upstream work as a
+reference to diff against.
+
 ### Matrix status labels
 
 | Status | Meaning |
@@ -453,6 +489,33 @@ Candidates for each destination:
 
 If you can't decide where something belongs, `bd remember` it — uncategorized
 knowledge beats lost knowledge.
+
+### Forcing function: capture before closing
+
+The learning loop only works if it *runs*. In practice the biggest failure
+mode is not "the agent wrote the lesson in the wrong place" — it's "the
+agent closed the issue and moved on, and the lesson evaporated." Guard
+against this with a hard rule: **before closing any migration issue, ask
+two questions out loud**:
+
+1. **"Did I hit anything surprising?"** Count a hand-fix, an unexpected
+   error, a workaround, or a gate that failed the first time as
+   surprising. If yes, it belongs somewhere in the table above *before*
+   the issue closes.
+
+2. **"Would a future session migrating the next similar plugin benefit
+   from what I learned?"** If yes, that's the signal to capture it —
+   even if it's "just" a note in `bd remember`. The cost of capture is
+   five seconds; the cost of forgetting is hours, because the next
+   session re-derives everything.
+
+If you can't honestly answer "nothing surprising, nothing worth passing
+on" — and you usually can't, because every non-trivial migration has
+surprises — then the capture step is mandatory, not optional. Close the
+issue *after* the capture, not before.
+
+The fleet's real product is knowledge. Closing issues without capturing
+what you learned is how fleets get more expensive instead of cheaper.
 
 ### New-rule candidates
 

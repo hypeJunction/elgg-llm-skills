@@ -482,6 +482,68 @@ echo 'Refreshed.' . PHP_EOL;
 "
 ```
 
+### Behavior coverage rubric (read before the checklist)
+
+The coverage checklist below lists *what to test*. This rubric is about
+*whether your tests would actually catch a regression* — which is the point
+of pre-migration tests and the part that's easy to skip.
+
+A test suite can have high line coverage, pass the checklist, and still
+miss the migration breaking the plugin. That happens when tests exercise
+the code without actually asserting on the user-visible behavior that
+would regress. The rubric below is a set of questions to ask about every
+test before calling coverage "done."
+
+**For every user-visible feature, ask:**
+
+1. *If a migration silently removed this feature, would any test fail?*
+   If the answer is "maybe" or "the function would still run," the test
+   doesn't cover the behavior — it covers the code path. Assert on the
+   observable outcome (DOM change, DB row, HTTP status, response body),
+   not on whether a function was called.
+
+2. *If a migration changed the route for this feature, would any test
+   fail?* If the test hardcodes a route it's likely to survive a
+   breaking change that moved the route. Good Playwright tests click
+   links rather than typing URLs directly; when URLs are necessary, use
+   `elgg_generate_url()` so the test follows the plugin's real route
+   definition.
+
+3. *If a migration changed the permission model, would any test fail?*
+   A permission test that only runs as the owner tests the happy path,
+   not the permission. Include a negative case (non-owner attempt, 403
+   expected).
+
+4. *If a migration introduced a subtle data-type change (int → string,
+   null → empty string), would any test fail?* Brittle strict-equality
+   assertions sometimes catch these; loose assertions ("truthy") miss
+   them. Prefer typed assertions on the fields the migration might
+   touch.
+
+5. *If the background queue / cron / async work stopped running after
+   migration, would any test fail?* Features that depend on async
+   processing (notifications, search indexing, file processing) need
+   tests that actually run the queue, not just enqueue the job.
+
+**For every hook/event registration, ask:**
+
+- Does the test *trigger* the event that the handler listens on, or
+  does it just call the handler directly? A test that calls the handler
+  directly doesn't catch "migration forgot to register the handler."
+- Does the test assert on the effect of the handler running, or just
+  that the handler returned without error?
+
+**For every action, ask:**
+
+- Does the test POST through the real action dispatcher (which runs
+  CSRF, input validation, and the full action lifecycle), or does it
+  invoke the action file directly? The latter misses CSRF, routing,
+  and middleware regressions.
+
+**When you can honestly answer "yes, a regression would fail a test"
+for every feature, the coverage is real.** If you can't, the gap is the
+test to write next.
+
 ### Coverage checklist
 
 **PHPUnit (backend):**
