@@ -26,6 +26,7 @@ hypePrototyperValidators
 hypeDropzone
 hypeEmbed
 hypeAttachments
+hypeFilestore
 hypeIcons
 hypeScraper
 hypeGeo

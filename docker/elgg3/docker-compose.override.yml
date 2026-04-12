@@ -30,6 +30,7 @@ services:
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDropzone:/var/www/html/mod/hypeDropzone
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeEmbed:/var/www/html/mod/hypeEmbed
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFaker:/var/www/html/mod/hypeFaker
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFilestore:/var/www/html/mod/hypeFilestore
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFolders:/var/www/html/mod/hypeFolders
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeGallery:/var/www/html/mod/hypeGallery
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeGeo:/var/www/html/mod/hypeGeo
