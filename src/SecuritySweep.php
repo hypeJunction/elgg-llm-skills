@@ -39,7 +39,7 @@ final class SecuritySweep
             'category' => 'eval',
         ],
         'unserialize' => [
-            'pattern' => '/\bunserialize\s*\(/',
+            'pattern' => '/\bunserialize\s*\((?![^)]*allowed_classes[\'"]?\s*=>\s*false)/',
             'message' => 'unserialize() can lead to PHP object injection (RCE). Use json_decode() or specify allowed_classes.',
             'severity' => 'error',
             'category' => 'unserialize',
@@ -282,24 +282,39 @@ final class SecuritySweep
     }
 
     /**
-     * Check whether a SQL query at $lineNum uses named parameter binding.
+     * Check whether a SQL query at $lineNum uses safe parameterization.
      *
-     * Looks at the matched line and ±5 surrounding lines for `:identifier`
-     * syntax that signals PDO/Doctrine bound parameters. The dbprefix
-     * interpolation is from system config, not user input, so a query that
-     * combines `$dbprefix` interpolation with bound params is safe.
+     * Looks at the matched line and ±10 surrounding lines for evidence of:
+     *   1. Named parameter binding: `:identifier` syntax (PDO/Doctrine)
+     *   2. Elgg QueryBuilder usage: `Select::|Insert::|Update::|Delete::fromTable`
+     *      or `$qb->compare()|$qb->param()|$qb->expr()` calls
+     *
+     * Both patterns indicate the query is parameterized at a layer that
+     * the line-level regex cannot see, so the warning is a false positive.
      */
     private function looksParameterized(array $lines, int $lineNum): bool
     {
-        $start = max(0, $lineNum - 5);
-        $end = min(count($lines) - 1, $lineNum + 5);
+        $start = max(0, $lineNum - 10);
+        $end = min(count($lines) - 1, $lineNum + 10);
         $context = '';
         for ($i = $start; $i <= $end; $i++) {
             $context .= $lines[$i] . "\n";
         }
 
         // Named parameter syntax: :word, but NOT :: (scope resolution) or :// (URL)
-        return (bool) preg_match('/(?<![:\w])(?<!:)(?<![:])\:[a-zA-Z_][a-zA-Z0-9_]*(?![:\w\/])/', $context);
+        if (preg_match('/(?<![:\w])(?<!:)(?<![:])\:[a-zA-Z_][a-zA-Z0-9_]*(?![:\w\/])/', $context)) {
+            return true;
+        }
+
+        // Elgg QueryBuilder usage indicates parameterization at the QB level
+        if (preg_match('/\b(?:Select|Insert|Update|Delete)::(?:fromTable|table|into)\s*\(/', $context)) {
+            return true;
+        }
+        if (preg_match('/\$\w+->(?:compare|param|expr|setParameter|where|andWhere|orWhere)\s*\(/', $context)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
