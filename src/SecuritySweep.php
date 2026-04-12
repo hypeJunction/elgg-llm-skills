@@ -259,6 +259,14 @@ final class SecuritySweep
             }
 
             if (preg_match($check['pattern'], $line)) {
+                // Contextual filter: for sql-injection patterns, check if the
+                // surrounding lines (±5) contain named parameter syntax (e.g. :foo).
+                // Parameterized queries with bound params are safe even when the
+                // query string interpolates $dbprefix.
+                if ($check['category'] === 'sql-injection' && $this->looksParameterized($lines, $lineNum)) {
+                    continue;
+                }
+
                 $violations[] = new Violation(
                     file: $file,
                     line: $lineNum + 1,
@@ -271,6 +279,27 @@ final class SecuritySweep
         }
 
         return $violations;
+    }
+
+    /**
+     * Check whether a SQL query at $lineNum uses named parameter binding.
+     *
+     * Looks at the matched line and ±5 surrounding lines for `:identifier`
+     * syntax that signals PDO/Doctrine bound parameters. The dbprefix
+     * interpolation is from system config, not user input, so a query that
+     * combines `$dbprefix` interpolation with bound params is safe.
+     */
+    private function looksParameterized(array $lines, int $lineNum): bool
+    {
+        $start = max(0, $lineNum - 5);
+        $end = min(count($lines) - 1, $lineNum + 5);
+        $context = '';
+        for ($i = $start; $i <= $end; $i++) {
+            $context .= $lines[$i] . "\n";
+        }
+
+        // Named parameter syntax: :word, but NOT :: (scope resolution) or :// (URL)
+        return (bool) preg_match('/(?<![:\w])(?<!:)(?<![:])\:[a-zA-Z_][a-zA-Z0-9_]*(?![:\w\/])/', $context);
     }
 
     /**
