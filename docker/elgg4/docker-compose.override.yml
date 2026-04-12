@@ -16,6 +16,7 @@ services:
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_responsive_tabs:/var/www/html/mod/ui_responsive_tabs
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_tabs:/var/www/html/mod/ui_tabs
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-user_settings:/var/www/html/mod/user_settings
+      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeApps:/var/www/html/mod/hypeapps
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeAttachments:/var/www/html/mod/hypeattachments
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDirectory:/var/www/html/mod/hypedirectory
       - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDropzone:/var/www/html/mod/hypedropzone
