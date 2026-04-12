@@ -11,11 +11,25 @@ description: >
 > **Two workflows:** PREPARE (dev) and EXECUTE (production)
 > **Usage:** `/elgg-site-upgrade <project-path> [--from=2.x] [--to=7.x] [--mode=prepare|execute]`
 
-## Iron Laws
+## Iron Laws (strict — do not improvise)
 
-1. **ONE MAJOR VERSION AT A TIME** — Upgrade 2.x→3.x, then 3.x→4.x, etc.
-2. **LATEST MINOR FIRST** — Must be on latest minor before jumping major (e.g., 2.3.x before 3.x).
-3. **PREPARE COMPLETELY BEFORE EXECUTING** — Never run the production checklist until the preparation workflow has produced a fully tested migration branch.
+These are the three rules that make site upgrades recoverable. Violate any
+one and a bad upgrade stops being a rollback and becomes a restoration.
+
+1. **ONE MAJOR VERSION AT A TIME.** Upgrade 2.x→3.x, then 3.x→4.x, and so on.
+   Skipping versions means skipping the upgrade scripts that migrate schema
+   and data — the site will appear to work and then fail weeks later when
+   something touches an un-migrated table.
+2. **LATEST MINOR BEFORE JUMPING MAJOR.** From 2.3.x you can start on 3.x;
+   from 2.0.x you cannot. Minor releases contain the compatibility shims
+   that make the major jump safe.
+3. **PREPARE COMPLETELY BEFORE EXECUTING.** Part A (prepare) must produce a
+   fully tested migration branch before Part B (execute) touches production.
+   Production is not where you discover problems — it's where you apply
+   solutions you already verified work.
+
+Everything else in Part A is judgment and should be adapted to your project.
+Part B is a safety-critical checklist and stays strict.
 
 ---
 
@@ -54,23 +68,28 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 
 ---
 
-# PART A: PREPARE (Development Workflow)
+# PART A: PREPARE (development workflow)
 
-This is iterative, safe to break. Done in a development environment with Docker
-and a fresh database. The goal is to produce a tested migration branch for each
-version step that can be applied to production with confidence.
+Part A is iterative and safe to break. It runs in a development environment
+with Docker and a fresh database. The goal is to produce a tested migration
+branch for each version step that can be applied to production with
+confidence.
 
-## Prep Phase 0: ASSESS
+Think of Part A as three nested loops: an outer loop over version steps, a
+middle loop over plugins within a step, and an inner loop of fix-and-retry
+until the gates pass. The phases below describe the shape of that work, but
+the order is a guide — a plugin you've already tested on a newer fork may
+skip most of the inner loop, while a custom plugin with no upstream will
+need the full treatment.
 
-### Step 0.1: Detect Current Elgg Version
+## Assess: know what you're upgrading before you touch anything
 
-```bash
-# Check composer.json from host filesystem (read-only, no PHP needed)
-grep "elgg/elgg" <project>/composer.json
-# Or from manifest: grep -r "elgg_release" <project>/mod/*/manifest.xml | head -5
-```
+Three things must be clear before preparation work starts:
 
-### Step 0.2: Map the Upgrade Path
+**Where the site is now.** `grep "elgg/elgg" <project>/composer.json` for the
+installed core version. Don't trust `manifest.xml` unless composer is absent.
+
+**Where the site is going.** The upgrade path follows Iron Laws 1 and 2:
 
 | From | Target | Steps |
 |------|--------|-------|
@@ -80,9 +99,16 @@ grep "elgg/elgg" <project>/composer.json
 | 5.x | 7.x | 5.1→6.1→7.0 |
 | 6.x | 7.x | 6.1→7.0 |
 
-**Rule:** Must be on latest minor of current major before jumping. From 2.3+ you can technically jump to any future version, but upgrading one major at a time is safer and lets you test incrementally.
+**What plugins need attention.** Inventory the `mod/` directory and put each
+plugin into one of three buckets, because the strategy differs per bucket:
 
-### Step 0.3: Inventory All Plugins
+| Bucket | How to recognize | Strategy |
+|--------|------------------|----------|
+| Core (ships with Elgg) | Lives under `vendor/elgg/elgg/mod` or equivalent | Upgrades with core; nothing to do |
+| Composer-managed with upstream | Listed in `composer.json` `require`, has a GitHub repo | Find an upgraded version or migrate via `elgg-migrate` |
+| Custom/private | Only in `mod/`, no upstream repo | Migrate in-place in the project repo |
+
+A reference bash loop for the inventory:
 
 ```bash
 for d in <project>/mod/*/; do
@@ -96,215 +122,107 @@ for d in <project>/mod/*/; do
 done | sort
 ```
 
-### Step 0.4: Categorize Plugins
+### Check for upgraded plugin versions (highest-leverage step)
 
-| Category | Identify by | Strategy |
-|----------|------------|----------|
-| **Core** | Ships with Elgg | Auto-upgraded with core |
-| **Composer-managed with upstream** | In `composer.json`, has GitHub repo | Find upgraded version or migrate |
-| **Custom/private** | Only in `mod/`, no upstream | Migrate in-place in project repo |
+Before migrating any plugin, check whether someone has already done it.
+Duplicate migration wastes time and can regress over a known-good upgrade.
+The checks mirror those in `elgg-migrate` Phase 1 — local branches
+(`git branch -a`), upstream branches and forks (`gh api
+repos/<owner>/<plugin>/branches`, `forks`), Packagist (`composer show ...
+--all` inside the Elgg container), the Elgg plugin directory at
+https://elgg.org/plugins, and version-prefixed org repos (`gh search repos
+--owner <org> "Elgg4-<plugin>"`).
 
-### Step 0.5: Find Upgraded Plugin Versions
+When any of these turn up a usable migration:
 
-**Before migrating any plugin**, check whether an upgraded version already exists.
-Duplicate migration wastes time and can introduce regressions over a known-good upgrade.
+- **Already at target version** → skip migration for this plugin entirely
+- **Upgraded on Packagist** → `composer require` the new version
+- **Upstream fork has a working migration** → merge or adopt it (validate
+  it first — forks can be broken or targeting a different fork of Elgg)
+- **Migration branch exists but incomplete** → continue from it
+- **Nothing exists anywhere** → migrate via `elgg-migrate`
 
-**Strategy 1: Check local git branches**
-
-Migration branches may already exist from previous work:
-```bash
-git -C <plugin-path> branch -a | grep -iE 'migrate|elgg|upgrade|[0-9]\.[0x]'
-# If found, inspect commits:
-git -C <plugin-path> log --oneline migrate/elgg-3.x..migrate/elgg-4.x
-# And check what version it targets:
-git -C <plugin-path> show migrate/elgg-4.x:composer.json 2>/dev/null | grep "elgg/elgg"
-```
-
-**Strategy 2: Check upstream branches**
-```bash
-gh api repos/<owner>/<plugin>/branches -q '.[].name' | grep -iE '[3-7]\.|migrate|upgrade'
-```
-
-**Strategy 3: Check forks for migration work**
-
-Other developers may have forked and migrated the plugin:
-```bash
-# List forks
-gh api repos/<owner>/<plugin>/forks -q '.[].full_name' | head -20
-# Check each fork's branches
-gh api repos/<fork-owner>/<plugin>/branches -q '.[].name' | grep -iE '[3-7]\.|migrate|upgrade'
-# Check if fork has elgg-plugin.php (4.x+ indicator)
-gh api "repos/<fork-owner>/<plugin>/contents/elgg-plugin.php" -q '.name' 2>/dev/null
-```
-
-**Strategy 4: Check Elgg Plugin Directory and Packagist**
-
-The official Elgg plugin directory and Packagist may have updated versions:
-```bash
-# Packagist (Composer registry) — run in Elgg container
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer show <vendor>/<plugin> --all 2>/dev/null | grep -E 'versions|descrip'
-# Elgg plugin directory: https://elgg.org/plugins — search by name
-# Community plugins: https://github.com/topics/elgg-plugin
-```
-
-**Strategy 5: Check version-prefixed repos (hypeJunction pattern)**
-
-Some orgs publish separate repos per Elgg version:
-```bash
-gh search repos --owner <org> "Elgg3-<plugin>" --json name -q '.[].name'
-gh search repos --owner <org> "Elgg4-<plugin>" --json name -q '.[].name'
-```
-
-**Strategy 6: Quick version heuristics**
-
-If you can't check branches, read the code to detect the current version:
+Reading the code is often faster than running checks. Version indicators
+that are reliable:
 
 | Indicator | Likely Version |
 |-----------|---------------|
-| Has `start.php` with init handler, no `elgg-plugin.php` | 2.x |
-| Has both `start.php` and `elgg-plugin.php` | 3.x (transitional) |
-| Has `elgg-plugin.php` with `'hooks'` key, no `start.php` | 4.x |
-| Has `elgg-plugin.php` with `'events'` key only | 5.x+ |
-| Uses `\Elgg\Hook` type hints | 4.x |
-| Uses `\Elgg\Event` type hints | 5.x+ |
-| Uses `elgg_define_js()`/`elgg_require_js()` | ≤5.x |
-| Uses `elgg_register_esm()`/`elgg_import_esm()` | 6.x+ |
-| Uses AMD `define()/require()` in JS | ≤5.x |
-| Uses ES module `import/export` in JS | 6.x+ |
-
-**Decision tree:**
-- Already at target version → **skip migration for this plugin**
-- Migration branch exists but incomplete → **continue from that branch**
-- Upstream fork has a working migration → **use/merge that instead**
-- Upgraded version on Packagist → **`composer require` the new version**
-- No upgrade exists anywhere → **use elgg-migrate to create one**
+| `start.php` with init handler, no `elgg-plugin.php` | 2.x |
+| Both `start.php` and `elgg-plugin.php` | 3.x (transitional) |
+| `elgg-plugin.php` with `'hooks'` key, no `start.php` | 4.x |
+| `elgg-plugin.php` with `'events'` key only | 5.x+ |
+| `\Elgg\Hook` type hints | 4.x |
+| `\Elgg\Event` type hints | 5.x+ |
+| `elgg_define_js()` / `elgg_require_js()` | ≤5.x |
+| `elgg_register_esm()` / `elgg_import_esm()` | 6.x+ |
+| AMD `define()/require()` in JS | ≤5.x |
+| ES module `import/export` in JS | 6.x+ |
 
 ---
 
-## Prep Phase 1: SETUP WORKSPACE
+## Set up the workspace
 
-### Step 1.1: Clone Plugin Repos
+The workflow assumes symlinks from the project's `mod/` directory into a
+separate plugins workspace — changes in the workspace are instantly
+reflected in the project and you can work on each plugin as its own git
+repo. See the "symlink workflow" memory for the full rationale.
 
 ```bash
 mkdir -p ~/plugins-workspace
-# Clone each plugin with an upstream repo
 git clone https://github.com/<owner>/<plugin>.git ~/plugins-workspace/<plugin>
-```
 
-### Step 1.2: Symlink Into Project
-
-```bash
 cd <project>/mod
 rm -rf <plugin>
 ln -s ~/plugins-workspace/<plugin> <plugin>
 ```
 
-Changes in the workspace are instantly reflected in the project.
-
-### Step 1.3: Create Branches
+Create a migration branch in both the project and each plugin workspace
+(name is the TARGET version, matching `elgg-migrate`'s convention):
 
 ```bash
-# Project
 git -C <project> checkout -b migrate/elgg-{N}.x
-
-# Each plugin
 git -C ~/plugins-workspace/<plugin> checkout -b migrate/elgg-{N}.x
 ```
 
-### Step 1.4: Record Plugin Activation Order
+**Record the current plugin activation order.** Save it to
+`mod/.plugin-order.txt` (one plugin id per line, in priority order). The
+verification step reads this to reproduce production's activation sequence.
 
-Get the current activation order from the running site and save it:
+## Establish the test baseline
 
-```bash
-# Save to mod/.plugin-order.txt (one plugin ID per line, in priority order)
-```
+Boot Docker for the CURRENT version, then make sure there's a green test
+suite before touching any migration code. This is the same gate as
+the `elgg-migrate` pre-migration test gate, applied at project scope — without a baseline
+you cannot tell whether the upgrade broke anything.
 
----
+For each plugin without existing tests, use `/elgg-test-writer` to write
+entity CRUD, registration (actions, routes, hooks, widgets), permission,
+and view-rendering coverage. Run the full suite against the current version;
+everything must pass before proceeding. Record the passing count — you'll
+compare against it after the upgrade.
 
-## Prep Phase 2: TEST BASELINE (Current Version)
+## Migrate plugins for one version step
 
-### Step 2.1: Boot Docker for Current Version
+For each version step in the upgrade path, run a middle loop over plugins.
+The per-plugin work follows `elgg-migrate` — the fleet context just means
+you're doing it many times rather than once.
 
-```bash
-docker compose -f docker/elgg{CURRENT}/docker-compose.yml \
-  -f docker/elgg{CURRENT}/docker-compose.override.yml up -d
-```
+For plugins with an upstream repo, migrate in the workspace and commit there.
+For custom plugins, migrate in-place in the project repo. Run the automated
+AST rules, apply LLM-guided fixes from `--report`, and commit each logical
+group separately. When a manually-migrated reference version exists
+upstream, `diff --stat` against it to catch judgment calls the rules missed.
 
-### Step 2.2: Write Tests (use `/elgg-test-writer`)
+Don't batch commits across plugins — keep each plugin's work in its own
+commits so a reviewer (and your future self) can follow what changed.
 
-For each plugin, write:
-- Entity CRUD tests
-- Registration tests (actions, routes, hooks, widgets)
-- Permission tests
-- View rendering tests
+## Verify in Docker for the target version
 
-### Step 2.3: Run Tests — Must Be Green
+Boot the target version's Docker environment and run the gates. These are
+safety gates — they must pass before advancing to the next version step.
 
-```bash
-docker compose exec elgg php vendor/bin/phpunit \
-  --configuration mod/<plugin>/tests/phpunit.xml
-```
-
-**GATE: Tests pass on current version. This is your safety net.**
-
----
-
-## Prep Phase 3: MIGRATE PLUGINS (For One Version Step)
-
-### Step 3.1: Automated Migration
-
-```bash
-# From elgg-migrate root — runs in the migrate container
-docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
-```
-
-### Step 3.2: Commit Automated Changes
-
-```bash
-git -C ~/plugins-workspace/<plugin> add -A
-git -C ~/plugins-workspace/<plugin> commit -m "migrate({N}.x): automated AST transformations"
-```
-
-### Step 3.3: Apply LLM-Guided Fixes
-
-Review the `--report` output and apply each fix:
-
-```bash
-docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report
-```
-
-Commit each category of fixes separately.
-
-### Step 3.4: Migrate Custom Plugins In-Place
-
-```bash
-docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
-git -C <project> add mod/<plugin>
-git -C <project> commit -m "migrate({N}.x): <plugin>"
-```
-
-### Step 3.5: Compare With Reference (if available)
-
-```bash
-# Clone the reference (e.g., Elgg3-hypeDropzone)
-diff ~/plugins-workspace/<plugin> ~/plugins-workspace/Elgg3-<plugin> --stat
-```
-
----
-
-## Prep Phase 4: VERIFY IN DOCKER (Target Version)
-
-### Step 4.1: Boot Docker for Target Version
-
-```bash
-docker compose -f docker/elgg{N}/docker-compose.yml \
-  -f docker/elgg{N}/docker-compose.override.yml up -d
-```
-
-### Step 4.2: Validate Plugin Activation (GATE)
-
-All plugins must activate without fatal errors:
+**All plugins activate without fatal errors.** Reproduce production's
+activation order using the `.plugin-order.txt` file:
 
 ```bash
 docker compose exec elgg php -r "
@@ -312,7 +230,6 @@ require 'vendor/autoload.php';
 \$app = \Elgg\Application::getInstance();
 \$app->bootCore();
 _elgg_services()->plugins->generateEntities();
-// Read activation order
 \$order = file('/var/www/html/mod/.plugin-order.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 \$failed = [];
 foreach (\$order as \$id) {
@@ -327,252 +244,128 @@ else { foreach (\$failed as \$f) echo 'FAIL: ' . \$f . PHP_EOL; }
 "
 ```
 
-### Step 4.3: Validate Site Renders (GATE)
+**Site renders.** `curl -sL http://localhost/ | grep -oP '<title>[^<]*</title>'`
+must return a real title, not "Fatal Error".
+
+**Simplecache CSS is non-empty.** css-crush v2.4 silently fails on certain
+CSS patterns, leaving the stylesheet empty. The site "works" but looks
+broken. Always verify:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
-  curl -sL http://localhost/ | grep -oP '<title>[^<]*</title>'
-# Must NOT contain "Fatal Error"
-```
-
-### Step 4.3.1: Validate Simplecache CSS (GATE)
-
-**Critical:** css-crush v2.4 (used in Elgg 3.x) silently fails on certain CSS patterns,
-causing the entire site stylesheet to be empty. Always verify CSS loads after migration.
-
-```bash
-# Get cache timestamp from page (curl inside Elgg container)
 TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
-# CSS MUST be > 1000 bytes
 SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 echo "elgg.css: ${SIZE} bytes"
-# If 0 or 1, a plugin CSS view is breaking css-crush. See references/REFERENCE.md §18.
+# If <1000, a plugin CSS view is breaking css-crush. See references/REFERENCE.md §18.
 ```
 
-### Step 4.4: Run Tests (GATE)
+**Tests pass against the target version.** Run PHPUnit and Playwright; the
+passing count must match the baseline from Part A's test phase. See
+`references/testing/elgg-e2e-testing.md` for setup details and known
+pitfalls (hypeWall interception, foreach-by-reference crashes, OPcache
+stale code).
 
-```bash
-docker compose exec elgg php vendor/bin/phpunit \
-  --configuration mod/<plugin>/tests/phpunit.xml
-```
+When any gate fails, fix it in the workspace, commit the fix, and re-run
+the failing gate. Don't mask failures by commenting tests out.
 
-### Step 4.5: Run E2E Smoke Tests
+When everything for this step is green, loop back and run the next version
+step. Iron Law 1 forbids advancing to N+2 until N+1 is fully done.
 
-See [references/testing/elgg-e2e-testing.md](../../references/testing/elgg-e2e-testing.md) for
-setup details, correct Elgg URLs/selectors, and known pitfalls (hypeWall interception,
-foreach-by-reference crashes, OPcache stale code, etc.).
+## Harden PHP dependencies
 
-```bash
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/e2e && npm ci && npx playwright test"
-```
+Once the site is on the latest Elgg version, upgrade PHP dependencies one
+at a time. Doing this per-package (rather than `composer update`) is the
+only way to isolate which bump broke what — and it will break things.
 
-### Step 4.6: Fix Issues, Iterate
+The principle: risk-order the upgrades and test after every single one.
 
-If any gate fails:
-1. Fix the issue in the workspace
-2. Commit the fix
-3. Re-run the failing gate
-4. Repeat until all gates pass
+A reasonable risk order, lowest to highest:
 
----
-
-## Prep Phase 5: REPEAT FOR EACH VERSION STEP
-
-Go back to Prep Phase 3 for the next major version.
-
-When ALL version steps pass ALL gates and you're on the latest Elgg version,
-proceed to Phase 6.
-
----
-
-## Prep Phase 6: HARDEN PHP DEPENDENCIES
-
-Once on the latest Elgg version, upgrade PHP dependencies one at a time
-to their latest stable versions. This catches compatibility issues early
-and ensures you're on supported, patched versions.
-
-### Step 6.1: List Outdated PHP Packages
-
-```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer outdated --direct 2>&1
-```
-
-### Step 6.2: Upgrade One Package at a Time
-
-For each outdated package, in order of risk (low-risk utilities first, then
-frameworks, then core dependencies last):
-
-```bash
-# 1. Check what will change
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer update <vendor>/<package> --dry-run
-
-# 2. Read the package changelog for breaking changes
-# Check GitHub releases or CHANGELOG.md
-
-# 3. Apply the update
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer update <vendor>/<package>
-
-# 4. Run ALL tests
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpunit
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/e2e && npm ci && npx playwright test"
-
-# 5. Commit if tests pass
-git add composer.json composer.lock
-git commit -m "deps(php): upgrade <vendor>/<package> from X.Y to A.B"
-```
-
-### Step 6.3: Recommended Upgrade Order
-
-Start with packages least likely to break things:
-
-```
 1. Dev dependencies (phpunit, code sniffers, faker)
 2. Utility libraries (monolog, symfony/var-dumper)
 3. Mail/HTTP (laminas/laminas-mail, guzzlehttp/guzzle)
 4. Image processing (imagine/imagine)
 5. Template/view (michelf/php-markdown, css-crush)
-6. Database (doctrine/dbal) — HIGH RISK, test thoroughly
-7. Framework (symfony/*, php-di/php-di) — HIGH RISK
+6. Database (doctrine/dbal) — **high risk**, test thoroughly
+7. Framework (symfony/*, php-di/php-di) — **high risk**
 8. Elgg patch updates (elgg/elgg within same major)
-```
 
-### Step 6.4: Handle Breaking Changes
+The per-package loop: check what will change with `composer update <pkg>
+--dry-run`, read the package changelog, apply the update, run the full test
+suite (PHPUnit + Playwright), commit if green. If tests break, read the
+changelog, fix the calling code, and commit the fix together with the
+dependency bump so the diff tells one story. When the fix is too complex
+for the scope, pin the package and file an issue for later.
 
-If a package upgrade breaks tests:
-1. Read the changelog to understand the API change
-2. Fix the code
-3. Commit the fix WITH the dependency bump in the same commit
-4. If the fix is too complex, pin the package to current version and create a ticket
+Tests must pass after each individual upgrade. That's the gate — resist the
+urge to batch "just two small ones."
 
-**GATE: All tests pass after each individual package upgrade.**
+## Harden JS/CSS dependencies
 
----
+Same principle as PHP deps, applied to the npm-asset and bower-asset
+packages that Elgg manages via composer. List with `composer show | grep
+"npm-asset\|bower-asset"` inside the Elgg container. Upgrade one at a time,
+run PHPUnit, run JS unit tests (if the plugin has them), run the Playwright
+E2E suite (which is the most likely to catch browser-side regressions),
+check `error.log` for JS console noise, then commit.
 
-## Prep Phase 7: HARDEN JS/CSS DEPENDENCIES
+A reasonable risk order for the common Elgg JS stack:
 
-Upgrade JavaScript and CSS dependencies one at a time. In Elgg, JS deps
-are managed via Composer (npm-asset packages from asset-packagist.org).
+1. normalize.css (pure reset, very safe)
+2. sprintf-js (utility)
+3. cropperjs / jquery-cropper
+4. jquery-colorbox (check for API changes)
+5. jquery-ui (**medium risk** — widgets may use deprecated methods)
+6. jQuery (**high risk** — major versions have breaking changes)
+7. tagify (**high risk** — custom component, API churn)
 
-### Step 7.1: List JS Dependencies
+Plugins with their own `package.json` go through the same loop run from the
+`node` profile container, not the host.
 
-```bash
-# Elgg manages JS via Composer, not npm directly
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer show | grep "npm-asset\|bower-asset"
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer outdated | grep "npm-asset\|bower-asset"
-```
+For CSS dependencies (css-crush), the only reliable check is flushing
+simplecache (`elgg_invalidate_caches()` via `docker compose exec elgg php
+-r`) and verifying the rendered stylesheet is non-empty again.
 
-### Step 7.2: Upgrade One JS Package at a Time
+Before starting this phase, make sure there's JS test coverage in place —
+`/elgg-js-test-writer` is the right tool. Without it, JS regressions are
+only caught by the Playwright suite, which is slow and doesn't pinpoint the
+broken module.
 
-```bash
-# 1. Check current version
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer show npm-asset/jquery
+## Final verification
 
-# 2. Update
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  composer update npm-asset/jquery
+Before declaring Part A complete, confirm all of the following. Missing any
+of them means production isn't ready:
 
-# 3. Run PHP tests
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpunit
+- All Elgg version steps complete (every step in the upgrade path)
+- All PHP dependencies at latest stable
+- All JS/CSS dependencies at latest stable
+- Full test suite green (PHPUnit + Vitest + Playwright)
+- Docker boots with all plugins active using the recorded order
+- No PHP errors in `error.log`
+- No JS console errors in the browser
 
-# 4. Run JS unit tests (if plugin has them)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm ci && npm run test:js"
-
-# 5. Run E2E tests (catches JS runtime errors in browser)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/e2e && npm ci && npx playwright test"
-
-# 6. Manual smoke test — check container logs for JS/PHP errors
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail /var/log/apache2/error.log
-
-# 7. Commit
-git add composer.json composer.lock
-git commit -m "deps(js): upgrade npm-asset/jquery from X.Y to A.B"
-```
-
-### Step 7.3: Recommended Upgrade Order
-
-```
-1. normalize.css (pure CSS reset, very safe)
-2. sprintf-js (utility, rarely breaks)
-3. cropperjs / jquery-cropper (image cropping)
-4. jquery-colorbox (lightbox — check for API changes)
-5. jquery-ui (MEDIUM RISK — widgets may use deprecated methods)
-6. jQuery (HIGH RISK — major versions have breaking changes)
-7. tagify (HIGH RISK — custom component, API may change)
-```
-
-### Step 7.4: Plugin-Level JS Dependencies
-
-If plugins have their own `package.json`:
-
-```bash
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm outdated && npm update <package> && npm run test:js"
-```
-
-### Step 7.5: CSS Dependencies
-
-Elgg uses `css-crush/css-crush` for CSS preprocessing. After upgrading:
-
-```bash
-# Verify CSS compiles without errors
-# Flush simplecache and load a page
-docker compose exec elgg php -r "
-require 'vendor/autoload.php';
-\$app = \Elgg\Application::getInstance();
-\$app->bootCore();
-elgg_invalidate_caches();
-echo 'Caches flushed' . PHP_EOL;
-"
-
-# Check browser for CSS rendering issues
-```
-
-### Step 7.6: Writing JS Tests (use `/elgg-js-test-writer`)
-
-Before upgrading JS dependencies, establish JS test coverage:
-- Unit tests for pure logic (Vitest)
-- Hook/event interaction tests
-- E2E tests for UI behavior (Playwright)
-
-This gives you a safety net for detecting regressions.
-
-**GATE: All tests (PHP + JS + E2E) pass after each dependency upgrade.**
+When all of these hold, the migration branches are ready for Part B.
 
 ---
 
-## Prep Phase 8: FINAL VERIFICATION
+# PART B: EXECUTE (production checklist)
 
-- [ ] All Elgg version steps complete (e.g., 2.x→3.x→4.x→5.x→6.x)
-- [ ] All PHP dependencies at latest stable
-- [ ] All JS/CSS dependencies at latest stable
-- [ ] Full test suite green (PHPUnit + Vitest + Playwright)
-- [ ] Docker boots with all plugins active
-- [ ] No PHP errors in logs
-- [ ] No JS console errors in browser
+Part B is deterministic on purpose. Production upgrades are high-stakes and
+hard to reverse, so improvisation is the failure mode, not the feature. The
+checklist below is strict: every step has a verification check, and if any
+check fails you STOP and decide between fix-forward and rollback.
 
-The migration branches are now ready for production.
+The only legitimate variation is the **deployment model**. A single-server
+site runs the checklist top-to-bottom as written. A blue-green or rolling
+deployment may move steps 2 (maintenance mode) and 3–5 (code + core +
+upgrade) off the live nodes and into the idle ones, then swap. The *gates*
+don't change — you still need backup, verified restore, code update, core
+update, upgrade script, verification, cache flush, and post-upgrade
+monitoring in that dependency order. What changes is where each step runs.
 
----
-
-# PART B: EXECUTE (Production Checklist)
-
-This is a one-time, sequential procedure. No experimentation. Every step has
-a verification check. If any check fails, STOP and decide whether to fix
-forward or roll back.
+If you're not sure what deployment model applies, run the checklist as
+written.
 
 ## Pre-Flight
 
