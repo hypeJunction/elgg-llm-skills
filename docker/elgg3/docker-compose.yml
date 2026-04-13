@@ -58,9 +58,13 @@ services:
   # and DB connections should use host=db port=3306 (not host-mapped ports).
   node:
     image: mcr.microsoft.com/playwright:v1.49.0-noble
+    # SAFETY: mount ONLY the single plugin under test, matching the per-plugin
+    # isolation of the elgg service. Mounting the entire ${PLUGINS_DIR} here
+    # caused a fleet-wide wipe on 2026-04-13 when a destructive command inside
+    # the node container propagated to every sibling plugin on the host.
     volumes:
-      - ${PLUGINS_DIR:-../../tmp}:/plugins
-    working_dir: /plugins
+      - ${PLUGINS_DIR:?set PLUGINS_DIR in docker/elgg3/.env}/${PLUGIN_ID:?set PLUGIN_ID to the plugin under test}:/plugins/${PLUGIN_ID}
+    working_dir: /plugins/${PLUGIN_ID}
     environment:
       ELGG_BASE_URL: "http://elgg"
       ELGG_PORT: "80"

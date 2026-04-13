@@ -2,6 +2,13 @@
 ## Reads the checkout location from the .env (gitignored) so this file stays
 ## portable across machines.
 ##
+## ⚠ WARNING: This file is for RUNTIME site testing only, not per-plugin
+## migrations. It bind-mounts the entire bodyology mod/ tree, so any
+## destructive command inside the container (rm -rf /var/www/html/mod/*,
+## a misbehaving Elgg upgrade, etc.) propagates to every plugin on the host.
+## Per-plugin migration work MUST use docker-compose.override.yml (isolated
+## to a single ${PLUGIN_ID}) instead. See bead elgg-migrate-c0ou.
+##
 ## Required variables (set in docker/elgg3/.env or the shell):
 ##   BODYOLOGY_SITE_DIR   Absolute path to a bodyology-forum/ checkout. Its
 ##                        `mod/` directory becomes /var/www/html/mod inside the

@@ -15,4 +15,4 @@ services:
       context: ../..
       dockerfile: infra/migrate/Dockerfile
     volumes:
-      - ${PLUGINS_DIR:?PLUGINS_DIR must be set to the absolute path of the plugin tree to migrate}:/plugins
+      - ${PLUGINS_DIR:?PLUGINS_DIR must be set to the absolute path of the plugin tree to migrate}/${PLUGIN_ID:?set PLUGIN_ID to the plugin under test}:/plugins/${PLUGIN_ID}
