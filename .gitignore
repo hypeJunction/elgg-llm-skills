@@ -4,6 +4,10 @@ composer.lock
 /tmp/
 /e2e/node_modules/
 
+# Local developer environment — holds absolute paths to plugin sources.
+.env
+docker/elgg4/.env
+
 # PHP engine lives inside the elgg-migrate skill (and is mirrored into
 # every sibling skill by bin/gen-elgg-infra.sh). Ignore the transient
 # bits that composer/phpunit drop in each copy.
@@ -21,3 +25,35 @@ skills/*/composer.lock
 .wolf/
 .claude/rules/openwolf.md
 .claude/scheduled_tasks.lock
+
+# Other AI assistant vendor dirs (not used — only Claude Code)
+.adal/
+.agents/
+.augment/
+.bob/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills-lock.json
