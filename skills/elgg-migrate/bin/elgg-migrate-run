@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# elgg-migrate-run — per-plugin isolated migration orchestrator.
+#
+# Spawns one Docker project per plugin, bind-mounts the plugin rw + its
+# resolved dependencies ro, runs validation gates, and tears down cleanly.
+# No host paths are baked in. Plugins source and job state are resolved
+# from env → XDG config → cwd detection → prompt.
+set -euo pipefail
+
+# --- locate skill root (this script lives at <skill>/bin/elgg-migrate-run) ---
+SCRIPT_PATH="$(readlink -f "$0")"
+BIN_DIR="$(dirname "$SCRIPT_PATH")"
+SKILL_ROOT="$(dirname "$BIN_DIR")"
+SKILL_INFRA="$SKILL_ROOT/infra"
+
+# --- XDG dirs ---
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/elgg-migrate"
+STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/elgg-migrate"
+CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/elgg-migrate"
+CONFIG_FILE="$CONFIG_HOME/config.json"
+JOBS_DIR="$STATE_HOME/jobs"
+
+mkdir -p "$CONFIG_HOME" "$STATE_HOME" "$CACHE_HOME" "$JOBS_DIR"
+
+# --- deps check ---
+need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dep: $1" >&2; exit 2; }; }
+need docker
+need jq
+need git
+
+# --- config I/O ---
+config_get() {
+  local key="$1"
+  [[ -f "$CONFIG_FILE" ]] || { echo ""; return; }
+  jq -r --arg k "$key" '.[$k] // ""' "$CONFIG_FILE"
+}
+
+config_set() {
+  local key="$1" val="$2" tmp
+  tmp="$(mktemp)"
+  if [[ -f "$CONFIG_FILE" ]]; then
+    jq --arg k "$key" --arg v "$val" '.[$k] = $v' "$CONFIG_FILE" > "$tmp"
+  else
+    jq -n --arg k "$key" --arg v "$val" '{($k): $v}' > "$tmp"
+  fi
+  mv "$tmp" "$CONFIG_FILE"
+}
+
+# --- plugin source discovery ---
+is_plugin_dir() {
+  [[ -f "$1/elgg-plugin.php" || -f "$1/start.php" ]]
+}
+
+resolve_plugins_source() {
+  if [[ -n "${ELGG_MIGRATE_PLUGINS:-}" ]]; then
+    echo "$ELGG_MIGRATE_PLUGINS"; return
+  fi
+  local cached; cached="$(config_get plugins_source)"
+  if [[ -n "$cached" && -d "$cached" ]]; then
+    echo "$cached"; return
+  fi
+  local cwd; cwd="$(pwd)"
+  if is_plugin_dir "$cwd"; then
+    echo "$(dirname "$cwd")"; return
+  fi
+  local hit=0
+  for d in "$cwd"/*/; do
+    [[ -d "$d" ]] || continue
+    if is_plugin_dir "$d"; then hit=1; break; fi
+  done
+  if (( hit )); then echo "$cwd"; return; fi
+  echo "" # caller handles prompt
+}
+
+cmd_init() {
+  local source="" from="" to=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --plugins-source=*) source="${1#*=}" ;;
+      --from=*) from="${1#*=}" ;;
+      --to=*) to="${1#*=}" ;;
+      *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  if [[ -z "$source" ]]; then
+    source="$(resolve_plugins_source)"
+  fi
+  if [[ -z "$source" ]]; then
+    read -r -p "Plugins source directory (absolute path): " source
+  fi
+  source="$(readlink -f "$source")"
+  [[ -d "$source" ]] || { echo "not a directory: $source" >&2; exit 1; }
+  config_set plugins_source "$source"
+  [[ -n "$from" ]] && config_set from_version "$from"
+  [[ -n "$to"   ]] && config_set to_version "$to"
+  config_set last_used_at "$(date -Iseconds)"
+  echo "plugins_source = $source"
+  echo "config         = $CONFIG_FILE"
+  echo "state          = $STATE_HOME"
+}
+
+# --- job id: <plugin>-<short-sha> ---
+job_sha() {
+  local plugin_dir="$1" sha
+  sha="$(git -C "$plugin_dir" rev-parse --short HEAD 2>/dev/null || true)"
+  if [[ -z "$sha" ]]; then
+    sha="$(printf '%s-%s' "$plugin_dir" "$(date +%s)" | sha1sum | cut -c1-8)"
+  fi
+  echo "$sha"
+}
+
+job_path() {
+  local plugin="$1" sha="$2"
+  echo "$JOBS_DIR/${plugin}-${sha}"
+}
+
+# --- dependency resolver (first cut: parse composer.json, match local) ---
+# Emits deps.lock.json: [{"name": "...", "source": "local|missing", "path": "..."}]
+resolve_deps() {
+  local plugin_dir="$1" plugins_source="$2"
+  local composer="$plugin_dir/composer.json"
+  if [[ ! -f "$composer" ]]; then echo "[]"; return; fi
+  local requires
+  requires="$(jq -r '.require // {} | to_entries[] | select(.key | test("elgg|hype|coldtrick"; "i")) | .key' "$composer")"
+  local out="[]"
+  while IFS= read -r dep; do
+    [[ -z "$dep" ]] && continue
+    local short="${dep##*/}"
+    local path="" source="missing"
+    for candidate in "$plugins_source/$short" "$plugins_source/${short#Elgg-}" "$plugins_source/Elgg-$short"; do
+      if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
+        path="$(readlink -f "$candidate")"; source="local"; break
+      fi
+    done
+    out="$(jq --arg n "$dep" --arg s "$source" --arg p "$path" \
+      '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
+  done <<< "$requires"
+  echo "$out"
+}
+
+cmd_resolve() {
+  local plugin="${1:?plugin id required}"
+  local src; src="$(config_get plugins_source)"
+  [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
+  local pdir="$src/$plugin"
+  is_plugin_dir "$pdir" || { echo "not a plugin: $pdir" >&2; exit 1; }
+  resolve_deps "$pdir" "$src"
+}
+
+# --- compose invocation ---
+compose_args() {
+  local plugin="$1" sha="$2" version="$3" jdir="$4"
+  local base="$SKILL_INFRA/$version/docker-compose.yml"
+  [[ -f "$base" ]] || { echo "no infra for version: $version ($base)" >&2; exit 1; }
+  echo "--project-name em-${plugin}-${sha} -f $base -f $jdir/override.yml"
+}
+
+write_override() {
+  local plugin="$1" pdir="$2" deps_json="$3" jdir="$4"
+  local file="$jdir/override.yml"
+  {
+    echo "services:"
+    echo "  elgg:"
+    echo "    volumes:"
+    echo "      - ${pdir}:/var/www/html/mod/${plugin}"
+    jq -r '.[] | select(.source=="local") | "      - " + .path + ":/var/www/html/mod/" + (.name | split("/") | last) + ":ro"' <<< "$deps_json"
+  } > "$file"
+}
+
+cmd_up() {
+  local plugin="${1:?plugin id required}"; shift
+  local version="elgg4"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version=*) version="${1#*=}" ;;
+      *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  local src; src="$(config_get plugins_source)"
+  [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
+  local pdir="$src/$plugin"
+  is_plugin_dir "$pdir" || { echo "not a plugin: $pdir" >&2; exit 1; }
+  local sha; sha="$(job_sha "$pdir")"
+  local jdir; jdir="$(job_path "$plugin" "$sha")"
+  mkdir -p "$jdir/logs"
+  local deps; deps="$(resolve_deps "$pdir" "$src")"
+  echo "$deps" > "$jdir/deps.lock.json"
+  local missing; missing="$(jq -r '[.[] | select(.source=="missing")] | length' <<< "$deps")"
+  if (( missing > 0 )); then
+    jq -r '.[] | select(.source=="missing") | "  ! missing dep: " + .name' <<< "$deps" >&2
+    echo "resolve deps before spawning, or run with --allow-missing-deps (not yet implemented)" >&2
+    exit 1
+  fi
+  write_override "$plugin" "$(readlink -f "$pdir")" "$deps" "$jdir"
+  local port; port=$(( (RANDOM % 1000) + 18000 ))
+  local dbport; dbport=$(( (RANDOM % 1000) + 13000 ))
+  cat > "$jdir/.env" <<EOF
+ELGG_PORT=$port
+DB_PORT=$dbport
+PLUGINS_DIR=$(readlink -f "$pdir")
+EOF
+  cat > "$jdir/report.json" <<EOF
+{
+  "plugin": "$plugin",
+  "sha": "$sha",
+  "version": "$version",
+  "skill_root": "$SKILL_ROOT",
+  "skill_commit": "$(git -C "$SKILL_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)",
+  "created_at": "$(date -Iseconds)",
+  "elgg_port": $port,
+  "db_port": $dbport
+}
+EOF
+  # shellcheck disable=SC2046
+  ( cd "$jdir" && docker compose $(compose_args "$plugin" "$sha" "$version" "$jdir") up -d --build )
+  echo "job dir: $jdir"
+  echo "elgg:    http://localhost:$port"
+}
+
+cmd_down() {
+  local plugin="${1:?plugin id required}"
+  local jdir jshort version sha
+  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -printf '%f\n' | head -n1)"
+  [[ -n "$jdir" ]] || { echo "no job for $plugin" >&2; exit 1; }
+  jdir="$JOBS_DIR/$jdir"
+  sha="$(jq -r '.sha'     "$jdir/report.json")"
+  version="$(jq -r '.version' "$jdir/report.json")"
+  # shellcheck disable=SC2046
+  ( cd "$jdir" && docker compose $(compose_args "$plugin" "$sha" "$version" "$jdir") down -v )
+  echo "torn down: $jdir"
+}
+
+cmd_status() {
+  if [[ $# -eq 0 ]]; then
+    find "$JOBS_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort
+    return
+  fi
+  local plugin="$1" jdir
+  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -printf '%p\n' | head -n1)"
+  [[ -n "$jdir" ]] || { echo "no job for $plugin" >&2; exit 1; }
+  jq . "$jdir/report.json"
+  echo "--- deps.lock.json ---"
+  jq . "$jdir/deps.lock.json"
+}
+
+usage() {
+  cat <<'EOF'
+elgg-migrate-run — isolated per-plugin migration orchestrator
+
+  init    [--plugins-source=<dir>] [--from=N.x] [--to=N.x]
+  resolve <plugin>
+  up      <plugin> [--version=elgg3|elgg4]
+  down    <plugin>
+  status  [<plugin>]
+
+State lives under $XDG_STATE_HOME/elgg-migrate/. Config under
+$XDG_CONFIG_HOME/elgg-migrate/config.json. No host paths are baked in.
+EOF
+}
+
+main() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    init)    cmd_init    "$@" ;;
+    resolve) cmd_resolve "$@" ;;
+    up)      cmd_up      "$@" ;;
+    down)    cmd_down    "$@" ;;
+    status)  cmd_status  "$@" ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "unknown subcommand: $sub" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"
