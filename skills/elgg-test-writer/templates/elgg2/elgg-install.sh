@@ -1,7 +1,17 @@
 #!/bin/bash
 set -e
 
-# Wait for MySQL to be ready
+# Per-plugin Elgg 2.x install + activation script.
+# PLUGIN_ID must be set in the container environment (passed by docker-compose
+# from <plugin>/docker/.env). Only that one plugin is activated — no fleet
+# activation, no plugin-order.txt, no cross-plugin side effects.
+
+if [ -z "${PLUGIN_ID:-}" ]; then
+    echo "ERROR: PLUGIN_ID environment variable is required." >&2
+    echo "Set it in docker/.env before starting the stack." >&2
+    exit 1
+fi
+
 echo "Waiting for MySQL..."
 until php -r "new PDO('mysql:host=${ELGG_DB_HOST:-db}', '${ELGG_DB_USER:-elgg}', '${ELGG_DB_PASS:-elgg}');" 2>/dev/null; do
     sleep 1
@@ -10,11 +20,9 @@ echo "MySQL is ready."
 
 cd /var/www/html
 
-# Check if Elgg is already installed
 if [ ! -f /var/www/html/.elgg-installed ]; then
     echo "Installing Elgg 2.x..."
 
-    # Create settings.php
     mkdir -p elgg-config
     cat > elgg-config/settings.php <<'SETTINGS_TEMPLATE'
 <?php
@@ -33,12 +41,11 @@ SETTINGS_TEMPLATE
 \$CONFIG->dbprefix = 'elgg_';
 \$CONFIG->dbencoding = 'utf8mb4';
 \$CONFIG->dataroot = '${ELGG_DATA_ROOT:-/var/www/data/}';
-\$CONFIG->wwwroot = '${ELGG_SITE_URL:-http://localhost/}';
+\$CONFIG->wwwroot = '${ELGG_SITE_URL:-http://localhost:8280/}';
 \$CONFIG->cacheroot = '${ELGG_DATA_ROOT:-/var/www/data/}cache/';
 \$CONFIG->assetroot = '${ELGG_DATA_ROOT:-/var/www/data/}assets/';
 SETTINGS_VALUES
 
-    # Run the installer
     php -r "
         require_once 'vendor/autoload.php';
 
@@ -49,9 +56,9 @@ SETTINGS_VALUES
             'dbhost' => '${ELGG_DB_HOST:-db}',
             'dbport' => '3306',
             'dbprefix' => 'elgg_',
-            'sitename' => 'Elgg 2.x Migration Test',
+            'sitename' => 'Elgg 2.x Plugin Test',
             'siteemail' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
-            'wwwroot' => '${ELGG_SITE_URL:-http://localhost/}',
+            'wwwroot' => '${ELGG_SITE_URL:-http://localhost:8280/}',
             'dataroot' => '${ELGG_DATA_ROOT:-/var/www/data/}',
             'displayname' => 'Admin',
             'email' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
@@ -64,64 +71,33 @@ SETTINGS_VALUES
         echo 'Elgg 2.x installed successfully.' . PHP_EOL;
     " 2>&1 || echo "Install completed (check for errors above)."
 
-    # Activate plugins in priority order
-    echo "Activating plugins..."
-    PLUGIN_ORDER_FILE="/var/www/html/mod/.plugin-order.txt"
-    if [ -f "$PLUGIN_ORDER_FILE" ]; then
-        echo "Using ordered activation from .plugin-order.txt"
-        php -r "
-            require_once 'vendor/autoload.php';
-            \$app = \Elgg\Application::getInstance();
-            \$app->bootCore();
-            _elgg_services()->plugins->generateEntities();
-            \$order = file('$PLUGIN_ORDER_FILE', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            \$activated = 0;
-            \$failed = [];
-            foreach (\$order as \$id) {
-                \$id = trim(\$id);
-                if (empty(\$id) || \$id[0] === '#') continue;
-                \$plugin = elgg_get_plugin_from_id(\$id);
-                if (!\$plugin) { echo 'Plugin not found: ' . \$id . PHP_EOL; continue; }
-                if (\$plugin->isActive()) { \$activated++; continue; }
-                try {
-                    \$plugin->activate();
-                    \$activated++;
-                    echo '  + ' . \$id . PHP_EOL;
-                } catch (\Throwable \$e) {
-                    \$failed[] = \$id . ': ' . \$e->getMessage();
-                }
+    echo "Activating plugin: ${PLUGIN_ID}"
+    php -r "
+        require_once 'vendor/autoload.php';
+        \$app = \Elgg\Application::getInstance();
+        \$app->bootCore();
+        _elgg_services()->plugins->generateEntities();
+        \$plugin = elgg_get_plugin_from_id('${PLUGIN_ID}');
+        if (!\$plugin) {
+            echo 'ERROR: plugin ${PLUGIN_ID} not found at /var/www/html/mod/${PLUGIN_ID}' . PHP_EOL;
+            exit(1);
+        }
+        if (\$plugin->isActive()) {
+            echo 'Plugin ${PLUGIN_ID} already active.' . PHP_EOL;
+        } else {
+            try {
+                \$plugin->activate();
+                echo 'Plugin ${PLUGIN_ID} activated.' . PHP_EOL;
+            } catch (\Throwable \$e) {
+                echo 'FAILED to activate ${PLUGIN_ID}: ' . \$e->getMessage() . PHP_EOL;
+                exit(1);
             }
-            echo \$activated . ' plugin(s) activated.' . PHP_EOL;
-            if (!empty(\$failed)) {
-                echo count(\$failed) . ' plugin(s) failed:' . PHP_EOL;
-                foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
-            }
-        " 2>&1 || echo "Plugin activation completed (check for errors above)."
-    else
-        echo "No .plugin-order.txt found, activating all plugins..."
-        php -r "
-            require_once 'vendor/autoload.php';
-            \$app = \Elgg\Application::getInstance();
-            \$app->bootCore();
-            _elgg_services()->plugins->generateEntities();
-            \$plugins = elgg_get_plugins('inactive');
-            \$failed = [];
-            foreach (\$plugins as \$plugin) {
-                try { \$plugin->activate(); }
-                catch (\Throwable \$e) { \$failed[] = \$plugin->getID() . ': ' . \$e->getMessage(); }
-            }
-            if (empty(\$failed)) { echo 'All plugins activated.' . PHP_EOL; }
-            else {
-                echo count(\$failed) . ' plugin(s) failed:' . PHP_EOL;
-                foreach (\$failed as \$f) echo '  - ' . \$f . PHP_EOL;
-            }
-        " 2>&1 || echo "Plugin activation completed (check for errors above)."
-    fi
+        }
+    " 2>&1 || echo "Plugin activation completed (check for errors above)."
 
     touch /var/www/html/.elgg-installed
     echo "Elgg 2.x setup complete."
 fi
 
-# Start Apache
 echo "Starting Apache..."
 exec apache2-foreground

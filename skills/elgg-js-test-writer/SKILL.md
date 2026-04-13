@@ -24,29 +24,30 @@ Plugin JS must bring its own test setup. This skill provides that.
 
 ---
 
-## Skill layout (self-contained)
+## Skill layout (no shared docker stack)
 
-This skill ships the full Docker infra and a mirrored copy of the AST
-migration engine (for consistency with its sibling skills — the
-JavaScript test writer itself doesn't run AST transformations). After
-`npx skills add`, the installed directory looks like:
+This skill does not ship its own docker infrastructure. It assumes the
+plugin under test already has a per-plugin test stack at
+`<plugin>/docker/docker-compose.yml` — scaffolded by the
+`elgg-test-writer` skill (which copies templates into the plugin repo).
 
-    <skill-dir>/
-      SKILL.md                 # this file
-      bin/migrate.php          # AST migration engine CLI (inherited)
-      src/                     # ElggMigrate\ PHP namespace (inherited)
-      rules/                   # per-version rule manifests (inherited)
-      composer.json            # PHP deps (inherited)
-      phpunit.xml              # test runner config (inherited)
-      tests/                   # PHPUnit tests (inherited)
-      infra/elgg{N}/           # per-target Elgg stack (N = 2..7)
-      infra/migrate/           # AST engine Docker stack (inherited)
+Every docker command below is run **from the plugin root** and
+references `docker/docker-compose.yml` relative to that root. If the
+plugin does not yet have a `docker/` directory, run the deterministic
+bootstrap script from the `elgg-test-writer` skill first:
 
-Resolve `$SKILL` once at session start as the absolute path of the
-directory containing this SKILL.md, and `$SKILL_INFRA` as `$SKILL/infra`.
-Every `$SKILL_INFRA/elgg{N}/...` path below is literal. The engine
-files are kept in sync with the canonical copy in the elgg-migrate
-skill by `bin/gen-elgg-infra.sh`.
+```bash
+<path-to-elgg-test-writer>/bin/scaffold-docker.sh
+```
+
+The script infers `PLUGIN_ID` and the Elgg major version from the
+plugin's `composer.json` and writes the full docker stack under
+`<plugin>/docker/`. See the `elgg-test-writer` SKILL.md for details.
+
+Each plugin ends up with its own isolated stack (own containers,
+volumes, network, and ports scoped to `${PLUGIN_ID}-elgg{N}`) — nothing
+is shared between plugins, and this skill never touches anything
+outside the plugin repository.
 
 ## Container Infrastructure
 
@@ -54,23 +55,23 @@ All JS test operations run inside Docker containers via the `node` service.
 
 ```bash
 # Run Vitest (JS unit tests)
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm ci && npm run test:js"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin && npm ci && npm run test:js"
 
 # Run Vitest in watch mode
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm ci && npm run test:js:watch"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin && npm ci && npm run test:js:watch"
 
 # Interactive shell for debugging
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node bash
+docker compose -f docker/docker-compose.yml --profile test run --rm node bash
 
 # Combined with Playwright (browser-level)
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin/tests/playwright && npm ci && npx playwright test"
 ```
 
 The `node` service uses the official Playwright Docker image (includes Node.js 20).
-Plugin files are mounted at `/plugins/<plugin>` via the `PLUGINS_DIR` environment variable.
+The plugin's source directory is mounted at `/plugin` inside the node container via the per-plugin `docker/docker-compose.yml`.
 
 ---
 
@@ -105,8 +106,8 @@ For each JS file, identify:
 ### For Elgg 6.x (ES Modules) — Use Vitest
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm init -y && npm install -D vitest jsdom"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin && npm init -y && npm install -D vitest jsdom"
 ```
 
 **vitest.config.ts:**
@@ -147,8 +148,8 @@ export default defineConfig({
 AMD modules need a shim since Vitest runs ES modules natively:
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm install -D vitest jsdom"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin && npm install -D vitest jsdom"
 ```
 
 **tests/js/mocks/amd-shim.mjs:**
@@ -427,8 +428,8 @@ describe('wall post submission', () => {
 ### In Docker
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin> && npm ci && npm run test:js"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin && npm ci && npm run test:js"
 ```
 
 ### In CI (GitHub Actions)
@@ -453,11 +454,11 @@ For testing JS behavior in a real Elgg instance:
 
 ```bash
 # Start Elgg in Docker
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 
 # Run Playwright tests inside Docker (shares network with Elgg + DB)
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
-  "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin/tests/playwright && npm ci && npx playwright test"
 ```
 
 Playwright tests are better for:
