@@ -59,4 +59,4 @@ skills/*/composer.lock
 .windsurf/
 .zencoder/
 skills-lock.json
-CLAUDE.md
+.playwright-mcp/
