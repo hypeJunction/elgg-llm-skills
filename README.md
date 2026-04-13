@@ -139,20 +139,20 @@ bd stats        # Project health overview
 
 The skills and rules work perfectly without beads. Use whatever task tracking you prefer -- the migration rules and skill instructions are self-contained markdown and JSON files.
 
-## Documentation
+## Reference Documentation
 
-The `docs/` directory contains the canonical documentation for the migration toolkit:
+All migration reference docs live under `skills/elgg-migrate/references/`:
 
 | Document | Content |
 |----------|---------|
-| `docs/version-api-boundaries.md` | Which APIs belong to which Elgg version (enforced by `--verify`) |
-| `docs/plugin-architecture-by-version.md` | Ideal directory structure and file conventions per version |
-| `docs/coding-standards.md` | Elgg coding standards by version (PSR-12 + Elgg extensions) |
-| `docs/security-review-checklist.md` | Security checks performed by `--security` |
-| `docs/llm-security-review.md` | Two-stage security workflow (automated + LLM deep review) |
-| `docs/post-migration-documentation.md` | How to document a plugin after migration (ARCHITECTURE.md) |
+| `version-api-boundaries.md` | Which APIs belong to which Elgg version (enforced by `--verify`) |
+| `plugin-architecture-by-version.md` | Ideal directory structure and file conventions per version |
+| `coding-standards.md` | Elgg coding standards by version (PSR-12 + Elgg extensions) |
+| `security-review-checklist.md` | Security checks performed by `--security` |
+| `llm-security-review.md` | Two-stage security workflow (automated + LLM deep review) |
+| `post-migration-documentation.md` | How to document a plugin after migration (ARCHITECTURE.md) |
 
-## Reference Documentation
+## Additional References
 
 | Document | Content |
 |----------|---------|

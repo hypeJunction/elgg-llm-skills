@@ -15,7 +15,8 @@
 #                        3. hard error
 #   --list             Print discovered plugin ids (one per line) and exit.
 #   --write-env FILE   Write PLUGINS_DIR and PLUGIN_ID into FILE (gitignored .env
-#                      format). Default target when omitted: docker/elgg4/.env.
+#                      format). Default target when omitted:
+#                      skills/elgg-migrate/infra/elgg4/.env.
 #                      PLUGIN_ID is preserved if already set in FILE, otherwise
 #                      set to the value of --plugin or the first discovered id.
 #   --plugin ID        Plugin id to record in the .env as PLUGIN_ID.
@@ -147,7 +148,7 @@ fi
 
 # Default .env target
 if [ -z "$write_env" ]; then
-    write_env="$REPO_ROOT/docker/elgg4/.env"
+    write_env="$REPO_ROOT/skills/elgg-migrate/infra/elgg4/.env"
 fi
 
 # Determine PLUGIN_ID: --plugin flag > existing .env value > first discovered

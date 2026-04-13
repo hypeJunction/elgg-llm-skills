@@ -114,7 +114,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 7. **LINEAR VERSION KNOWLEDGE ONLY** — When migrating from version N to N+1, the agent MUST only apply N+1 APIs, patterns, and conventions. Do NOT use APIs from version N+2 or later. Example: when migrating 3.x→4.x, use `\Elgg\Hook` (4.x), NOT `\Elgg\Event` (5.x); use `elgg_trigger_plugin_hook()` (4.x, deprecated), NOT `elgg_trigger_event_results()` (5.x). Run `--verify` after every migration to catch leakage.
 8. **SECURITY SWEEP AFTER EVERY MIGRATION** — Run `--security` after applying rules. Fix critical findings before committing. Security debt from legacy code gets inherited — catch it at the version boundary.
 9. **DOCUMENT AFTER MIGRATION** — After each version step, generate a plugin architecture summary documenting the current structure, registered hooks/events, entities, routes, and any migration notes for future reference.
-10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `docs/coding-standards.md` for version-specific rules.
+10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `references/coding-standards.md` for version-specific rules.
 11. **NEVER POLYFILL REMOVED APIS** — When the target version has removed a function, refactor every call site to the modern target-version API. Do NOT re-define the removed function in plugin code (no `if (!function_exists('foo')) { function foo() { ... } }` shims, no `lib/polyfills.php` files, no compatibility wrappers). Polyfills preserve the legacy call shape, drag forward patterns the next major will remove again, and hide the real surface area of the breaking change from any future audit. The migration's whole point is that the plugin is *on* the target API after the step closes — `grep <removed_func>` against the source must come up empty. Polymorphic guards on hook/event handler signatures are NOT polyfills and remain acceptable: those preserve a method's call signature so callers in version N and N+1 both work, they don't re-define removed APIs. If a refactor is non-trivial because of closure scoping or return-value handling, that effort *is* the migration — do it, don't shortcut it. If you're tempted to polyfill, that's a sign the plugin is too far from the target version and needs more migration work — surface to the human, don't paper over it.
 12. **DOCUMENT EVERY SURPRISE** — Unexpected failures, hand-fixes, workarounds, and non-obvious gate failures belong in `SKILL.md`'s common-mistakes table, the relevant `rules/{from}-to-{to}/manifest.json`, or memory before the migration issue closes. The skill's durable value is the knowledge each migration generates; closing issues without capturing what you learned is how migrations get more expensive instead of cheaper. See **Capture before closing** below.
 
@@ -331,6 +331,7 @@ is the load-bearing part.
 | PHP_CodeSniffer passes for target version | Style regressions accumulate and make future migrations harder |
 | ARCHITECTURE.md generated | The knowledge of what the plugin *is* at this version is the second-most valuable migration output after the code itself |
 | CHANGELOG.md updated | Downstream consumers need to know what changed |
+| Plugin version bumped in `composer.json` and git tag created | Major bump on new Elgg target, minor/patch for follow-ups; tags make fleet tooling and `git log --simplify-by-decoration` give a useful history |
 | `Elgg\Upgrade\Batch` script added if data migration is needed | Schema/data changes without an upgrade script mean the plugin works on fresh installs but breaks on real sites with existing data |
 | Commit message format: `migrate({TARGET}.x): <summary>` | Consistent prefixes make `git log --grep` usable across the fleet |
 | Issue closed with `--reason` | Future-you reading the beads history needs the "what changed" summary |
@@ -519,7 +520,7 @@ the manifest. Use as many as needed to be confident.
 
 Capture the plugin's current style state before migrating so you can tell
 whether the migration regressed it. Ensure `.phpcs.xml` exists for the target
-version (see `docs/coding-standards.md` for the template), then run
+version (see `references/coding-standards.md` for the template), then run
 `vendor/bin/phpcs --standard=PSR12 classes/ actions/ lib/` to generate a
 baseline. Post-migration style must not regress.
 
@@ -824,7 +825,7 @@ business-logic flaws (IDOR, race conditions, mass assignment), hook/event
 handlers trusting unvalidated input, and migration-introduced issues like
 Bootstrap classes doing privileged operations or custom endpoints missing
 CSRF. Address HIGH and MEDIUM findings before committing. See
-`docs/llm-security-review.md` for the full workflow.
+`references/llm-security-review.md` for the full workflow.
 
 #### Coding standards
 
@@ -859,7 +860,39 @@ code itself — future migrations and future developers rely on it. Cover:
 - **Migration notes** — what changed in this version step, known issues, workarounds
 
 Update `CHANGELOG.md` with a human-readable summary of the version bump.
+
+#### Bump plugin version and create a git tag
+
+Every completed migration step (and every follow-up fix on the same branch)
+gets a version bump and a tag in the **plugin repo**. The rules:
+
+- **Completing a migration to a new Elgg major** → bump the plugin's **major**
+  version. Convention: align the major with the Elgg target (Elgg 3 → `3.0.0`,
+  Elgg 4 → `4.0.0`, etc.). If the plugin was already on major `N` for some
+  other reason, just increment it by one.
+- **Follow-up commits on the same migration branch** (test adaptations, style
+  fixes, LLM-guided hand fixes, security fixes) → bump **minor** or **patch**
+  depending on scope.
+
+Set the `version` field in the plugin's `composer.json`, update `CHANGELOG.md`,
+commit, and tag:
+
+```bash
+# 1. Set version in plugin's composer.json (e.g. "version": "4.0.0")
+# 2. Update CHANGELOG.md with release notes
+git add composer.json CHANGELOG.md
+git commit -m "chore(release): v{VERSION}"
+git tag -a "v{VERSION}" -m "Elgg {TARGET}.x migration — v{VERSION}"
+```
+
+The tag lives in the plugin repo (not in the migration toolkit repo). Tag
+naming convention: `v<major>.<minor>.<patch>` (e.g. `v4.0.0`).
+
 Commit: `git commit -m "docs: add plugin architecture summary for Elgg {TARGET}.x"`.
+
+> **Note**: the docs commit and the release commit are usually the same commit
+> when all changes are tidy — combine them as needed, but always tag *after*
+> the final state is committed.
 
 ### Phase 3: Finalize
 

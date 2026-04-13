@@ -363,11 +363,11 @@ After each migration step, run linting:
 
 ```bash
 # Inside Docker
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f skills/elgg-migrate/infra/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcs --standard=mod/<plugin-id>/.phpcs.xml mod/<plugin-id>/
 
 # Auto-fix
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f skills/elgg-migrate/infra/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcbf --standard=mod/<plugin-id>/.phpcs.xml mod/<plugin-id>/
 
 # Commit style fixes separately from logic changes
