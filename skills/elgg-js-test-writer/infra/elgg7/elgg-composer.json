@@ -23,5 +23,8 @@
         "audit": {
             "block-insecure": false
         }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5 || ^11.0"
     }
 }
