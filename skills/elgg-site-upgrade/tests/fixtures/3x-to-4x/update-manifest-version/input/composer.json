@@ -1,0 +1,6 @@
+{
+    "name": "test/testplugin",
+    "require": {
+        "elgg/elgg": "^3.3"
+    }
+}

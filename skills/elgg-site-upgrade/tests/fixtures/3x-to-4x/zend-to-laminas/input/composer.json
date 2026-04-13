@@ -1,0 +1,6 @@
+{
+    "name": "myplugin/myplugin",
+    "require": {
+        "zendframework/zend-mail": "^2.10"
+    }
+}

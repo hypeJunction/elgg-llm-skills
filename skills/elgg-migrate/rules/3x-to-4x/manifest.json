@@ -1,0 +1,246 @@
+{
+    "from": "3.x",
+    "to": "4.x",
+    "rules": [
+        {
+            "id": "000-update-manifest-version",
+            "name": "Update manifest.xml and composer.json to target Elgg 4.x",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\UpdateManifestVersion",
+            "breaking_change": "Plugin must declare Elgg 4.x compatibility",
+            "priority": 1
+        },
+        {
+            "id": "001-generate-elgg-plugin-php",
+            "name": "Generate elgg-plugin.php from start.php registrations",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\GenerateElggPluginPhp",
+            "breaking_change": "start.php, activate.php, deactivate.php no longer included in 4.0. Use elgg-plugin.php.",
+            "priority": 10
+        },
+        {
+            "id": "002-remove-legacy-bootstrap",
+            "name": "Remove start.php, activate.php, deactivate.php",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemoveLegacyBootstrap",
+            "breaking_change": "start.php, activate.php, deactivate.php, views.php no longer loaded in 4.0",
+            "priority": 20
+        },
+        {
+            "id": "003-di-object-to-create",
+            "name": "Replace \\DI\\object() with \\DI\\create() in elgg-services.php",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\DiObjectToCreate",
+            "breaking_change": "PHP-DI updated: \\DI\\object() → \\DI\\create()",
+            "priority": 30
+        },
+        {
+            "id": "004-zend-to-laminas",
+            "name": "Replace Zend\\Mail with Laminas\\Mail",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\ZendToLaminas",
+            "breaking_change": "Zend\\Mail → Laminas\\Mail",
+            "priority": 40
+        },
+        {
+            "id": "005-entity-attribute-setters",
+            "name": "Replace magic setters for protected entity attributes",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\EntityAttributeSetters",
+            "breaking_change": "type, subtype, enabled, admin, banned no longer settable via magic setter",
+            "priority": 50
+        },
+        {
+            "id": "006-response-classes",
+            "name": "Update response class usage",
+            "automated": false,
+            "llm_instructions": "Response classes were restructured:\n- `OkResponse`, `ErrorResponse`, `RedirectResponse` no longer inherit from `OkResponse`\n- All extend `Elgg\\Http\\Response` and implement `ResponseBuilder`\n- `elgg_error_response()` default HTTP code changed from 200 to 400\n\nIf your plugin creates response objects directly or checks `instanceof OkResponse`, update accordingly.",
+            "breaking_change": "Response class hierarchy changed, elgg_error_response default code is 400",
+            "priority": 60
+        },
+        {
+            "id": "007-tag-metadata",
+            "name": "Replace tag metadata registration",
+            "automated": false,
+            "llm_instructions": "Replace `elgg_register_tag_metadata_name()` and `elgg_get_registered_tag_metadata_names()` with `search:fields` hooks:\n```php\n// Before:\nelgg_register_tag_metadata_name('skills');\n\n// After:\nelgg_register_plugin_hook_handler('search:fields', 'object:mytype', function($hook, $type, $fields) {\n    $fields['metadata'][] = 'skills';\n    return $fields;\n});\n```",
+            "breaking_change": "Tag metadata registration functions removed in 4.0",
+            "priority": 70
+        },
+        {
+            "id": "008-filter-tabs",
+            "name": "Replace elgg_get_filter_tabs()",
+            "automated": false,
+            "llm_instructions": "Replace `elgg_get_filter_tabs()` with menu registration:\n```php\n// Before:\n$tabs = elgg_get_filter_tabs($context, ...);\n\n// After: Register tabs via the filter menu hook\nelgg_register_plugin_hook_handler('register', 'menu:filter:filter', function($hook, $type, $items) {\n    // Add menu items\n    return $items;\n});\n```",
+            "breaking_change": "elgg_get_filter_tabs() removed in 4.0",
+            "priority": 80
+        },
+        {
+            "id": "009-js-ajax-helpers",
+            "name": "Replace legacy JS ajax helpers",
+            "automated": false,
+            "llm_instructions": "Legacy JavaScript AJAX helpers removed:\n- `elgg.action()` → use `elgg/Ajax` module\n- `elgg.get()` → use `elgg/Ajax` module\n- `elgg.getJSON()` → use `elgg/Ajax` module\n- `elgg.post()` → use `elgg/Ajax` module\n\n```javascript\n// Before:\nelgg.action('myplugin/save', {data: {key: 'value'}});\n\n// After:\nrequire(['elgg/Ajax'], function(Ajax) {\n    var ajax = new Ajax();\n    ajax.action('myplugin/save', {data: {key: 'value'}});\n});\n```\n\nAlso: `boot, system` and `ready, system` JS triggers removed.",
+            "breaking_change": "elgg.action/get/getJSON/post removed, use elgg/Ajax module",
+            "priority": 90
+        },
+        {
+            "id": "010-container-write-permissions",
+            "name": "Update canWriteToContainer() calls",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\CanWriteToContainer",
+            "breaking_change": "canWriteToContainer() requires $type and $subtype in 4.0",
+            "priority": 100
+        },
+        {
+            "id": "011-exception-class-renames",
+            "name": "Rename exception classes and traits moved in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\ExceptionClassRenames",
+            "breaking_change": "~30 exception classes moved to Elgg\\Exceptions namespace, traits to Elgg\\Traits",
+            "priority": 110
+        },
+        {
+            "id": "012-removed-functions-4x",
+            "name": "Flag functions deprecated in 3.x and removed in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedFunctions",
+            "breaking_change": "~25 functions removed: validate_*, forward(), plugin settings, filter tabs, etc.",
+            "priority": 120
+        },
+        {
+            "id": "013-removed-methods-4x",
+            "name": "Flag class methods deprecated in 3.x and removed in 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedMethods",
+            "breaking_change": "~20 methods removed: ElggPlugin::getUserSetting(), ElggGroup::addObjectToGroup(), etc.",
+            "priority": 130
+        },
+        {
+            "id": "014-hook-event-renames",
+            "name": "Rename deprecated hooks and events for 4.0",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\HookEventRenames",
+            "breaking_change": "profile:fields hooks, river events, usersettings hook renamed/removed in 4.0",
+            "priority": 140
+        },
+        {
+            "id": "015-removed-views",
+            "name": "Replace removed views",
+            "automated": false,
+            "llm_instructions": "Several views removed in 4.0. Search plugin views/ and PHP files for references:\n\n- `notifications/personal` → use `notifications/settings` or `notifications/users`\n- `notifications/groups` → removed\n- `notifications/settings/collections` → removed\n- `notifications/settings/personal` → `notifications/settings/records`\n- `notifications/subscriptions/groups` → `forms/notifications/subscriptions/groups`\n- `notifications/subscriptions/users` → `forms/notifications/subscriptions/users`\n- `resources/river` → `resources/activity/all` or `resources/activity/owner`\n- `resources/comments/view` → use `\\Elgg\\Controllers\\CommentEntityRedirector`\n- `object/plugin/elements/contributors` → removed\n- `input/urlshortener` → removed\n- `navigation/menu/elements/item_deps` → merged into `navigation/menu/elements/item`\n\nAlso: `$vars['plugin']` in settings forms → use `$vars['entity']` instead.",
+            "breaking_change": "Several notification, resource, and plugin views removed or renamed in 4.0",
+            "priority": 150
+        },
+        {
+            "id": "016-removed-constants",
+            "name": "Replace removed constants",
+            "automated": false,
+            "llm_instructions": "Search for removed constants:\n\n- `ELGG_PLUGIN_USER_SETTING_PREFIX` → removed\n- `ELGG_PLUGIN_INTERNAL_PREFIX` → use `\\ElggPlugin::PRIORITY_SETTING_NAME`\n- `\\ElggRelationship::RELATIONSHIP_LIMIT` → use `\\Elgg\\Database\\RelationshipsTable::RELATIONSHIP_COLUMN_LENGTH`\n\nAlso check for notification origin constants:\n- `ORIGIN_SUBSCRIPTIONS` → removed from `Elgg\\Notifications\\Notification`\n- `ORIGIN_INSTANT` → removed from `Elgg\\Notifications\\Notification`",
+            "breaking_change": "Several plugin and notification constants removed in 4.0",
+            "priority": 160
+        },
+        {
+            "id": "018-hook-callback-signatures",
+            "name": "Rewrite hook/event handler signatures to Elgg 4.x single-arg format",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\HookCallbackSignatures",
+            "breaking_change": "Handlers registered via elgg-plugin.php receive single \\Elgg\\Hook or \\Elgg\\Event object",
+            "priority": 200
+        },
+        {
+            "id": "017-install-plugin-deps",
+            "name": "Install plugin-specific Composer dependencies",
+            "automated": false,
+            "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
+            "breaking_change": "Plugin-local dependencies must be installed for activation",
+            "priority": 150
+        },
+        {
+            "id": "018-hook-callback-signatures",
+            "name": "Rewrite hook/event handler signatures to Elgg 4.x single-arg format",
+            "automated": true,
+            "class": "ElggMigrate\\Rules\\V3ToV4\\HookCallbackSignatures",
+            "breaking_change": "Handlers registered via elgg-plugin.php receive single \\Elgg\\Hook or \\Elgg\\Event object",
+            "priority": 200
+        },
+        {
+            "id": "019-plugin-settings-vars",
+            "name": "Replace $vars['plugin'] with $vars['entity'] in settings forms",
+            "automated": false,
+            "llm_instructions": "In plugin settings forms (`views/default/plugins/{plugin_id}/settings` and `forms/` views):\n\nReplace `$vars['plugin']` with `$vars['entity']`.\n\n```php\n// Before:\n$plugin = $vars['plugin'];\n$setting = $plugin->getSetting('my_setting');\n\n// After:\n$entity = $vars['entity'];\n$setting = $entity->getSetting('my_setting');\n```\n\nSearch: `grep -rn \"\\$vars\\['plugin'\\]\" views/ forms/`",
+            "breaking_change": "$vars['plugin'] no longer available in plugin settings forms — use $vars['entity']",
+            "priority": 210
+        },
+        {
+            "id": "020-field-config-api",
+            "name": "Replace elgg_get_config() field lookups with elgg()->fields->get()",
+            "automated": false,
+            "llm_instructions": "Replace deprecated config-based field lookups:\n\n```php\n// Before:\n$fields = elgg_get_config('pages');\n$fields = elgg_get_config('group');\n$fields = elgg_get_config('profile_fields');\n\n// After:\n$fields = elgg()->fields->get('object', 'page');\n$fields = elgg()->fields->get('group', 'group');\n$fields = elgg()->fields->get('user', 'user');\n```\n\nAlso update related hooks:\n- `profile:fields, group` → `fields, group:group`\n- `profile:fields, user` → `fields, user:user`\n\nSearch: `grep -rn \"elgg_get_config.*'pages'\\|elgg_get_config.*'group'\\|elgg_get_config.*'profile_fields'\" classes/ views/`",
+            "breaking_change": "Config-based field lookups removed — use elgg()->fields->get()",
+            "priority": 220
+        },
+        {
+            "id": "021-callback-renames",
+            "name": "Update references to renamed core callback functions",
+            "automated": false,
+            "llm_instructions": "~150 core callback functions were renamed from `_elgg_*()` procedural functions to `Elgg\\ClassName::method()` class-based handlers.\n\nThis mainly affects plugins that UNREGISTER core hooks/events:\n```php\n// Before:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', '_elgg_entity_menu_setup');\n\n// After:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', 'Elgg\\Menus\\Entity::registerEdit');\n```\n\nSearch for `_elgg_` in elgg_unregister_* calls:\n`grep -rn 'elgg_unregister.*_elgg_\\|elgg_unregister.*_groups_\\|elgg_unregister.*_members_' classes/ views/`\n\nFull rename list: see https://learn.elgg.org/en/stable/appendix/upgrade-notes/3.x-to-4.0.html#renamed-hook-event-handler-callbacks",
+            "breaking_change": "~150 core callbacks renamed from _elgg_* to Class::method — breaks unregistration",
+            "priority": 230
+        },
+        {
+            "id": "022-notification-subscription-rename",
+            "name": "Update notification subscription relationship name",
+            "automated": false,
+            "llm_instructions": "The notification subscription relationship name changed:\n- Before: `notify{method}` (e.g., `notifyemail`, `notifysite`)\n- After: `notify:{method}` (e.g., `notify:email`, `notify:site`)\n\nSearch for the old format in SQL queries and relationship lookups:\n```bash\ngrep -rn 'notify[a-z]' classes/ views/ actions/ --include='*.php' | grep -v 'notify:' | grep -v 'notification'\n```\n\nAlso check for direct relationship queries:\n```php\n// Before:\nadd_entity_relationship($user_guid, 'notifyemail', $target_guid);\n\n// After:\nadd_entity_relationship($user_guid, 'notify:email', $target_guid);\n```",
+            "breaking_change": "Notification subscription relationship format changed: notifymethod → notify:method",
+            "priority": 240
+        },
+        {
+            "id": "023-database-class-rename",
+            "name": "Replace Elgg\\Database with Elgg\\Application\\Database",
+            "automated": false,
+            "llm_instructions": "The `Elgg\\Database` class was replaced by `Elgg\\Application\\Database` in the DI container.\n\nSearch for type hints and use statements:\n```bash\ngrep -rn 'use Elgg\\\\Database;\\|use Elgg\\\\Database as\\|Elgg\\\\Database \\$' classes/ --include='*.php'\n```\n\nReplace:\n```php\n// Before:\nuse Elgg\\Database as ElggDatabase;\n\n// After:\nuse Elgg\\Application\\Database as ElggDatabase;\n```\n\nNote: `Elgg\\Database\\*` sub-namespace classes (QueryBuilder, Select, Insert, etc.) are NOT affected.",
+            "breaking_change": "Elgg\\Database class renamed to Elgg\\Application\\Database — affects DI type hints",
+            "priority": 250
+        },
+        {
+            "id": "024-doctrine-dbal-v3",
+            "name": "Update Doctrine DBAL v2 → v3 usage",
+            "automated": false,
+            "llm_instructions": "Doctrine DBAL was updated from v2 to v3. Key change:\n\n- `$qb->fetch()` now returns an **array**, not an **object**\n- If you need object rows, use `elgg()->db->getData($qb)` instead\n- Query parameters should no longer have `:` prefix in the params array (but still use `:` in the query)\n\n```php\n// Before (DBAL v2):\n$row = $qb->fetch(); // returns object\n$row->name;\n\n// After (DBAL v3):\n$row = $qb->fetch(); // returns array\n$row['name'];\n\n// Or use Elgg wrapper:\n$rows = elgg()->db->getData($qb); // returns objects\n```\n\nSearch: `grep -rn '->fetch()\\|->fetchAll()\\|->fetchColumn()' classes/ --include='*.php'`",
+            "breaking_change": "Doctrine DBAL v3: $qb->fetch() returns array not object",
+            "priority": 260
+        },
+        {
+            "id": "025-type-hints",
+            "name": "Check for type-hint compatibility with strict parameter types",
+            "automated": false,
+            "llm_instructions": "~80+ Elgg functions now have strict type hints. Passing wrong types (null, wrong int/string) causes TypeError.\n\nCommon pitfalls:\n- `elgg_get_plugin_from_id(null)` — now requires string\n- `elgg_register_action($action, $path, null)` — access must be string\n- `add_user_to_access_collection(null, $id)` — requires int\n- `elgg_error_response('msg', null)` — status_code must be int\n- `get_entity_statistics(null)` — requires int\n\nSearch for potential issues:\n```bash\ngrep -rn 'elgg_error_response\\|elgg_ok_response\\|elgg_redirect_response\\|elgg_register_action\\|elgg_get_plugin_from_id' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure all arguments match expected types. PHP 7.4+ will throw TypeError at runtime.",
+            "breaking_change": "~80+ functions gained strict type hints — TypeError on wrong argument types",
+            "priority": 270
+        },
+        {
+            "id": "026-jquery-deprecated-apis",
+            "name": "Replace jQuery APIs removed or deprecated in jQuery 3.5.x",
+            "automated": false,
+            "llm_instructions": "jQuery was updated to 3.5.x in Elgg 4.0. Several APIs were removed or deprecated.\n\n**Search for deprecated patterns:**\n```bash\ngrep -rn '\\.bind(\\|\\.unbind(\\|\\.delegate(\\|\\.undelegate(\\|\\.click(\\|\\.error(\\|\\.load(\\|\\.unload(\\|\\.size(\\|jQuery\\.parseJSON\\|jQuery\\.isArray\\|jQuery\\.unique\\|jQuery\\.holdReady\\|\\.andSelf(\\|\\.context\\b\\|\\.selector\\b' views/ --include='*.js'\n```\n\n**Replacements:**\n\n| Deprecated | Replacement |\n|------------|-------------|\n| `.bind('event', fn)` | `.on('event', fn)` |\n| `.unbind('event', fn)` | `.off('event', fn)` |\n| `.delegate(sel, 'event', fn)` | `.on('event', sel, fn)` |\n| `.undelegate(sel, 'event', fn)` | `.off('event', sel, fn)` |\n| `.click(fn)` | `.on('click', fn)` |\n| `.load(fn)` (as event) | `.on('load', fn)` |\n| `.error(fn)` | `.on('error', fn)` |\n| `.unload(fn)` | `.on('beforeunload', fn)` |\n| `.size()` | `.length` |\n| `$.parseJSON(str)` | `JSON.parse(str)` |\n| `$.isArray(obj)` | `Array.isArray(obj)` |\n| `$.unique(arr)` | `$.uniqueSort(arr)` |\n| `$.holdReady(hold)` | Remove — use proper AMD loading |\n| `.andSelf()` | `.addBack()` |\n| `$(el).context` | Not available — use direct DOM reference |\n| `$(el).selector` | Not available — store selector yourself |\n\n**jQuery 3.5 HTML parsing change (BREAKING):**\nSelf-closing HTML tags like `$('<div/>')` no longer work for non-void elements. Use `$('<div></div>')` or `$('<div>')` instead.\n\nSearch: `grep -rn \"\\$('<[a-z].*/>\\s*')\" views/ --include='*.js'`",
+            "breaking_change": "jQuery 3.5.x: .bind/.unbind/.delegate removed, self-closing HTML tags changed",
+            "priority": 280
+        },
+        {
+            "id": "027-jquery-ui-requires",
+            "name": "Add explicit requires for jQuery UI widgets",
+            "automated": false,
+            "llm_instructions": "jQuery UI is no longer fully loaded by default in Elgg 4.0. If your plugin uses jQuery UI features (sortable, draggable, datepicker, dialog, etc.), you must explicitly require the widget module.\n\n**Search for jQuery UI usage:**\n```bash\ngrep -rn '\\.sortable(\\|\\.draggable(\\|\\.droppable(\\|\\.resizable(\\|\\.datepicker(\\|\\.dialog(\\|\\.accordion(\\|\\.autocomplete(\\|\\.slider(\\|\\.tabs(\\|\\.tooltip(\\|\\.progressbar(\\|\\.selectable(' views/ --include='*.js'\n```\n\n**Fix: wrap in require or add dependency:**\n```javascript\n// Before (jQuery UI was globally available):\ndefine(['jquery'], function($) {\n    $('.my-list').sortable();\n});\n\n// After (must explicitly require the widget):\ndefine(['jquery', 'jquery-ui/widgets/sortable'], function($) {\n    $('.my-list').sortable();\n});\n```\n\n**Available widget modules:**\n- `jquery-ui/widgets/sortable`\n- `jquery-ui/widgets/draggable`\n- `jquery-ui/widgets/droppable`\n- `jquery-ui/widgets/resizable`\n- `jquery-ui/widgets/datepicker`\n- `jquery-ui/widgets/dialog`\n- `jquery-ui/widgets/accordion`\n- `jquery-ui/widgets/autocomplete`\n- `jquery-ui/widgets/slider`\n- `jquery-ui/widgets/tabs`\n- `jquery-ui/widgets/tooltip`\n- `jquery-ui/widgets/progressbar`\n- `jquery-ui/widgets/selectable`",
+            "breaking_change": "jQuery UI no longer fully loaded — must require individual widget modules",
+            "priority": 290
+        },
+        {
+            "id": "028-removed-js-deps",
+            "name": "Replace removed JavaScript dependencies",
+            "automated": false,
+            "llm_instructions": "Several JavaScript dependencies were removed from Elgg 4.0:\n\n**Search for usage:**\n```bash\ngrep -rn \"jquery-treeview\\|jquery\\.imgareaselect\\|formdata-polyfill\\|jquery-form\\|weakmap-polyfill\" views/ --include='*.js'\ngrep -rn \"require.*jquery-treeview\\|require.*imgareaselect\\|require.*formdata\\|require.*jquery-form\" views/ --include='*.js'\n```\n\n**Replacements:**\n\n| Removed | Replacement |\n|---------|-------------|\n| `jquery-treeview` | Use CSS-based tree or a modern alternative |\n| `jquery.imgareaselect` | Use `Cropper.js` or the built-in Elgg cropper |\n| `formdata-polyfill` | Remove — all modern browsers support `FormData` natively |\n| `jquery-form` | Use native `FormData` + `fetch()` or `elgg/Ajax` module |\n| `weakmap-polyfill` | Remove — all modern browsers support `WeakMap` natively |\n\nAlso check for `require(['simpletest/...'])` — SimpleTest was removed.\n\n**Elgg's widgets module change:**\nThe `elgg/widgets` AMD module no longer returns an object and no longer requires calling `.init()`. Remove any `widgets.init()` calls:\n```javascript\n// Before:\nrequire(['elgg/widgets'], function(widgets) {\n    widgets.init();\n});\n\n// After:\nrequire(['elgg/widgets'], function() {\n    // widgets are initialized automatically\n});\n```",
+            "breaking_change": "jquery-treeview, jquery.imgareaselect, jquery-form, polyfills removed from Elgg 4.0",
+            "priority": 300
+        }
+    ]
+}

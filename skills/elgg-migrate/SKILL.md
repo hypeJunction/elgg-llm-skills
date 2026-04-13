@@ -38,15 +38,35 @@ container names) lives. Default:
 `${XDG_STATE_HOME:-$HOME/.local/state}/elgg-migrate/`. Each migration job
 gets its own subdirectory: `$ELGG_MIGRATE_STATE/jobs/<plugin-id>-<short-sha>/`.
 
-**3. Skill infra root** — Docker templates, install scripts, and other
-runtime assets live at `<skill-root>/infra/`, resolved relative to this
-`SKILL.md` at runtime. Do not hard-code repo paths; the skill must run
-identically whether it's installed globally, vendored into a project, or
-loaded from a worktree.
+**3. Skill root** — Resolve `$SKILL` once at session start as the
+absolute path of the directory containing this `SKILL.md`. The skill
+bundles everything it needs under that root:
 
-Every example in this skill uses `$PLUGINS_SOURCE`, `$ELGG_MIGRATE_STATE`,
+    <skill-dir>/
+      SKILL.md                  # this file
+      bin/migrate.php           # AST migration engine CLI
+      bin/migrate-plugin.sh     # one-shot per-plugin wrapper
+      bin/elgg-migrate-run      # isolated per-plugin orchestrator
+      src/                      # ElggMigrate\ PHP namespace
+      rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
+      composer.json             # nikic/php-parser dep + PSR-4 autoload
+      phpunit.xml               # test runner config
+      tests/                    # PHPUnit tests for src/
+      references/               # required-reading docs
+      formulas/                 # beads formulas (siblings only)
+      infra/
+        elgg{2..7}/             # per-target-version Docker stack
+        migrate/                # AST engine Docker stack
+
+`$SKILL_INFRA` is `$SKILL/infra`. Before running anything that depends
+on the AST engine, run `cd $SKILL && composer install` once to create
+`vendor/` — the skill ships composer.json but not vendor. Docker builds
+handle this automatically inside the `migrate` container.
+
+Every example uses `$PLUGINS_SOURCE`, `$ELGG_MIGRATE_STATE`, `$SKILL`,
 and `$SKILL_INFRA` as the only roots. If you find yourself typing an
-absolute host path, stop and re-run Step 0.
+absolute host path or a CWD-relative `docker/elgg{N}/...` path, stop
+and re-run Step 0.
 
 ## Required Reading
 
@@ -115,13 +135,13 @@ All operations run inside Docker containers — nothing executes on the host mac
 
 ```bash
 # Build the migration tool (once)
-docker compose build migrate
+docker compose -f $SKILL_INFRA/migrate/docker-compose.yml build migrate
 
 # Start target Elgg environment
 docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up -d
 
 # Run migration
-docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
+docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 
 # Run tests
 docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
@@ -161,10 +181,10 @@ docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 
 | Step | Command |
 |------|---------|
-| Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
-| Apply + all gates | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
-| LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
-| Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
+| Analyze | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
+| Apply + all gates | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
+| LLM report | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
+| Verify only | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
 
 ### CLI Flags
 
@@ -462,7 +482,7 @@ two most common silent failures (future-version API leakage and security
 regressions) and are cheap enough to always be on:
 
 ```bash
-docker compose run --rm migrate bin/migrate.php \
+docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php \
   rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security
 ```
 

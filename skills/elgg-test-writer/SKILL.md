@@ -22,21 +22,27 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 
 ## Skill layout (self-contained)
 
-This skill ships the full Docker infra it needs. After `npx skills add`,
-the installed directory looks like:
+This skill ships the full Docker infra and a mirrored copy of the AST
+migration engine. After `npx skills add`, the installed directory
+looks like:
 
     <skill-dir>/
       SKILL.md                 # this file
-      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
-                               # script per target Elgg major version
-                               # (N = 2, 3, 4, 5, 6, 7)
+      bin/migrate.php          # AST migration engine CLI
+      src/                     # ElggMigrate\ PHP namespace
+      rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
+      composer.json            # nikic/php-parser dep + PSR-4 autoload
+      phpunit.xml              # test runner config
+      tests/                   # PHPUnit tests for src/
+      formulas/                # plugin-test-scaffold beads formula
+      infra/elgg{N}/           # per-target Elgg stack (N = 2..7)
+      infra/migrate/           # AST engine Docker stack
 
-Resolve `$SKILL_INFRA` once at session start as the absolute path to
-`<skill-dir>/infra` (the directory containing this SKILL.md, plus
-`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
-literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
-which only existed in the skill's source repo and will not exist after
-install.
+Resolve `$SKILL` once at session start as the absolute path of the
+directory containing this SKILL.md, and `$SKILL_INFRA` as `$SKILL/infra`.
+Every `$SKILL_INFRA/elgg{N}/...` path below is literal. The engine
+files are kept in sync with the canonical copy in the elgg-migrate
+skill by `bin/gen-elgg-infra.sh`.
 
 ## Container Infrastructure
 

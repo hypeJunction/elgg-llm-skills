@@ -4,6 +4,13 @@ composer.lock
 /tmp/
 /e2e/node_modules/
 
+# PHP engine lives inside the elgg-migrate skill (and is mirrored into
+# every sibling skill by bin/gen-elgg-infra.sh). Ignore the transient
+# bits that composer/phpunit drop in each copy.
+skills/*/vendor/
+skills/*/.phpunit.cache/
+skills/*/composer.lock
+
 # Beads / Dolt files (local workflow state — not committed)
 .beads/
 .dolt/

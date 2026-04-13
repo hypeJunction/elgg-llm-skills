@@ -384,6 +384,28 @@ mirror_to_siblings() {
   done
 }
 
+# Mirror the AST engine (bin/migrate.php, src/, rules/, composer.json,
+# phpunit.xml, tests/, infra/migrate/) from skills/elgg-migrate/ into
+# each sibling skill so that every skill is atomic and self-contained.
+# skills/elgg-migrate/ is the single source of truth; the siblings are
+# regenerated from it on every run of this script.
+mirror_engine_to_siblings() {
+  local migrate_root="$ROOT/skills/elgg-migrate"
+  for s in "${SIBLING_SKILLS[@]}"; do
+    local dst="$ROOT/skills/$s"
+    mkdir -p "$dst/bin" "$dst/infra/migrate"
+    rsync -a "$migrate_root/bin/migrate.php"       "$dst/bin/migrate.php"
+    rsync -a "$migrate_root/bin/migrate-plugin.sh" "$dst/bin/migrate-plugin.sh"
+    rsync -a --delete "$migrate_root/src/"         "$dst/src/"
+    rsync -a --delete "$migrate_root/rules/"       "$dst/rules/"
+    rsync -a "$migrate_root/composer.json"         "$dst/composer.json"
+    rsync -a "$migrate_root/phpunit.xml"           "$dst/phpunit.xml"
+    rsync -a --delete "$migrate_root/tests/"       "$dst/tests/"
+    rsync -a --delete "$migrate_root/infra/migrate/" "$dst/infra/migrate/"
+    echo "mirrored engine -> skills/$s/{bin,src,rules,composer.json,phpunit.xml,tests,infra/migrate}"
+  done
+}
+
 main() {
   for row in "${MATRIX[@]}"; do
     IFS='|' read -r ver php mysql req archive <<< "$row"
@@ -396,6 +418,8 @@ main() {
   for ver in 3 4; do
     mirror_to_siblings "$ver"
   done
+
+  mirror_engine_to_siblings
 }
 
 main "$@"

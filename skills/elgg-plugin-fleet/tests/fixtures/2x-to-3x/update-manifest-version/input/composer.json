@@ -1,0 +1,8 @@
+{
+    "name": "test/plugin",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~2.3",
+        "composer/installers": "^1.0"
+    }
+}

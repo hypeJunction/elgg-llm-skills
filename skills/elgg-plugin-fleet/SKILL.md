@@ -58,24 +58,33 @@ Read those sections in `elgg-migrate` before starting a fleet run.
 
 ## Skill layout (self-contained)
 
-This skill ships the full Docker infra and the orchestrator CLI it needs.
-After `npx skills add`, the installed directory looks like:
+This skill ships the full Docker infra, the orchestrator CLI, AND the
+entire AST migration engine. After `npx skills add`, the installed
+directory looks like:
 
     <skill-dir>/
       SKILL.md                 # this file
       bin/elgg-migrate-run     # per-plugin isolated orchestrator CLI
-      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
-                               # script per target Elgg major version
-                               # (N = 2, 3, 4, 5, 6, 7)
+      bin/migrate.php          # AST migration engine CLI
+      bin/migrate-plugin.sh    # one-shot per-plugin wrapper
+      src/                     # ElggMigrate\ PHP namespace
+      rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
+      composer.json            # nikic/php-parser dep + PSR-4 autoload
+      phpunit.xml              # test runner config
+      tests/                   # PHPUnit tests for src/
+      formulas/                # fleet beads formula
+      infra/elgg{N}/           # per-target Elgg stack (N = 2..7)
+      infra/migrate/           # AST engine Docker stack
 
-Resolve `$SKILL_INFRA` once at session start as the absolute path to
-`<skill-dir>/infra` (the directory containing this SKILL.md, plus
-`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
-literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
-which only existed in the skill's source repo and will not exist after
-install. Prefer the bundled `bin/elgg-migrate-run` CLI for spawning
-isolated per-plugin environments; it already knows how to locate
-`$SKILL_INFRA` and writes job state under `$XDG_STATE_HOME/elgg-migrate/`.
+Resolve `$SKILL` once at session start as the absolute path of the
+directory containing this SKILL.md, and `$SKILL_INFRA` as `$SKILL/infra`.
+Every `$SKILL_INFRA/elgg{N}/...` and `$SKILL_INFRA/migrate/...` path
+below is literal. Prefer the bundled `bin/elgg-migrate-run` CLI for
+spawning isolated per-plugin environments; it already knows how to
+locate `$SKILL_INFRA` and writes job state under
+`$XDG_STATE_HOME/elgg-migrate/`. The engine files (src/, rules/, bin/,
+composer.json, infra/migrate/) are kept in sync with the canonical
+copy in the elgg-migrate skill by `bin/gen-elgg-infra.sh`.
 
 ## Container Infrastructure
 
@@ -84,7 +93,7 @@ executes on the host. See `elgg-migrate` for setup details.
 
 | Operation | Container | Command pattern |
 |-----------|-----------|----------------|
-| AST migration | `migrate` | `docker compose run --rm migrate bin/migrate.php ...` |
+| AST migration | `migrate` | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php ...` |
 | Plugin activation | `elgg` | `docker compose -f $SKILL_INFRA/elgg{N}/... exec elgg php -r "..."` |
 | PHPUnit tests | `elgg` | `docker compose -f $SKILL_INFRA/elgg{N}/... exec elgg vendor/bin/phpunit ...` |
 | Playwright tests | `node` | `docker compose -f $SKILL_INFRA/elgg{N}/... --profile test run --rm node ...` |
