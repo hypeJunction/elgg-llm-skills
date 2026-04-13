@@ -60,3 +60,4 @@ skills/*/composer.lock
 .zencoder/
 skills-lock.json
 .playwright-mcp/
+.playwright-mcp/
