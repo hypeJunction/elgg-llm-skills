@@ -138,9 +138,10 @@ chmod +x "$docker_dir/elgg-install.sh"
 # deps.local.txt (gitignored) maps plugin IDs to local paths:
 #   <plugin-id> <path>   (absolute, or relative to plugin root)
 #
-# This file is for developer workspace overrides. CI / fresh-clone users rely
-# on deps.txt git URLs — elgg-install.sh clones those at container startup.
-# deps.local.txt is never committed and never read by elgg-install.sh.
+# Plugin dep IDs are declared in the plugin's elgg-plugin.php or manifest.xml —
+# deps.local.txt only maps those IDs to local checkout paths for volume mounts.
+# elgg-install.sh reads the plugin metadata directly; deps.local.txt is only
+# consumed by this scaffold script.
 local_deps_file="$plugin_dir/tests/deps.local.txt"
 compose_file="$docker_dir/docker-compose.yml"
 if [ -f "$local_deps_file" ]; then

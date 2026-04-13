@@ -71,45 +71,6 @@ SETTINGS_VALUES
         echo 'Elgg 4.x installed successfully.' . PHP_EOL;
     " 2>&1 || echo "Install completed (check for errors above)."
 
-    # Fetch dep plugins not already present in mod/.
-    # deps.txt format (committed): <plugin-id> [<git-url>[#<branch>]]
-    # deps.local.txt format (gitignored): <plugin-id> <local-path>
-    #   Local paths are resolved by scaffold-docker.sh into volume mounts, so
-    #   at container start they already appear in mod/ — no action needed here.
-    #   deps.local.txt is never read by this script.
-    DEPS_TXT="/var/www/html/mod/${PLUGIN_ID}/tests/deps.txt"
-    if [ -f "$DEPS_TXT" ]; then
-        while IFS= read -r line; do
-            # skip blank lines and comments
-            line="${line%%#*}"          # strip inline comments
-            line="${line#"${line%%[![:space:]]*}"}"  # ltrim
-            line="${line%"${line##*[![:space:]]}"}"  # rtrim
-            [ -z "$line" ] && continue
-
-            dep_id="${line%% *}"
-            dep_source="${line#* }"
-            [ "$dep_source" = "$dep_id" ] && dep_source=""  # no source field
-
-            dep_mod="/var/www/html/mod/$dep_id"
-            if [ -d "$dep_mod" ]; then
-                echo "Dep $dep_id: already in mod/ (volume-mounted)"
-            elif [ -n "$dep_source" ]; then
-                # split url#branch
-                dep_url="${dep_source%%#*}"
-                dep_branch="${dep_source#*#}"
-                [ "$dep_branch" = "$dep_source" ] && dep_branch=""
-                echo "Dep $dep_id: cloning from $dep_url${dep_branch:+ @ $dep_branch}..."
-                if [ -n "$dep_branch" ]; then
-                    git clone --depth=1 --branch "$dep_branch" "$dep_url" "$dep_mod"
-                else
-                    git clone --depth=1 "$dep_url" "$dep_mod"
-                fi
-            else
-                echo "WARNING: dep $dep_id not in mod/ and no source URL in deps.txt — skipping"
-            fi
-        done < "$DEPS_TXT"
-    fi
-
     echo "Activating plugins..."
     php -r "
         require_once 'vendor/autoload.php';
@@ -117,30 +78,47 @@ SETTINGS_VALUES
         \$app->bootCore();
         _elgg_services()->plugins->generateEntities();
 
-        // Activate dep plugins listed in tests/deps.txt (in order, before the main plugin).
-        \$deps_file = '/var/www/html/mod/${PLUGIN_ID}/tests/deps.txt';
-        if (file_exists(\$deps_file)) {
-            \$lines = file(\$deps_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach (\$lines as \$line) {
-                \$line = trim(preg_replace('/#.*/', '', \$line));
-                if (\$line === '') continue;
-                \$dep_id = strtok(\$line, ' ');
-                \$dep = elgg_get_plugin_from_id(\$dep_id);
-                if (!\$dep) {
-                    echo 'WARNING: dep plugin ' . \$dep_id . ' not found in mod/ — skipping.' . PHP_EOL;
-                    continue;
+        // Resolve dep plugin IDs from the plugin's own metadata.
+        // Priority: elgg-plugin.php 'plugin.dependencies' (Elgg 4.x) then manifest.xml <requires type='plugin'>.
+        // IDs are lowercased to match mod/ directory names.
+        // Deps not present in mod/ are skipped with a warning — this naturally excludes
+        // deps that are unsafe to activate (e.g. unmigrated plugins not volume-mounted).
+        \$dep_ids = [];
+        \$plugin_file = '/var/www/html/mod/${PLUGIN_ID}/elgg-plugin.php';
+        if (file_exists(\$plugin_file)) {
+            \$manifest = include \$plugin_file;
+            foreach (array_keys(\$manifest['plugin']['dependencies'] ?? []) as \$id) {
+                \$dep_ids[] = strtolower(\$id);
+            }
+        }
+        if (empty(\$dep_ids)) {
+            \$xml_file = '/var/www/html/mod/${PLUGIN_ID}/manifest.xml';
+            if (file_exists(\$xml_file)) {
+                \$xml = simplexml_load_file(\$xml_file);
+                foreach (\$xml->requires ?? [] as \$req) {
+                    if ((string)\$req->type === 'plugin') {
+                        \$dep_ids[] = strtolower((string)\$req->name);
+                    }
                 }
-                if (\$dep->isActive()) {
-                    echo 'Dep plugin ' . \$dep_id . ' already active.' . PHP_EOL;
-                    continue;
-                }
-                try {
-                    \$dep->activate();
-                    echo 'Dep plugin ' . \$dep_id . ' activated.' . PHP_EOL;
-                } catch (\Throwable \$e) {
-                    echo 'FAILED to activate dep ' . \$dep_id . ': ' . \$e->getMessage() . PHP_EOL;
-                    exit(1);
-                }
+            }
+        }
+
+        foreach (\$dep_ids as \$dep_id) {
+            \$dep = elgg_get_plugin_from_id(\$dep_id);
+            if (!\$dep) {
+                echo 'WARNING: dep plugin ' . \$dep_id . ' not in mod/ — skipping (not mounted).' . PHP_EOL;
+                continue;
+            }
+            if (\$dep->isActive()) {
+                echo 'Dep plugin ' . \$dep_id . ' already active.' . PHP_EOL;
+                continue;
+            }
+            try {
+                \$dep->activate();
+                echo 'Dep plugin ' . \$dep_id . ' activated.' . PHP_EOL;
+            } catch (\Throwable \$e) {
+                echo 'FAILED to activate dep ' . \$dep_id . ': ' . \$e->getMessage() . PHP_EOL;
+                exit(1);
             }
         }
 
