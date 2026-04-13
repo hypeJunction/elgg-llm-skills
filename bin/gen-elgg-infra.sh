@@ -20,20 +20,28 @@ SIBLING_SKILLS=(elgg-plugin-fleet elgg-site-upgrade elgg-test-writer elgg-js-tes
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
-# version | php_base       | mysql_image | port | elgg_require
+# version | php_base       | mysql_image | elgg_require | debian_archive
+# debian_archive=1 when the base image is on an EOL Debian release whose
+# apt repos have moved to archive.debian.org (Buster and older).
 MATRIX=(
-  "2|php:7.2-apache|mysql:5.7|8280|~2.3.0"
-  "5|php:8.1-apache|mysql:8.0|8580|~5.1.0"
-  "6|php:8.2-apache|mysql:8.0|8680|~6.1.0"
-  "7|php:8.3-apache|mysql:8.0|8780|~7.0.0"
+  "2|php:7.2-apache|mysql:5.7|~2.3.0|1"
+  "5|php:8.1-apache|mysql:8.0|~5.1.0|0"
+  "6|php:8.2-apache|mysql:8.0|~6.1.0|0"
+  "7|php:8.3-apache|mysql:8.0|~7.0.0|0"
 )
 
 write_dockerfile() {
-  local dir="$1" php_base="$2" ver="$3"
+  local dir="$1" php_base="$2" ver="$3" debian_archive="$4"
+  local archive_step="" gd_flags="--with-freetype --with-jpeg"
+  if [[ "$debian_archive" == "1" ]]; then
+    archive_step=$'# Debian Buster repos are archived since EOL — switch to archive.debian.org\nRUN sed -i \'s|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g; /buster-updates/d\' /etc/apt/sources.list \\\n && echo \'Acquire::Check-Valid-Until "false";\' > /etc/apt/apt.conf.d/00-archive\n\n'
+    # PHP 7.2 era: docker-php-ext-configure gd uses the old-style flags.
+    gd_flags="--with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/"
+  fi
   cat > "$dir/Dockerfile" <<EOF
 FROM $php_base
 
-# Install system dependencies
+${archive_step}# Install system dependencies
 RUN apt-get update && apt-get install -y \\
     libfreetype6-dev \\
     libjpeg62-turbo-dev \\
@@ -47,7 +55,7 @@ RUN apt-get update && apt-get install -y \\
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions required by Elgg
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \\
+RUN docker-php-ext-configure gd $gd_flags \\
     && docker-php-ext-install -j\$(nproc) \\
         gd \\
         intl \\
@@ -93,7 +101,12 @@ EOF
 }
 
 write_compose() {
-  local dir="$1" port="$2" mysql_image="$3"
+  local dir="$1" mysql_image="$2"
+  # ELGG_PORT and DB_PORT are REQUIRED (no defaults) so parallel
+  # migrations and validation runs never collide on the same host
+  # port. Set them in a per-job .env file, via the orchestrator
+  # (bin/elgg-migrate-run writes one per job), or explicitly in the
+  # environment. The failure message points users at the fix.
   cat > "$dir/docker-compose.yml" <<EOF
 services:
   elgg:
@@ -107,12 +120,12 @@ services:
       ELGG_DB_NAME: elgg
       ELGG_DB_USER: elgg
       ELGG_DB_PASS: elgg
-      ELGG_SITE_URL: "http://localhost:\${ELGG_PORT:-$port}/"
+      ELGG_SITE_URL: "http://localhost:\${ELGG_PORT:?ELGG_PORT must be set (create a .env with ELGG_PORT and DB_PORT, or use bin/elgg-migrate-run)}/"
       ELGG_DATA_ROOT: "/var/www/data/"
       ELGG_ADMIN_EMAIL: "admin@example.com"
       ELGG_ADMIN_PASSWORD: "admin12345"
     ports:
-      - "\${ELGG_PORT:-$port}:80"
+      - "\${ELGG_PORT}:80"
     depends_on:
       db:
         condition: service_healthy
@@ -133,7 +146,7 @@ services:
     volumes:
       - db-data:/var/lib/mysql
     ports:
-      - "\${DB_PORT:-3307}:3306"
+      - "\${DB_PORT:?DB_PORT must be set (create a .env with ELGG_PORT and DB_PORT, or use bin/elgg-migrate-run)}:3306"
 
   # Node.js + Playwright for running Playwright and Vitest tests inside Docker.
   # Activated via --profile test so it doesn't start with \`docker compose up\`.
@@ -205,7 +218,7 @@ EOF
 }
 
 write_install_sh() {
-  local dir="$1" ver="$2" port="$3"
+  local dir="$1" ver="$2"
   # Install.sh is based on the elgg4 script. It already handles Elgg 3-7
   # because the ElggInstaller API, settings.php layout, and plugin
   # activation APIs are identical across those majors. For Elgg 2.x the
@@ -247,7 +260,7 @@ SETTINGS_TEMPLATE
 \\\$CONFIG->dbprefix = 'elgg_';
 \\\$CONFIG->dbencoding = 'utf8mb4';
 \\\$CONFIG->dataroot = '\${ELGG_DATA_ROOT:-/var/www/data/}';
-\\\$CONFIG->wwwroot = '\${ELGG_SITE_URL:-http://localhost:${port}/}';
+\\\$CONFIG->wwwroot = '\${ELGG_SITE_URL:-http://localhost/}';
 \\\$CONFIG->cacheroot = '\${ELGG_DATA_ROOT:-/var/www/data/}cache/';
 \\\$CONFIG->assetroot = '\${ELGG_DATA_ROOT:-/var/www/data/}assets/';
 SETTINGS_VALUES
@@ -265,7 +278,7 @@ SETTINGS_VALUES
             'dbprefix' => 'elgg_',
             'sitename' => 'Elgg ${ver}.x Migration Test',
             'siteemail' => '\${ELGG_ADMIN_EMAIL:-admin@example.com}',
-            'wwwroot' => '\${ELGG_SITE_URL:-http://localhost:${port}/}',
+            'wwwroot' => '\${ELGG_SITE_URL:-http://localhost/}',
             'dataroot' => '\${ELGG_DATA_ROOT:-/var/www/data/}',
             'displayname' => 'Admin',
             'email' => '\${ELGG_ADMIN_EMAIL:-admin@example.com}',
@@ -344,18 +357,18 @@ EOF
 }
 
 gen_version() {
-  local ver="$1" php_base="$2" mysql_image="$3" port="$4" elgg_req="$5"
+  local ver="$1" php_base="$2" mysql_image="$3" elgg_req="$4" debian_archive="$5"
   local dir="$MIGRATE_INFRA/elgg${ver}"
   if [[ -d "$dir" && $FORCE -eq 0 ]]; then
     echo "skip elgg${ver} (exists; pass --force to overwrite)"
     return
   fi
   mkdir -p "$dir"
-  write_dockerfile "$dir" "$php_base" "$ver"
-  write_compose    "$dir" "$port" "$mysql_image"
+  write_dockerfile "$dir" "$php_base" "$ver" "$debian_archive"
+  write_compose    "$dir" "$mysql_image"
   write_composer   "$dir" "$elgg_req"
   write_index      "$dir"
-  write_install_sh "$dir" "$ver" "$port"
+  write_install_sh "$dir" "$ver"
   echo "generated elgg${ver} at $dir"
 }
 
@@ -373,8 +386,8 @@ mirror_to_siblings() {
 
 main() {
   for row in "${MATRIX[@]}"; do
-    IFS='|' read -r ver php mysql port req <<< "$row"
-    gen_version "$ver" "$php" "$mysql" "$port" "$req"
+    IFS='|' read -r ver php mysql req archive <<< "$row"
+    gen_version "$ver" "$php" "$mysql" "$req" "$archive"
     mirror_to_siblings "$ver"
   done
 
