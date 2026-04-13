@@ -167,7 +167,7 @@ Use a two-service Docker Compose stack:
 
 Plugins come from two sources:
 1. **Git-tracked plugins** (custom plugins like `bodyology_*`) — COPY'd into the image via Dockerfile
-2. **Composer-installed plugins** (upstream like `hype*`) — exist as symlinks in `mod/` pointing to `~/Data/hypejunction/plugins/<name>`
+2. **Composer-installed plugins** (upstream like `hype*`) — exist as symlinks in `mod/` pointing to `$PLUGINS_SOURCE/<name>` (resolved at runtime; never hard-coded)
 
 **Problem:** Symlinks use absolute host paths that don't resolve inside the container.
 **Solution:** Mount the plugin source directory at the same absolute path inside the container:

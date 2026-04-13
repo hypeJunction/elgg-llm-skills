@@ -10,18 +10,57 @@ description: >
 
 Migrate Elgg plugins one major version at a time using automated AST rules + LLM-guided fixes, verified in Docker.
 
+## Step 0 — Plugin discovery (always run first)
+
+The skill is self-contained and path-agnostic. It never assumes a particular
+host layout. Before any migration work, resolve two things and cache them:
+
+**1. `PLUGINS_SOURCE`** — the directory containing the plugin(s) to migrate.
+
+Detection order:
+
+1. `$ELGG_MIGRATE_PLUGINS` environment variable, if set.
+2. Cached value in `${XDG_CONFIG_HOME:-$HOME/.config}/elgg-migrate/config.json`
+   under key `plugins_source`. Confirm with the user that it's still the
+   intended source before reusing.
+3. Infer from the current working directory:
+   - If cwd contains `elgg-plugin.php` or `start.php` → **single-plugin mode**,
+     `PLUGINS_SOURCE` = parent of cwd, plugin id = basename of cwd.
+   - If cwd contains one or more subdirectories holding those files →
+     **fleet mode**, `PLUGINS_SOURCE` = cwd.
+4. Ask the user for an absolute path.
+
+Persist the resolved value back to `config.json`. Never write into the plugin
+dir and never into the skill dir.
+
+**2. `ELGG_MIGRATE_STATE`** — where per-job state (reports, logs, dep locks,
+container names) lives. Default:
+`${XDG_STATE_HOME:-$HOME/.local/state}/elgg-migrate/`. Each migration job
+gets its own subdirectory: `$ELGG_MIGRATE_STATE/jobs/<plugin-id>-<short-sha>/`.
+
+**3. Skill infra root** — Docker templates, install scripts, and other
+runtime assets live at `<skill-root>/infra/`, resolved relative to this
+`SKILL.md` at runtime. Do not hard-code repo paths; the skill must run
+identically whether it's installed globally, vendored into a project, or
+loaded from a worktree.
+
+Every example in this skill uses `$PLUGINS_SOURCE`, `$ELGG_MIGRATE_STATE`,
+and `$SKILL_INFRA` as the only roots. If you find yourself typing an
+absolute host path, stop and re-run Step 0.
+
 ## Required Reading
 
-Before starting any migration, the agent MUST consult the relevant docs in `docs/`:
+Before starting any migration, the agent MUST consult the relevant docs in `references/`:
 
 | Doc | When to read |
 |-----|--------------|
-| `docs/version-api-boundaries.md` | Before applying any rules — confirms which APIs are valid for the target version |
-| `docs/plugin-architecture-by-version.md` | During setup and when writing ARCHITECTURE.md — defines target structure |
-| `docs/coding-standards.md` | Before running rules (baseline) and before committing (verify) — version-specific style rules |
-| `docs/security-review-checklist.md` | After running `--security` — interpret findings |
-| `docs/llm-security-review.md` | During the LLM security review step — second-stage workflow |
-| `docs/post-migration-documentation.md` | When writing ARCHITECTURE.md — template |
+| `references/version-api-boundaries.md` | Before applying any rules — confirms which APIs are valid for the target version |
+| `references/plugin-architecture-by-version.md` | During setup and when writing ARCHITECTURE.md — defines target structure |
+| `references/coding-standards.md` | Before running rules (baseline) and before committing (verify) — version-specific style rules |
+| `references/security-review-checklist.md` | After running `--security` — interpret findings |
+| `references/llm-security-review.md` | During the LLM security review step — second-stage workflow |
+| `references/post-migration-documentation.md` | When writing ARCHITECTURE.md — template |
+| `references/git-hygiene.md` | Before every commit — what belongs (and doesn't) in plugin and site repos |
 
 **Linear knowledge rule**: When migrating from version N to N+1, only read the sections of these docs relevant to N and N+1. Do NOT read sections about versions beyond N+1 — that knowledge will leak into your migration and cause version drift.
 
@@ -607,4 +646,4 @@ Pulled out of this file to keep it scannable. Load when you need it:
 | `references/common-mistakes.md` | When activation fails or a gate regresses — lookup table of 60+ observed mistakes and their fixes |
 | `references/elgg-plugin-php-generation.md` | During 3→4 migrations — how the `GenerateElggPluginPhp` rule works, what it extracts automatically vs what needs a Bootstrap class, correct handler signatures |
 | `references/agent-failure-modes.md` | At the start of every session — cost of failure, escalation criteria, agent failure modes, recovery playbook |
-| `references/project-structure.md` | When first setting up the repo — Docker environments and project layout |
+| `references/git-hygiene.md` | Before every commit — ready-to-paste `.gitignore` for plugins and Elgg sites, plus migration-specific pitfalls that put junk in history |

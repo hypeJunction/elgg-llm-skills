@@ -198,6 +198,16 @@ git -C ~/plugins-workspace/<plugin> checkout -b migrate/elgg-{N}.x
 `mod/.plugin-order.txt` (one plugin id per line, in priority order). The
 verification step reads this to reproduce production's activation sequence.
 
+**Before you commit anything, read
+`elgg-migrate/references/git-hygiene.md`.** Site upgrades generate a lot
+of local state (`vendor/`, composer-installed plugins under `mod/`,
+`dataroot/`, docker override files with host paths, simplecache, logs)
+and every one of them has landed in git histories before. That reference
+ships a paste-ready `.gitignore` for Elgg sites — including the
+blocklist-then-allowlist `mod/*` pattern that keeps composer-installed
+plugins out of history — and a pre-commit grep you should run before
+every commit during the upgrade.
+
 ## Establish the test baseline
 
 Boot Docker for the CURRENT version, then make sure there's a green test

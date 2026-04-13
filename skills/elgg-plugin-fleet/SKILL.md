@@ -46,6 +46,11 @@ repeated here:
 - **Recovery playbook** — what to do when a migration goes sideways
   mid-plugin, including the mid-session-handoff pattern that's essential
   for long fleet runs.
+- **Git hygiene** — fleet runs produce a lot of local state (vendor dirs,
+  caches, job artifacts). See `elgg-migrate/references/git-hygiene.md`
+  for the ready-to-paste `.gitignore` for plugin repos and the list of
+  things that must never land in a plugin's history during a migration.
+  Run the pre-commit check from that doc before every plugin commit.
 
 Read those sections in `elgg-migrate` before starting a fleet run.
 
@@ -84,8 +89,13 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
 Example:
 
 ```
-/elgg-plugin-fleet ~/Data/hypejunction/plugins --from=3.x --to=7.x
+/elgg-plugin-fleet "$PLUGINS_SOURCE" --from=3.x --to=7.x
 ```
+
+`$PLUGINS_SOURCE` is resolved by Step 0 of `elgg-migrate` (env var, XDG
+config cache, cwd inference, or prompt — in that order). The skill never
+hard-codes a host path. If you invoke this skill without a plugins dir
+argument and no cache exists, it will ask.
 
 ---
 
@@ -275,7 +285,7 @@ A beads formula exists for the common shape:
 
 ```bash
 cp formulas/elgg-plugin-fleet.formula.json .beads/formulas/
-bd mol pour elgg-plugin-fleet --var plugins_dir=~/Data/hypejunction/plugins --var from=3.x --var to=7.x
+bd mol pour elgg-plugin-fleet --var plugins_dir="$PLUGINS_SOURCE" --var from=3.x --var to=7.x
 ```
 
 Use the formula when the default shape fits. When it doesn't, wire the issues
@@ -568,8 +578,8 @@ other's working directories.
 ## Quick reference
 
 ```bash
-# Scan and start
-/elgg-plugin-fleet ~/Data/hypejunction/plugins --from=3.x --to=7.x
+# Scan and start (uses $PLUGINS_SOURCE from Step 0; prompts if unset)
+/elgg-plugin-fleet "$PLUGINS_SOURCE" --from=3.x --to=7.x
 
 # Find work
 bd ready
