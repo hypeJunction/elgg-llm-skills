@@ -105,6 +105,17 @@ Guard: before registering a handler, check which key (`'hooks'` vs
 `'events'`) the target version expects, and which type hint its handlers
 take.
 
+**Trusting AST rules to fix function bodies.** The signature-rewrite rules
+(notably `hook-callback-signatures-4x`) only touch parameter lists. They
+do not rewrite usages of the renamed parameter inside the function body.
+After running the rule, code like `switch ($event)` or `if ($event ===
+'create')` is now switching on / comparing an `Elgg\Event` object instead
+of the old string parameter — silent, no parse error, the case never
+matches at runtime. Guard: after every signature-rewrite rule run, grep
+the rewritten files for `switch ($event` and `if ($event ` and
+`$event ==` and rewrite to `$event->getName()` (and `$hook` likewise for
+hook handlers — `$hook->getValue()`, `$hook->getParam(...)`).
+
 **Losing the plot under context pressure.** On long migrations, the agent
 starts skipping steps to "get to the end." Guard: if you find yourself
 shortcutting, commit what you have, push it, and hand off to a fresh

@@ -365,6 +365,33 @@ The only exception is plugins with zero PHP logic (pure views/CSS/JS). Those
 are safe to cover with a fleet-wide smoke test in Phase 4 of `elgg-plugin-fleet`
 — document the exception in the commit message.
 
+**Iron Law 4 waiver for 2.x starting points.** The skill ships Docker envs
+for elgg3 and elgg4 only — there is no elgg2 environment. Strict
+pre-migration test execution against the current version is structurally
+impossible when migrating from 2.x. The accepted waiver:
+
+1. Write the **PHPUnit unit suite** so it runs in a plain `php:8.1-cli`
+   container against the 2.x source — autoload via a tiny
+   `tests/bootstrap.php` and stub any global `elgg_*` functions and
+   removed core interfaces (e.g. `\Elgg\Cache\Pool` in 2.x) in a
+   `tests/phpunit/stubs/` file. Run it standalone:
+   ```bash
+   docker run --rm -v "$PWD:/plugin" -w /plugin --entrypoint sh \
+     php:8.1-cli -c 'curl -sSL https://phar.phpunit.de/phpunit-10.phar \
+     -o /tmp/phpunit.phar && php /tmp/phpunit.phar -c tests/phpunit.xml'
+   ```
+   This must pass against the unmigrated 2.x source — it's the part of
+   the safety net you can actually green-light pre-migration.
+2. Write the **Playwright smoke suite** ahead of time but defer first
+   execution to the elgg3 container post-migration. The 2.x baseline
+   for browser-level behavior is "uncovered" — accept it.
+3. **Commit both suites on the source branch** (e.g. `master`) before
+   creating the `migrate/elgg-3.x` branch. Note the waiver explicitly
+   in the test commit message so the gate report can cite it.
+
+This waiver is *only* for `from = 2.x`. From 3.x onward both elgg3 and
+elgg4 envs exist and the strict gate applies normally.
+
 **Check for existing tests first.** If `tests/phpunit.xml` already exists, you
 may not need to write anything. Read what's there and assess coverage against
 the rubric below; add what's missing rather than starting over.
@@ -441,11 +468,13 @@ The fields every plugin needs from 3.x onward:
 | `license` | SPDX identifier (e.g. `GPL-2.0-or-later`) | |
 | `authors` | from `manifest.xml` `<author>` | |
 | `require.php` | TARGET version's minimum (see constraints table) | |
-| `require.elgg/elgg` | TARGET version constraint | |
 | `require.composer/installers` | `^2.0` (3.x: `~1.0`) | |
 | `require.<vendor>/<dep>` | one entry per `<requires><type>plugin</type>` in manifest.xml | |
-| `config.allow-plugins.composer/installers` | `true` | required by composer 2.2+ |
+| `require.<third-party>` | only NON-Elgg packages the plugin actually loads (Flintstone, Guzzle, etc.) | |
+| `config.allow-plugins.composer/installers` | `true` | **required by composer 2.2+ from 3.x onwards** — without this, `composer install -d <plugin>` aborts |
 | `extra.elgg-plugin.id` | the plugin id (lowercase dir name) | useful when name differs from id |
+
+**Do NOT add `elgg/elgg` to `require`.** A plugin is always installed inside an Elgg site by being placed in `mod/`; it's never composer-installed standalone. Declaring `elgg/elgg` in the plugin's `require` causes `composer install -d mod/<plugin>` to try to resolve `elgg/elgg` transitively, which pulls in `bower-asset/fontawesome` from asset-packagist — a repo the plugin's `composer.json` doesn't (and shouldn't) declare. The Elgg version constraint already lives in `manifest.xml` (3.x) and `extra.elgg-plugin` metadata (4.x+); that's the right place for it. The `elgg/elgg` constraint table below is the constraint the *site* uses, not the plugin.
 
 Per-version constraints:
 

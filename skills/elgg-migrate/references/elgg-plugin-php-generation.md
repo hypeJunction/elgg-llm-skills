@@ -60,3 +60,66 @@ public static function onCreate($event, $type, $entity) { ... }
 ```
 
 The `018-hook-callback-signatures` rule automates this rewrite (AST-based).
+
+**Known rule bug — `switch ($event)` body usages.** The rule rewrites the parameter signature but does NOT touch the function body. Code like:
+
+```php
+// 3.x source
+public static function onChange($event, $type, $entity) {
+    switch ($event) {                       // ← was a string parameter
+        case 'create': ...
+        case 'update': ...
+    }
+}
+```
+
+becomes:
+
+```php
+// 4.x output, BROKEN
+public static function onChange(\Elgg\Event $event) {
+    switch ($event) {                       // ← NOW switching on the Event OBJECT
+        case 'create': ...                  // never matches
+    }
+}
+```
+
+After running the rule, grep the rewritten files for `switch ($event` and `if ($event ===` and rewrite to `switch ($event->getName())` / `if ($event->getName() === ...)`.
+
+## Custom plugin admin pages need explicit named routes (4.x)
+
+In 3.x, an admin page at `views/default/admin/<plugin>/<page>.php` was reachable at `/admin/<plugin>/<page>` via Elgg's auto-discovery. In 4.x, **only built-in admin paths auto-discover** — custom plugin admin pages 404 unless you register them as named routes.
+
+The pattern requires three pieces:
+
+**1. Route registration in `elgg-plugin.php`:**
+
+```php
+'routes' => [
+    'admin:hypeseo:rules' => [
+        'path' => '/admin/seo/rules',
+        'resource' => 'admin/seo/rules',
+        'middleware' => [
+            \Elgg\Router\Middleware\AdminGatekeeper::class,
+        ],
+    ],
+    // ... one route per admin page
+],
+```
+
+**2. Resource view shim** at `views/default/resources/admin/<plugin>/<page>.php` that wraps the existing admin view body in the standard admin layout:
+
+```php
+<?php
+echo elgg_view_layout('admin', [
+    'title' => elgg_echo('admin:hypeseo:rules'),
+    'content' => elgg_view('admin/seo/rules', $vars),
+    'filter' => false,
+]);
+```
+
+**3. The existing admin view body** stays where it is at `views/default/admin/<plugin>/<page>.php`. The shim references it via `elgg_view('admin/<plugin>/<page>')`.
+
+This pattern is NOT extracted by `GenerateElggPluginPhp` — the rule only converts top-level page handlers, not menu-item targets that point at admin URLs. After running the rule, audit any `elgg_register_menu_item` registrations whose `'href'` starts with `admin/<plugin>/...` and add the corresponding routes + shims.
+
+The `AdminGatekeeper` middleware enforces admin-only access. Without it, the route would be reachable by any logged-in user.
