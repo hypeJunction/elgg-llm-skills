@@ -24,24 +24,42 @@ Plugin JS must bring its own test setup. This skill provides that.
 
 ---
 
+## Skill layout (self-contained)
+
+This skill ships the full Docker infra it needs. After `npx skills add`,
+the installed directory looks like:
+
+    <skill-dir>/
+      SKILL.md                 # this file
+      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
+                               # script per target Elgg major version
+                               # (N = 2, 3, 4, 5, 6, 7)
+
+Resolve `$SKILL_INFRA` once at session start as the absolute path to
+`<skill-dir>/infra` (the directory containing this SKILL.md, plus
+`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
+literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
+which only existed in the skill's source repo and will not exist after
+install.
+
 ## Container Infrastructure
 
 All JS test operations run inside Docker containers via the `node` service.
 
 ```bash
 # Run Vitest (JS unit tests)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin> && npm ci && npm run test:js"
 
 # Run Vitest in watch mode
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin> && npm ci && npm run test:js:watch"
 
 # Interactive shell for debugging
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node bash
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node bash
 
 # Combined with Playwright (browser-level)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
@@ -81,7 +99,7 @@ For each JS file, identify:
 ### For Elgg 6.x (ES Modules) — Use Vitest
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin> && npm init -y && npm install -D vitest jsdom"
 ```
 
@@ -123,7 +141,7 @@ export default defineConfig({
 AMD modules need a shim since Vitest runs ES modules natively:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin> && npm install -D vitest jsdom"
 ```
 
@@ -403,7 +421,7 @@ describe('wall post submission', () => {
 ### In Docker
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin> && npm ci && npm run test:js"
 ```
 
@@ -429,10 +447,10 @@ For testing JS behavior in a real Elgg instance:
 
 ```bash
 # Start Elgg in Docker
-docker compose -f docker/elgg{N}/docker-compose.yml up -d
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up -d
 
 # Run Playwright tests inside Docker (shares network with Elgg + DB)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 

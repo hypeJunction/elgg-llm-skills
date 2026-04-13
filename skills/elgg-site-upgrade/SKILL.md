@@ -41,6 +41,27 @@ shapes.
 
 ---
 
+## Skill layout (self-contained)
+
+This skill ships the full Docker infra and the orchestrator CLI it needs.
+After `npx skills add`, the installed directory looks like:
+
+    <skill-dir>/
+      SKILL.md                 # this file
+      bin/elgg-migrate-run     # per-plugin isolated orchestrator CLI
+      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
+                               # script per target Elgg major version
+                               # (N = 2, 3, 4, 5, 6, 7)
+
+Resolve `$SKILL_INFRA` once at session start as the absolute path to
+`<skill-dir>/infra` (the directory containing this SKILL.md, plus
+`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
+literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
+which only existed in the skill's source repo and will not exist after
+install. Prefer the bundled `bin/elgg-migrate-run` CLI for spawning
+isolated per-plugin environments; it already knows how to locate
+`$SKILL_INFRA` and writes job state under `$XDG_STATE_HOME/elgg-migrate/`.
+
 ## Container Infrastructure
 
 All operations run inside Docker containers — nothing executes on the host machine.
@@ -48,30 +69,30 @@ All operations run inside Docker containers — nothing executes on the host mac
 | Service | Purpose | Location |
 |---------|---------|----------|
 | `migrate` | AST migration rules (PHP 8.1 + php-parser) | Root `docker-compose.yml` |
-| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap, composer | `docker/elgg{N}/docker-compose.yml` |
-| `node` | Playwright and Vitest tests | `docker/elgg{N}/docker-compose.yml` (profile: test) |
-| `db` | MySQL database | `docker/elgg{N}/docker-compose.yml` |
+| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap, composer | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
+| `node` | Playwright and Vitest tests | `$SKILL_INFRA/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
 
 ### Debugging inside containers
 
 ```bash
 # PHP/Apache error log
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
 
 # Elgg container logs (startup, plugin activation)
-docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml logs elgg
 
 # Interactive shell in Elgg container
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg bash
 
 # MySQL interactive query
-docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
 
 # Container status and health
-docker compose -f docker/elgg{N}/docker-compose.yml ps
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml ps
 
 # Rebuild after changes
-docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 ```
 
 ---
@@ -272,9 +293,9 @@ CSS patterns, leaving the stylesheet empty. The site "works" but looks
 broken. Always verify:
 
 ```bash
-TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+TS=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
-SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+SIZE=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 echo "elgg.css: ${SIZE} bytes"
 # If <1000, a plugin CSS view is breaking css-crush. See references/REFERENCE.md §18.

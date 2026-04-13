@@ -20,48 +20,66 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 
 ---
 
+## Skill layout (self-contained)
+
+This skill ships the full Docker infra it needs. After `npx skills add`,
+the installed directory looks like:
+
+    <skill-dir>/
+      SKILL.md                 # this file
+      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
+                               # script per target Elgg major version
+                               # (N = 2, 3, 4, 5, 6, 7)
+
+Resolve `$SKILL_INFRA` once at session start as the absolute path to
+`<skill-dir>/infra` (the directory containing this SKILL.md, plus
+`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
+literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
+which only existed in the skill's source repo and will not exist after
+install.
+
 ## Container Infrastructure
 
 All test operations run inside Docker containers.
 
 | Service | Purpose | Compose file |
 |---------|---------|-------------|
-| `elgg` | PHPUnit integration tests, Elgg bootstrap | `docker/elgg{N}/docker-compose.yml` |
-| `node` | Playwright browser tests, npm operations | `docker/elgg{N}/docker-compose.yml` (profile: test) |
-| `db` | MySQL database (shared by elgg + node) | `docker/elgg{N}/docker-compose.yml` |
+| `elgg` | PHPUnit integration tests, Elgg bootstrap | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
+| `node` | Playwright browser tests, npm operations | `$SKILL_INFRA/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database (shared by elgg + node) | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
 
 ### Debugging inside containers
 
 ```bash
 # PHP/Apache error log (most common: fatal errors, undefined methods)
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
 
 # Elgg container logs (startup, plugin activation)
-docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml logs elgg
 
 # Interactive shell in Elgg container (inspect files, run ad-hoc PHP)
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg bash
 
 # Check which plugins are active
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
   require 'vendor/autoload.php';
   \$app = \Elgg\Application::getInstance(); \$app->bootCore();
   foreach (elgg_get_plugins('active') as \$p) echo \$p->getID() . PHP_EOL;
 "
 
 # MySQL interactive query
-docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
 
 # Check test DB tables exist (IntegrationTestCase)
-docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg \
   -e "SHOW TABLES LIKE 'c_i_elgg_%'"
 
 # Node/Playwright container — debug browser tests
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --debug"
 
 # Rebuild after Dockerfile changes
-docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 ```
 
 ---
@@ -434,11 +452,11 @@ Before running PHPUnit for the first time in a Docker environment:
 
 ```bash
 # 1. Install PHPUnit (not included in Elgg Docker images)
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   composer require --dev phpunit/phpunit:^9.6 --no-interaction
 
 # 2. Create test DB tables (IntegrationTestCase uses c_i_elgg_ prefix)
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
 \$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
 \$tables = \$pdo->query(\"SHOW TABLES LIKE 'elgg_%'\")->fetchAll(PDO::FETCH_COLUMN);
 foreach (\$tables as \$t) {
@@ -461,18 +479,18 @@ echo 'Done.' . PHP_EOL;
 
 ```bash
 # PHPUnit — in Elgg container
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpunit --configuration mod/<plugin>/tests/phpunit.xml --no-coverage
 
 # Playwright — in node container (shares Docker network with elgg + db)
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
 #### After activating/deactivating plugins, refresh test data:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
 \$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
 foreach (['entities','metadata','private_settings','entity_relationships','config'] as \$t) {
     \$pdo->exec(\"TRUNCATE TABLE c_i_elgg_\$t\");
@@ -654,7 +672,7 @@ if (file_exists($pluginRoot . '/vendor/autoload.php')) {
 The Elgg Docker images do NOT include PHPUnit by default. Before running tests:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   composer require --dev phpunit/phpunit:^9.6 --no-interaction
 ```
 
@@ -665,7 +683,7 @@ Use PHPUnit 9.x for PHP 7.4 (Elgg 3.x/4.x), PHPUnit 10.x for PHP 8.1+ (Elgg 5.x+
 Elgg's `IntegrationTestCase` uses a separate DB prefix (`c_i_elgg_`) for test isolation. These tables must exist before integration tests can run. Create them by cloning the production schema:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
 \$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
 \$stmt = \$pdo->query(\"SHOW TABLES LIKE 'elgg_%'\");
 \$tables = \$stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -683,7 +701,7 @@ echo 'Test tables created.' . PHP_EOL;
 **CRITICAL**: You must also copy entity/metadata/relationship data so plugins are recognized in the test environment:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
 \$pdo = new PDO('mysql:host=db;dbname=elgg', 'elgg', 'elgg');
 foreach (['entities','metadata','private_settings','entity_relationships','config'] as \$t) {
     \$pdo->exec(\"TRUNCATE TABLE c_i_elgg_\$t\");

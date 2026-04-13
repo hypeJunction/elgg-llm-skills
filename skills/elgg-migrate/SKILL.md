@@ -107,9 +107,9 @@ All operations run inside Docker containers — nothing executes on the host mac
 | Service | Purpose | Location |
 |---------|---------|----------|
 | `migrate` | AST migration rules (PHP 8.1 + php-parser) | Root `docker-compose.yml` |
-| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap | `docker/elgg{N}/docker-compose.yml` |
-| `node` | Playwright and Vitest tests | `docker/elgg{N}/docker-compose.yml` (profile: test) |
-| `db` | MySQL database | `docker/elgg{N}/docker-compose.yml` |
+| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
+| `node` | Playwright and Vitest tests | `$SKILL_INFRA/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
 
 ### Quick setup
 
@@ -118,13 +118,13 @@ All operations run inside Docker containers — nothing executes on the host mac
 docker compose build migrate
 
 # Start target Elgg environment
-docker compose -f docker/elgg{N}/docker-compose.yml up -d
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up -d
 
 # Run migration
 docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 
 # Run tests
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
@@ -132,27 +132,27 @@ docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node
 
 ```bash
 # Elgg container logs (PHP errors, Apache errors)
-docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml logs elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
 
 # Interactive shell in Elgg container
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg bash
 
 # Check PHP error log
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg cat /var/log/apache2/error.log
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg cat /var/log/apache2/error.log
 
 # MySQL queries (interactive)
-docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
 
 # Check container status
-docker compose -f docker/elgg{N}/docker-compose.yml ps
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml ps
 
 # Node container — debug Playwright
-docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --debug"
 
 # Rebuild containers after Dockerfile changes
-docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 ```
 
 ---
@@ -230,7 +230,7 @@ commit without a gate report is incomplete — redo the work.
 **Tools that enforce gates**:
 - Gate 6: `php bin/migrate.php ... --verify` (PostMigrationVerifier)
 - Gate 7: `php bin/migrate.php ... --security` (SecuritySweep)
-- Gate 9-10: `docker compose -f docker/elgg{N}/docker-compose.yml exec elgg ...`
+- Gate 9-10: `docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg ...`
 
 ---
 
@@ -488,7 +488,7 @@ PHP version inside the Elgg container. This is cheap and catches problems
 before the much-slower Docker activation:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   find mod/<plugin-id> -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; | grep -v "No syntax errors"
 ```
 
@@ -498,7 +498,7 @@ If the plugin has its own `composer.json` with third-party packages, install
 them in the container before activation:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   composer install -d mod/<plugin-id> --no-interaction
 ```
 
@@ -513,10 +513,10 @@ The full gate has several parts, all required:
 
 ```bash
 # Copy into container (use lowercase dir name matching composer.json)
-docker cp <plugin>/. $(docker compose -f docker/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
+docker cp <plugin>/. $(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
 
 # Activate — must succeed without throwing
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
   require_once '/var/www/html/vendor/autoload.php';
   \$app = \Elgg\Application::getInstance(); \$app->bootCore();
   _elgg_services()->plugins->generateEntities();
@@ -527,11 +527,11 @@ docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
 "
 
 # Homepage renders — must return a full page, not a stub
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   curl -sL http://localhost/ | wc -c
 
 # No PHP errors in the log
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   grep -c "PHP Fatal\|PHP Error" /var/log/apache2/error.log 2>/dev/null
 ```
 
@@ -540,9 +540,9 @@ on some CSS, and the only symptom is a zero-byte CSS file that doesn't block
 activation but does break the site visually:
 
 ```bash
-TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+TS=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
-SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
+SIZE=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 ```
@@ -596,12 +596,12 @@ CSRF. Address HIGH and MEDIUM findings before committing. See
 Run PHP_CodeSniffer against Elgg's ruleset for the target version:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcs --standard=<path-to-elgg-phpcs.xml> \
   mod/<plugin-id>/classes/ mod/<plugin-id>/actions/ mod/<plugin-id>/views/
 
 # Auto-fix what's mechanical
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcbf --standard=<path-to-elgg-phpcs.xml> mod/<plugin-id>/classes/
 ```
 

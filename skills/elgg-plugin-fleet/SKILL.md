@@ -56,6 +56,27 @@ Read those sections in `elgg-migrate` before starting a fleet run.
 
 ---
 
+## Skill layout (self-contained)
+
+This skill ships the full Docker infra and the orchestrator CLI it needs.
+After `npx skills add`, the installed directory looks like:
+
+    <skill-dir>/
+      SKILL.md                 # this file
+      bin/elgg-migrate-run     # per-plugin isolated orchestrator CLI
+      infra/elgg{N}/           # docker-compose.yml, Dockerfile, install
+                               # script per target Elgg major version
+                               # (N = 2, 3, 4, 5, 6, 7)
+
+Resolve `$SKILL_INFRA` once at session start as the absolute path to
+`<skill-dir>/infra` (the directory containing this SKILL.md, plus
+`/infra`). Every `$SKILL_INFRA/elgg{N}/...` path in this document is
+literal — do not rewrite it to a CWD-relative `docker/elgg{N}/...` path,
+which only existed in the skill's source repo and will not exist after
+install. Prefer the bundled `bin/elgg-migrate-run` CLI for spawning
+isolated per-plugin environments; it already knows how to locate
+`$SKILL_INFRA` and writes job state under `$XDG_STATE_HOME/elgg-migrate/`.
+
 ## Container Infrastructure
 
 All build/test/migration operations run inside Docker containers. Nothing
@@ -64,18 +85,18 @@ executes on the host. See `elgg-migrate` for setup details.
 | Operation | Container | Command pattern |
 |-----------|-----------|----------------|
 | AST migration | `migrate` | `docker compose run --rm migrate bin/migrate.php ...` |
-| Plugin activation | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg php -r "..."` |
-| PHPUnit tests | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg vendor/bin/phpunit ...` |
-| Playwright tests | `node` | `docker compose -f docker/elgg{N}/... --profile test run --rm node ...` |
-| Composer | `elgg` | `docker compose -f docker/elgg{N}/... exec elgg composer ...` |
+| Plugin activation | `elgg` | `docker compose -f $SKILL_INFRA/elgg{N}/... exec elgg php -r "..."` |
+| PHPUnit tests | `elgg` | `docker compose -f $SKILL_INFRA/elgg{N}/... exec elgg vendor/bin/phpunit ...` |
+| Playwright tests | `node` | `docker compose -f $SKILL_INFRA/elgg{N}/... --profile test run --rm node ...` |
+| Composer | `elgg` | `docker compose -f $SKILL_INFRA/elgg{N}/... exec elgg composer ...` |
 
 ### Debugging
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
-docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml logs elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg bash
 ```
 
 ---
