@@ -2,8 +2,11 @@
 set -e
 
 # Usage: ./bin/migrate-plugin.sh <plugin-path> <manifest>
-# Example: ./bin/migrate-plugin.sh ~/Data/hypejunction/plugins/hypeDropzone rules/2x-to-3x/manifest.json
-#          ./bin/migrate-plugin.sh ~/Data/hypejunction/plugins/hypeDropzone rules/3x-to-4x/manifest.json
+# Example: ./bin/migrate-plugin.sh "$ELGG_MIGRATE_PLUGINS/hypedropzone" rules/2x-to-3x/manifest.json
+#          ./bin/migrate-plugin.sh "$ELGG_MIGRATE_PLUGINS/hypedropzone" rules/3x-to-4x/manifest.json
+#
+# Resolve the plugin path via `bin/discover-plugins.sh --list` or
+# `$ELGG_MIGRATE_PLUGINS` — never bake absolute paths into callers.
 
 PLUGIN_PATH="${1:?Usage: migrate-plugin.sh <plugin-path> <manifest>}"
 MANIFEST="${2:?Usage: migrate-plugin.sh <plugin-path> <manifest>}"

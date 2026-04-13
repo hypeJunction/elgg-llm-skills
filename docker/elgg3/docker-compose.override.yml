@@ -1,50 +1,26 @@
+## Per-plugin isolation override for the elgg3 migration test environment.
+##
+## Each plugin is migrated and verified in isolation. This file never bakes in
+## absolute developer paths — it reads them from `.env` (gitignored) so the
+## environment is portable across machines.
+##
+## Required variables (set in docker/elgg3/.env or the shell):
+##   PLUGINS_DIR   Absolute path to the directory containing plugin sources.
+##   PLUGIN_ID     Id of the plugin under test. This is used as both the
+##                 directory name inside PLUGINS_DIR and the Elgg plugin id.
+##                 For Elgg 3.x plugins whose directory is still camelCase,
+##                 PLUGIN_ID is the camelCase name. For lowercase/canonical
+##                 plugins, PLUGIN_ID is lowercase.
+##
+## Generate / refresh the .env with:
+##   bin/discover-plugins.sh --root /abs/path/to/plugins --plugin <id> \
+##       --write-env docker/elgg3/.env
+##
+## Usage:
+##   PLUGIN_ID=hypeEmbed docker compose up -d --force-recreate elgg
+
 services:
   elgg:
     volumes:
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-actions_feature:/var/www/html/mod/actions_feature
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-cropper:/var/www/html/mod/cropper
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_api:/var/www/html/mod/forms_api
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_register:/var/www/html/mod/forms_register
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-forms_validation:/var/www/html/mod/forms_validation
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-images_ui:/var/www/html/mod/images_ui
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/elgg_lightbox:/var/www/html/mod/elgg_lightbox
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_api:/var/www/html/mod/menus_api
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_dropdown:/var/www/html/mod/menus_dropdown
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-menus_entity:/var/www/html/mod/menus_entity
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-modal_info:/var/www/html/mod/modal_info
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-notifications_mass_mail:/var/www/html/mod/notifications_mass_mail
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-prototyper_group:/var/www/html/mod/prototyper_group
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-prototyper_profile:/var/www/html/mod/prototyper_profile
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-site_search:/var/www/html/mod/site_search
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/elgg_tokeninput:/var/www/html/mod/elgg_tokeninput
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_grid:/var/www/html/mod/ui_grid
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_responsive_tabs:/var/www/html/mod/ui_responsive_tabs
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-ui_tabs:/var/www/html/mod/ui_tabs
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/Elgg-user_settings:/var/www/html/mod/user_settings
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeApps:/var/www/html/mod/hypeApps
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeAttachments:/var/www/html/mod/hypeAttachments
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDBExplorer:/var/www/html/mod/hypeDBExplorer
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDirectory:/var/www/html/mod/hypeDirectory
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDiscovery:/var/www/html/mod/hypeDiscovery
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDiscussions:/var/www/html/mod/hypeDiscussions
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeDropzone:/var/www/html/mod/hypeDropzone
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeEmbed:/var/www/html/mod/hypeEmbed
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFaker:/var/www/html/mod/hypeFaker
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFilestore:/var/www/html/mod/hypeFilestore
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeFolders:/var/www/html/mod/hypeFolders
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeGallery:/var/www/html/mod/hypeGallery
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeGeo:/var/www/html/mod/hypeGeo
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeIcons:/var/www/html/mod/hypeIcons
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeInbox:/var/www/html/mod/hypeInbox
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeInteractions:/var/www/html/mod/hypeInteractions
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeInvite:/var/www/html/mod/hypeInvite
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeLists:/var/www/html/mod/hypeLists
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeMaps:/var/www/html/mod/hypeMaps
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeNotifications:/var/www/html/mod/hypeNotifications
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypePlaces:/var/www/html/mod/hypePlaces
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypePrototyper:/var/www/html/mod/hypePrototyper
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypePrototyperValidators:/var/www/html/mod/hypePrototyperValidators
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeScraper:/var/www/html/mod/hypeScraper
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeSeo:/var/www/html/mod/hypeSeo
-      - /home/ismayilkhayredinov/Data/hypejunction/plugins/hypeWall:/var/www/html/mod/hypeWall
-      - /home/ismayilkhayredinov/Data/elgg-migrate/docker/elgg3/plugin-order.txt:/var/www/html/mod/.plugin-order.txt
+      - ${PLUGINS_DIR:?set PLUGINS_DIR in docker/elgg3/.env}/${PLUGIN_ID:?set PLUGIN_ID to the plugin under test}:/var/www/html/mod/${PLUGIN_ID}
+      - ./plugin-order.txt:/var/www/html/mod/.plugin-order.txt

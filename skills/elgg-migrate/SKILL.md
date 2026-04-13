@@ -33,6 +33,25 @@ Detection order:
 Persist the resolved value back to `config.json`. Never write into the plugin
 dir and never into the skill dir.
 
+**Automated discovery.** Use `bin/discover-plugins.sh` at the repo root to run
+all of the above in one command and to wire the Docker compose environment:
+
+```bash
+# Scan, cache to XDG config, and write docker/elgg4/.env for the plugin under test
+bin/discover-plugins.sh --root "$PLUGINS_SOURCE" --plugin <plugin-id> \
+    --save-config --write-env docker/elgg4/.env
+
+# Subsequent runs — just switch the plugin under test
+bin/discover-plugins.sh --plugin <other-plugin-id>
+```
+
+`docker/elgg4/.env` (and the elgg3/elgg5/... equivalents) are **gitignored**.
+They contain `PLUGINS_DIR` and `PLUGIN_ID`, which the per-version compose
+override files consume to mount exactly one plugin at a time. Each migration
+is therefore verified in isolation — no fleet-wide bind mounts, no cross-
+plugin contamination. Baking any `/home/...` or `/Users/...` path into a
+committed file is a bug; fix it by parameterizing via `.env`.
+
 **2. `ELGG_MIGRATE_STATE`** — where per-job state (reports, logs, dep locks,
 container names) lives. Default:
 `${XDG_STATE_HOME:-$HOME/.local/state}/elgg-migrate/`. Each migration job

@@ -1,7 +1,14 @@
+## Mount a complete bodyology-style site checkout into the elgg3 container.
+## Reads the checkout location from the .env (gitignored) so this file stays
+## portable across machines.
+##
+## Required variables (set in docker/elgg3/.env or the shell):
+##   BODYOLOGY_SITE_DIR   Absolute path to a bodyology-forum/ checkout. Its
+##                        `mod/` directory becomes /var/www/html/mod inside the
+##                        container.
+
 services:
   elgg:
     volumes:
-      - ~/Data/hypejunction/bodyology/bodyology-forum/mod:/var/www/html/mod
-      # Mount plugins workspace so symlinks resolve inside the container
-      - ~/Data/hypejunction/plugins:/home/ismayilkhayredinov/Data/hypejunction/plugins:ro
+      - ${BODYOLOGY_SITE_DIR:?set BODYOLOGY_SITE_DIR in docker/elgg3/.env}/mod:/var/www/html/mod
       - elgg-data:/var/www/data

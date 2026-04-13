@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+#
+# discover-plugins.sh — find Elgg plugins under a workspace root and prepare
+# the per-plugin Docker environment without baking any absolute paths into the
+# repo.
+#
+# Usage:
+#   bin/discover-plugins.sh [--root DIR] [--list] [--write-env FILE] [--plugin ID]
+#
+# Options:
+#   --root DIR         Workspace root containing plugin directories. If omitted,
+#                      resolved in order:
+#                        1. $ELGG_MIGRATE_PLUGINS
+#                        2. ~/.config/elgg-migrate/config.json (plugins_source)
+#                        3. hard error
+#   --list             Print discovered plugin ids (one per line) and exit.
+#   --write-env FILE   Write PLUGINS_DIR and PLUGIN_ID into FILE (gitignored .env
+#                      format). Default target when omitted: docker/elgg4/.env.
+#                      PLUGIN_ID is preserved if already set in FILE, otherwise
+#                      set to the value of --plugin or the first discovered id.
+#   --plugin ID        Plugin id to record in the .env as PLUGIN_ID.
+#   --save-config      Persist --root to ~/.config/elgg-migrate/config.json as
+#                      the default for future invocations.
+#
+# Plugin detection: a direct subdirectory is considered a plugin when it has any
+# of: elgg-plugin.php, start.php, manifest.xml, or composer.json with
+# "type": "elgg-plugin".
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONFIG_FILE="$XDG_CONFIG_HOME/elgg-migrate/config.json"
+
+root=""
+list_only=0
+write_env=""
+plugin_id=""
+save_config=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --root)        root="$2"; shift 2 ;;
+        --list)        list_only=1; shift ;;
+        --write-env)   write_env="$2"; shift 2 ;;
+        --plugin)      plugin_id="$2"; shift 2 ;;
+        --save-config) save_config=1; shift ;;
+        -h|--help)
+            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *)
+            echo "unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+resolve_root() {
+    if [ -n "$root" ]; then
+        echo "$root"
+        return
+    fi
+    if [ -n "${ELGG_MIGRATE_PLUGINS:-}" ]; then
+        echo "$ELGG_MIGRATE_PLUGINS"
+        return
+    fi
+    if [ -f "$CONFIG_FILE" ]; then
+        local cached
+        cached=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("plugins_source",""))' "$CONFIG_FILE" 2>/dev/null || true)
+        if [ -n "$cached" ]; then
+            echo "$cached"
+            return
+        fi
+    fi
+    echo "ERROR: plugin workspace unknown. Pass --root DIR, set \$ELGG_MIGRATE_PLUGINS, or populate $CONFIG_FILE." >&2
+    exit 1
+}
+
+root="$(resolve_root)"
+# Expand ~ and resolve to absolute path
+root="${root/#\~/$HOME}"
+if [ ! -d "$root" ]; then
+    echo "ERROR: plugin workspace not a directory: $root" >&2
+    exit 1
+fi
+root="$(cd "$root" && pwd)"
+
+is_plugin_dir() {
+    local d="$1"
+    [ -f "$d/elgg-plugin.php" ] && return 0
+    [ -f "$d/start.php" ] && return 0
+    [ -f "$d/manifest.xml" ] && return 0
+    if [ -f "$d/composer.json" ]; then
+        grep -q '"type"[[:space:]]*:[[:space:]]*"elgg-plugin"' "$d/composer.json" && return 0
+    fi
+    return 1
+}
+
+discovered=()
+for d in "$root"/*/; do
+    [ -d "$d" ] || continue
+    if is_plugin_dir "$d"; then
+        discovered+=("$(basename "$d")")
+    fi
+done
+
+if [ ${#discovered[@]} -eq 0 ]; then
+    echo "ERROR: no Elgg plugins found under $root" >&2
+    exit 1
+fi
+
+if [ "$list_only" -eq 1 ]; then
+    printf '%s\n' "${discovered[@]}"
+    exit 0
+fi
+
+if [ "$save_config" -eq 1 ]; then
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    python3 -c '
+import json, os, sys
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    try:
+        data = json.load(open(path))
+    except Exception:
+        data = {}
+data["plugins_source"] = sys.argv[2]
+json.dump(data, open(path, "w"), indent=2)
+open(path, "a").write("\n")
+' "$CONFIG_FILE" "$root"
+    echo "saved $CONFIG_FILE: plugins_source=$root"
+fi
+
+# Default .env target
+if [ -z "$write_env" ]; then
+    write_env="$REPO_ROOT/docker/elgg4/.env"
+fi
+
+# Determine PLUGIN_ID: --plugin flag > existing .env value > first discovered
+existing_id=""
+if [ -f "$write_env" ]; then
+    existing_id=$(grep -E '^PLUGIN_ID=' "$write_env" | tail -n1 | cut -d= -f2- || true)
+fi
+
+chosen_id="$plugin_id"
+if [ -z "$chosen_id" ]; then
+    chosen_id="$existing_id"
+fi
+if [ -z "$chosen_id" ]; then
+    chosen_id="${discovered[0]}"
+fi
+
+# Validate chosen id is actually a plugin under root
+found=0
+for id in "${discovered[@]}"; do
+    if [ "$id" = "$chosen_id" ]; then found=1; break; fi
+done
+if [ "$found" -ne 1 ]; then
+    echo "ERROR: PLUGIN_ID='$chosen_id' not found under $root. Discovered: ${discovered[*]}" >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "$write_env")"
+cat > "$write_env" <<EOF
+# Generated by bin/discover-plugins.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)
+# Each migration runs in isolation against one plugin at a time.
+PLUGINS_DIR=$root
+PLUGIN_ID=$chosen_id
+EOF
+
+echo "wrote $write_env"
+echo "  PLUGINS_DIR=$root"
+echo "  PLUGIN_ID=$chosen_id"
+echo
+echo "discovered ${#discovered[@]} plugin(s) under $root:"
+printf '  - %s\n' "${discovered[@]}"

@@ -127,6 +127,18 @@ config cache, cwd inference, or prompt — in that order). The skill never
 hard-codes a host path. If you invoke this skill without a plugins dir
 argument and no cache exists, it will ask.
 
+Automated discovery: run `bin/discover-plugins.sh` at the repo root. It
+scans a workspace for Elgg plugins, persists the root to the XDG config
+cache, and writes the gitignored `docker/elgg{N}/.env` consumed by the
+per-plugin compose override. Each plugin is migrated and verified in
+isolation — the compose override mounts exactly one plugin at a time, so
+no fleet-wide bind mounts bleed plugin state across runs.
+
+```bash
+bin/discover-plugins.sh --root "$PLUGINS_SOURCE" --save-config --list
+bin/discover-plugins.sh --plugin hypeembed --write-env docker/elgg4/.env
+```
+
 ---
 
 ## How to think about fleet migration
