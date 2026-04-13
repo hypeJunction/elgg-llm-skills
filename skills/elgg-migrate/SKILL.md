@@ -370,6 +370,57 @@ When it fails any of them, document what failed and fall back to migrating
 yourself — but keep the upstream work as a reference to diff against later
 in Phase 2.
 
+### Cross-plugin dependencies (run before Phase 2)
+
+Before claiming the migration, find out what other plugins this one
+depends on. Most plugins migrate independently; some genuinely don't.
+Missing this is the single most common process miss in plugin migration —
+you'll migrate the plugin, fail to activate it, and waste hours debugging
+before realizing a dependency isn't ready.
+
+There are **two kinds** of cross-plugin dependency. Both can sink the
+Docker activation gate:
+
+**1. Per-pair declared deps** — this plugin names another in its config or
+guards on its presence. Detect by reading:
+
+- **`composer.json` `require`** — the authoritative source from 3.x on.
+  Any `"hypejunction/hypeX"`, `"coldtrick/..."`, or similar `vendor/plugin`
+  line is a declared dependency.
+- **`manifest.xml` `<requires><type>plugin</type><name>X</name></requires>`** —
+  the 2.x equivalent. Translate these into composer requires during the
+  3→4 step.
+- **`elgg-plugin.php` `'plugin'.'dependencies'`** — the 4.x+ runtime
+  declaration; should mirror the composer require list (plus core plugins
+  like `members` that don't have separate composer packages).
+- **Actual code** — `elgg_is_active_plugin('X')` guards, `use` statements
+  referencing classes in another plugin's namespace, view extensions
+  targeting another plugin's views. Quick check:
+  `grep -rn "elgg_is_active_plugin\|hypejunction\\\\\|coldtrick\\\\" classes/ views/`.
+
+Each declared dep must be present in the target Elgg container *at the
+same version step* before this plugin's activation gate can pass. If a
+dependency isn't migrated yet, stop — escalate, don't try to migrate
+this plugin against an unmigrated neighbor.
+
+**2. The bootCore() neighbor-services trap (Elgg 4.x+)** — `bootCore()`
+triggers `plugins_load`, which `include`s **every** plugin's
+`elgg-services.php` regardless of active state. If ANY one of them throws
+(PHP-DI 5 syntax `\DI\object()` instead of `\DI\create()`; removed
+`Elgg\Di\ServiceFacade` trait; missing 4.x class names; etc.), the
+entire `bootCore()` aborts and **no plugin's `IntegrationTestCase` suite
+can run** until the broken neighbor is fixed.
+
+This is invisible to per-pair dep checks because the broken plugin
+doesn't *declare* any relationship to its victims — they just share the
+same `mod/` directory in the test container.
+
+When a Phase 1.8 test run dies during Elgg bootstrap with no obvious
+cause, suspect a broken neighbor's `elgg-services.php`. The fix is to
+either migrate that neighbor first or stub it with `<?php return [];` —
+but *never* leave a broken neighbor stubbed silently; file a separate
+issue tracking the real fix.
+
 ### Version state indicators
 
 When manifests and code disagree (they often do), trust these indicators over
