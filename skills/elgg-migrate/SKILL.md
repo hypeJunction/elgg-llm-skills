@@ -168,6 +168,45 @@ container propagated to 44 of 47 plugins on the host. Per-plugin isolation
 guarantees blast radius = one plugin, even under the worst in-container
 command. See bead `elgg-migrate-c0ou`.
 
+### Per-session project isolation (MANDATORY for parallel work)
+
+Running raw `docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up`
+uses `elgg{N}` as the compose project name, so every session targeting
+the same Elgg version collides on a singleton `elgg{N}-elgg-1` container.
+Two sessions migrating different plugins overwrite each other's mounts
+and `.env` mid-run.
+
+**Use `bin/elgg-migrate-run` as the canonical entry point** for any
+per-plugin activation/test work. The wrapper:
+
+- Spawns each job under a unique compose project name
+  (`em-<plugin>-<sha>`) so containers, networks, volumes, and DB data
+  are all scoped per-session. Multiple sessions coexist cleanly.
+- Generates a per-job `.env` under
+  `$XDG_STATE_HOME/elgg-migrate/jobs/<plugin>-<sha>/` so the shared
+  `docker/elgg{N}/.env` is never read or written.
+- Resolves plugin dependencies transitively from `manifest.xml`
+  (`<requires><type>plugin</type>…</requires>`) and writes a
+  post-order `plugin-order.txt` so the install script activates leaves
+  before parents.
+- Picks random ELGG_PORT/DB_PORT so parallel jobs don't fight over
+  host ports.
+
+```bash
+# Once per workstation:
+bin/elgg-migrate-run init --plugins-source=/abs/path/to/plugins
+
+# Per-plugin:
+bin/elgg-migrate-run up     hypeinbox --version=elgg4
+bin/elgg-migrate-run status hypeinbox
+bin/elgg-migrate-run down   hypeinbox
+```
+
+The top-level `docker/elgg{N}/` directory contains legacy singleton
+configs kept for one-off interactive poking; new per-plugin work should
+always go through the wrapper so parallel sessions don't stomp each
+other (bead `elgg-migrate-0atl`).
+
 
 | Service | Purpose | Location |
 |---------|---------|----------|

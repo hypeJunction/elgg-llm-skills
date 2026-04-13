@@ -115,27 +115,58 @@ job_path() {
   echo "$JOBS_DIR/${plugin}-${sha}"
 }
 
-# --- dependency resolver (first cut: parse composer.json, match local) ---
+# --- dependency resolver ---
+#
+# Walks the plugin's manifest.xml <requires><type>plugin</type> declarations
+# recursively, resolving each to a sibling directory under $plugins_source.
+# The lowercase dir name wins (Elgg 4.x plugin-id convention); fall back to
+# the declared name for legacy camelCase sources. Composer library deps
+# (elgg-plugin composer.json 'require' block) are NOT returned — they are
+# composer-install targets, not bind mounts.
+#
 # Emits deps.lock.json: [{"name": "...", "source": "local|missing", "path": "..."}]
+#
+# Transitive closure — if A requires B and B requires C, all three are in
+# the deps list so cmd_up mounts the full activation chain.
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
-  local composer="$plugin_dir/composer.json"
-  if [[ ! -f "$composer" ]]; then echo "[]"; return; fi
-  local requires
-  requires="$(jq -r '.require // {} | to_entries[] | select(.key | test("elgg|hype|coldtrick"; "i")) | .key' "$composer")"
-  local out="[]"
-  while IFS= read -r dep; do
-    [[ -z "$dep" ]] && continue
-    local short="${dep##*/}"
-    local path="" source="missing"
-    for candidate in "$plugins_source/$short" "$plugins_source/${short#Elgg-}" "$plugins_source/Elgg-$short"; do
-      if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
-        path="$(readlink -f "$candidate")"; source="local"; break
-      fi
-    done
-    out="$(jq --arg n "$dep" --arg s "$source" --arg p "$path" \
-      '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
-  done <<< "$requires"
+  local visited=() out="[]"
+  _resolve_deps_rec() {
+    local manifest="$1/manifest.xml"
+    [[ -f "$manifest" ]] || return 0
+    local names
+    names="$(python3 -c "
+import re, sys
+t=open('$manifest').read()
+for m in re.finditer(r'<requires>\s*<type>plugin</type>\s*<name>([^<]+)</name>', t):
+    print(m.group(1))
+")"
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      local lower="${name,,}"
+      # skip if already visited
+      local seen=0 v
+      for v in "${visited[@]:-}"; do
+        [[ "$v" == "$lower" ]] && { seen=1; break; }
+      done
+      (( seen )) && continue
+      visited+=("$lower")
+      # find matching dir: prefer lowercase, fall back to declared name
+      local path="" source="missing"
+      for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
+        if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
+          path="$(readlink -f "$candidate")"; source="local"; break
+        fi
+      done
+      # Post-order: recurse FIRST so deeper deps (leaves) land earlier in
+      # the list, and this plugin's parents land after. The resulting order
+      # is a valid activation order for Elgg's plugin-order.txt.
+      [[ -n "$path" ]] && _resolve_deps_rec "$path"
+      out="$(jq --arg n "$lower" --arg s "$source" --arg p "$path" \
+        '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
+    done <<< "$names"
+  }
+  _resolve_deps_rec "$plugin_dir"
   echo "$out"
 }
 
@@ -153,18 +184,31 @@ compose_args() {
   local plugin="$1" sha="$2" version="$3" jdir="$4"
   local base="$SKILL_INFRA/$version/docker-compose.yml"
   [[ -f "$base" ]] || { echo "no infra for version: $version ($base)" >&2; exit 1; }
-  echo "--project-name em-${plugin}-${sha} -f $base -f $jdir/override.yml"
+  echo "--project-name em-${plugin}-${sha} --env-file $jdir/.env -f $base -f $jdir/override.yml"
 }
 
 write_override() {
   local plugin="$1" pdir="$2" deps_json="$3" jdir="$4"
   local file="$jdir/override.yml"
+  local order="$jdir/plugin-order.txt"
+  # deps are already in dependency order from the recursive walk (transitive
+  # leaves first). Plugin under test goes last.
+  {
+    jq -r '.[] | select(.source=="local") | .name' <<< "$deps_json"
+    echo "$plugin"
+  } > "$order"
   {
     echo "services:"
     echo "  elgg:"
     echo "    volumes:"
     echo "      - ${pdir}:/var/www/html/mod/${plugin}"
-    jq -r '.[] | select(.source=="local") | "      - " + .path + ":/var/www/html/mod/" + (.name | split("/") | last) + ":ro"' <<< "$deps_json"
+    # Deps mount read-write: Elgg's class autoloader writes scan caches into
+    # the plugin dir at activation time (see
+    # vendor/elgg/elgg/engine/classes/Elgg/ClassLoader.php).
+    jq -r '.[] | select(.source=="local") | "      - " + .path + ":/var/www/html/mod/" + .name' <<< "$deps_json"
+    # Activation order file — makes the install script activate transitive
+    # deps before the plugin under test, instead of alphabetical.
+    echo "      - ${order}:/var/www/html/mod/.plugin-order.txt"
   } > "$file"
 }
 
@@ -200,10 +244,15 @@ cmd_up() {
   write_override "$plugin" "$(readlink -f "$pdir")" "$deps" "$jdir"
   local port; port=$(( (RANDOM % 1000) + 18000 ))
   local dbport; dbport=$(( (RANDOM % 1000) + 13000 ))
+  # PLUGINS_DIR is the workspace root so the skill-infra compose file can
+  # interpolate ${PLUGINS_DIR}/${PLUGIN_ID} consistently across services.
+  # The elgg service's bind mount is already written into override.yml with
+  # absolute paths, so the node service is the only consumer of these vars.
   cat > "$jdir/.env" <<EOF
 ELGG_PORT=$port
 DB_PORT=$dbport
-PLUGINS_DIR=$(readlink -f "$pdir")
+PLUGINS_DIR=$(readlink -f "$src")
+PLUGIN_ID=$plugin
 EOF
   cat > "$jdir/report.json" <<EOF
 {
