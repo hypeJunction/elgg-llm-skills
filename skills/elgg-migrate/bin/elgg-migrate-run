@@ -117,19 +117,45 @@ job_path() {
 
 # --- dependency resolver ---
 #
-# Walks the plugin's manifest.xml <requires><type>plugin</type> declarations
-# recursively, resolving each to a sibling directory under $plugins_source.
-# The lowercase dir name wins (Elgg 4.x plugin-id convention); fall back to
-# the declared name for legacy camelCase sources. Composer library deps
-# (elgg-plugin composer.json 'require' block) are NOT returned — they are
-# composer-install targets, not bind mounts.
+# Default: walks the plugin's manifest.xml <requires><type>plugin</type>
+# declarations recursively, resolving each to a sibling directory under
+# $plugins_source. The lowercase dir name wins (Elgg 4.x plugin-id
+# convention); fall back to the declared name for legacy camelCase
+# sources. Composer library deps (elgg-plugin composer.json 'require'
+# block) are NOT returned — they are composer-install targets, not bind
+# mounts.
+#
+# Override: if the plugin declares tests/deps.txt, that file wins. Each
+# non-comment line is a plugin id; order matters (top-of-file activates
+# first). This is the escape hatch for plugins whose manifest.xml deps
+# include broken transitive plugins that fatal during bootCore. The list
+# in tests/deps.txt is the *exact* set the test suite needs active; the
+# resolver does not recurse into it.
 #
 # Emits deps.lock.json: [{"name": "...", "source": "local|missing", "path": "..."}]
-#
-# Transitive closure — if A requires B and B requires C, all three are in
-# the deps list so cmd_up mounts the full activation chain.
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
+  local override="$plugin_dir/tests/deps.txt"
+  if [[ -f "$override" ]]; then
+    local out="[]" name lower path source
+    while IFS= read -r line; do
+      # strip comments + whitespace
+      name="${line%%#*}"
+      name="${name//[[:space:]]/}"
+      [[ -z "$name" ]] && continue
+      lower="${name,,}"
+      path=""; source="missing"
+      for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
+        if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
+          path="$(readlink -f "$candidate")"; source="local"; break
+        fi
+      done
+      out="$(jq --arg n "$lower" --arg s "$source" --arg p "$path" \
+        '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
+    done < "$override"
+    echo "$out"
+    return 0
+  fi
   local visited=() out="[]"
   _resolve_deps_rec() {
     local manifest="$1/manifest.xml"
