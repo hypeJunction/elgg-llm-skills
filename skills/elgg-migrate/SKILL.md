@@ -468,9 +468,10 @@ you don't have a baseline of working behavior, you can't tell whether the
 migration broke anything. Tests are the only way the skill's other gates stop
 being theater.
 
-The only exception is plugins with zero PHP logic (pure views/CSS/JS). Those
-are safe to cover with a fleet-wide smoke test in Phase 4 of `elgg-plugin-fleet`
-— document the exception in the commit message.
+The only exception is plugins with zero PHP logic (pure views/CSS/JS). For
+those, document the exception in the commit message and rely on the Phase 2
+Docker activation+render gate as the regression check — there's no behavior
+to write a PHPUnit test against.
 
 **Iron Law 4 waiver for 2.x starting points.** The skill ships Docker envs
 for elgg3 and elgg4 only — there is no elgg2 environment. Strict

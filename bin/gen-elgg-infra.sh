@@ -10,13 +10,13 @@
 # unless --force is passed.
 #
 # After generating into skills/elgg-migrate/infra/, the script mirrors
-# the new dirs into the four sibling skills that bundle the same infra:
-#   elgg-plugin-fleet, elgg-site-upgrade, elgg-test-writer, elgg-js-test-writer
+# the new dirs into the three sibling skills that bundle the same infra:
+#   elgg-site-upgrade, elgg-test-writer, elgg-js-test-writer
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATE_INFRA="$ROOT/skills/elgg-migrate/infra"
-SIBLING_SKILLS=(elgg-plugin-fleet elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
+SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 

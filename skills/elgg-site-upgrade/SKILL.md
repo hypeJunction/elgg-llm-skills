@@ -176,9 +176,10 @@ When any of these turn up a usable migration:
 - **Already at target version** → skip migration for this plugin entirely
 - **Upgraded on Packagist** → `composer require` the new version
 - **Upstream fork has a working migration** → adopt it only after
-  trust-but-verify (see `elgg-plugin-fleet`'s "Trust but verify" section
-  for the checks — abandoned branches, wrong Elgg target, unrelated
-  feature work mixed in, licensing, Docker activation)
+  trust-but-verify (see `elgg-migrate/SKILL.md` "Trust but verify:
+  adopting an upstream migration" for the checks — abandoned branches,
+  wrong Elgg target, unrelated feature work mixed in, licensing,
+  Docker activation, pre-migration tests against the upstream)
 - **Migration branch exists but incomplete** → continue from it
 - **Nothing exists anywhere** → migrate via `elgg-migrate`
 

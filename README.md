@@ -87,7 +87,6 @@ This project includes skill definitions for AI coding agents (designed for Claud
 |-------|---------|
 | `skills/elgg-migrate/` | Migrate a single plugin one major version at a time |
 | `skills/elgg-site-upgrade/` | Upgrade an entire Elgg installation (core + all plugins) |
-| `skills/elgg-plugin-fleet/` | Orchestrate migration of many plugins across multiple versions |
 | `skills/elgg-test-writer/` | Generate PHPUnit test coverage for Elgg plugins |
 
 ### Using Skills with Claude Code
@@ -123,7 +122,6 @@ Pre-built workflow templates in `formulas/`:
 | Formula | Purpose |
 |---------|---------|
 | `elgg-site-upgrade.formula.json` | Full site upgrade with assessment, migration, verification gates |
-| `elgg-plugin-fleet.formula.json` | Migration matrix for a fleet of plugins across versions |
 | `plugin-test-scaffold.formula.json` | Generate test infrastructure for a migrated plugin |
 
 ```bash
