@@ -328,14 +328,13 @@ bd blocked    # Each migration issue should list its blockers
 bd orphans    # Should be empty
 ```
 
-### Cross-plugin dependencies
+### Cross-plugin dependencies (MANDATORY pre-flight, not optional)
 
-Most plugins migrate independently, but some genuinely depend on others —
-plugin A requires plugin B to be installed, or plugin A extends plugin B's
-views or hooks. Miss these and you'll migrate A, fail to activate it, and
-waste hours debugging before realizing B isn't ready yet.
+**Run the dependency check BEFORE claiming any per-plugin migration bead.** Skipping it is the most common process miss in fleet work and the one that wastes the most hours. Most plugins migrate independently, but some genuinely depend on others — plugin A requires plugin B to be installed, or plugin A extends plugin B's views or hooks. Miss these and you'll migrate A, fail to activate it, and waste hours debugging before realizing B isn't ready yet.
 
-Detect cross-plugin dependencies by reading:
+There are **two kinds** of cross-plugin dependency in Elgg fleet migration. Both must be wired into beads before per-plugin work starts:
+
+**1. Per-pair declared deps** — plugin A names plugin B in its config or guards on its presence. Detect by reading:
 
 - **`composer.json` `require`** — the authoritative source from 3.x on.
   Any `"hypejunction/hypeX": "..."` line is a declared dependency.
@@ -348,11 +347,26 @@ Detect cross-plugin dependencies by reading:
   targeting another plugin's views. The grep-level check:
   `grep -rn "elgg_is_active_plugin\|hypejunction\\\\\|coldtrick\\\\" <plugin>`.
 
-Encode what you find as beads dependencies:
+**2. Fleet-wide boot deps (the trap)** — Elgg 4.x+ triggers `plugins_load` during `bootCore()` which `include`s **every** plugin's `elgg-services.php`, regardless of `active_plugin` state. If ANY one of them throws (PHP-DI 5 syntax `\DI\object()` instead of `\DI\create()`; removed `Elgg\Di\ServiceFacade` trait; missing 4.x class names; etc.), the entire bootCore aborts and **no plugin's `IntegrationTestCase` suite can run** until the broken neighbor is fixed. This is invisible to per-pair dep checks because the broken plugin doesn't *declare* any relationship to its victims — they just share the same `mod/` directory.
+
+This means there is a **fleet-wide precondition** that every per-plugin test gate depends on: every plugin in `mod/` must have a `plugins_load`-safe `elgg-services.php` (it just has to parse and return — even `<?php return [];` is enough as a stub). File this as a single beads issue at the start of every fleet boundary:
 
 ```bash
-# hypeInbox's 3→4 migration blocks on hypePrototyper's 3→4 being done first
+PRECOND=$(bd create --title="Fleet precondition: plugins_load-safe baseline for elgg{N+1} mod/" \
+                    --type=task --priority=0 \
+                    --description="Every plugin's elgg-services.php must at minimum parse before any per-plugin test gate can run in IntegrationTestCase. Stub broken neighbors with <?php return []; if you can't migrate them yet — but track each as a real follow-up.")
+```
+
+Then wire **every** per-plugin migration bead to depend on it, and resolve it as the first step of any new fleet boundary by sweeping all plugins for `\DI\object`, `Elgg\Di\ServiceFacade`, and other patterns that stop loading.
+
+Encode all dependencies as beads edges:
+
+```bash
+# Per-pair: hypeInbox's 3→4 migration blocks on hypePrototyper's 3→4 being done first
 bd dep add <hypeinbox-3to4> <hypeprototyper-3to4>
+
+# Fleet-wide: every per-plugin migration blocks on the precondition
+bd dep add <hypeinbox-3to4> <precond-issue>
 ```
 
 **Circular dependencies are a red flag.** If A requires B and B requires A,
