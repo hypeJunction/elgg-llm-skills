@@ -133,6 +133,71 @@ for f in Dockerfile docker-compose.yml elgg-install.sh elgg-composer.json index.
 done
 chmod +x "$docker_dir/elgg-install.sh"
 
+# Inject dep volume mounts into docker-compose.yml from tests/deps.local.txt.
+#
+# deps.local.txt (gitignored) maps plugin IDs to local paths:
+#   <plugin-id> <path>   (absolute, or relative to plugin root)
+#
+# This file is for developer workspace overrides. CI / fresh-clone users rely
+# on deps.txt git URLs — elgg-install.sh clones those at container startup.
+# deps.local.txt is never committed and never read by elgg-install.sh.
+local_deps_file="$plugin_dir/tests/deps.local.txt"
+compose_file="$docker_dir/docker-compose.yml"
+if [ -f "$local_deps_file" ]; then
+    dep_mounts=""
+    while IFS= read -r line; do
+        line="${line%%#*}"   # strip inline comments
+        line="$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        [ -z "$line" ] && continue
+        dep_id="${line%% *}"
+        dep_path_raw="${line#* }"
+        [ "$dep_path_raw" = "$dep_id" ] && { echo "  WARNING: deps.local.txt line '$dep_id' has no path — skipping"; continue; }
+        # Resolve relative paths relative to plugin root
+        case "$dep_path_raw" in
+            /*) dep_path="$dep_path_raw" ;;
+            *)  dep_path="$plugin_dir/$dep_path_raw" ;;
+        esac
+        dep_path="$(readlink -f "$dep_path" 2>/dev/null || echo "$dep_path")"
+        if [ ! -d "$dep_path" ]; then
+            echo "  WARNING: dep '$dep_id' path not found: $dep_path — skipping volume mount"
+            continue
+        fi
+        # Make path relative to docker/ dir for docker-compose (must be relative to compose file)
+        rel_path="$(python3 -c "import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" "$dep_path" "$docker_dir")"
+        dep_mounts="${dep_mounts}      - ${rel_path}:/var/www/html/mod/${dep_id}:ro\n"
+        echo "  dep mount: ${dep_id} → ${rel_path}"
+    done < "$local_deps_file"
+
+    if [ -n "$dep_mounts" ]; then
+        if ! grep -q "# Dep plugins from deps.local.txt" "$compose_file"; then
+            python3 - "$compose_file" "$dep_mounts" <<'PYEOF'
+import sys, re
+
+compose_path = sys.argv[1]
+dep_mounts_raw = sys.argv[2]
+dep_lines = dep_mounts_raw.replace("\\n", "\n")
+
+with open(compose_path) as f:
+    content = f.read()
+
+insertion = (
+    "      # Dep plugins from deps.local.txt (read-only — not under test here).\n"
+    + dep_lines
+)
+
+pattern = r"(      - \.\.:/var/www/html/mod/\$\{PLUGIN_ID\})"
+replacement = r"\1\n" + insertion.rstrip("\n")
+new_content = re.sub(pattern, replacement, content, count=1)
+
+with open(compose_path, "w") as f:
+    f.write(new_content)
+
+print("  injected dep volume mounts into docker-compose.yml")
+PYEOF
+        fi
+    fi
+fi
+
 # Write .env with PLUGIN_ID filled in (only if missing)
 env_file="$docker_dir/.env"
 if [ -f "$env_file" ] && [ "$force" -ne 1 ]; then
@@ -152,11 +217,15 @@ if [ -f "$dev_md_src" ]; then
     copy_if_missing "$dev_md_src" "$dev_md_dst"
 fi
 
-# Extend .gitignore so local .env doesn't get committed
+# Extend .gitignore so local files don't get committed
 gitignore="$plugin_dir/.gitignore"
 if ! { [ -f "$gitignore" ] && grep -qE '^docker/\.env$' "$gitignore"; }; then
     printf 'docker/.env\n' >> "$gitignore"
     echo "  appended to .gitignore: docker/.env"
+fi
+if ! { [ -f "$gitignore" ] && grep -q 'deps.local.txt' "$gitignore"; }; then
+    printf 'tests/deps.local.txt\n' >> "$gitignore"
+    echo "  appended to .gitignore: tests/deps.local.txt"
 fi
 
 cat <<NEXT
