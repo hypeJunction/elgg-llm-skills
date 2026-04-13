@@ -215,6 +215,53 @@ other (bead `elgg-migrate-0atl`).
 | `node` | Playwright and Vitest tests | `$SKILL_INFRA/elgg{N}/docker-compose.yml` (profile: test) |
 | `db` | MySQL database | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
 
+### JS test coverage policy
+
+Plugins that ship JS (anything under `views/default/**/*.js` or
+`views/default/js/`) need TWO layers of test coverage; they are
+complementary, not alternatives:
+
+1. **Vitest for unit tests of pure JS logic.** Per-plugin
+   `tests/vitest/*.test.js`, run inside the wrapper's `node` service.
+   Cover anything with branching logic, formatting, parsing, or state
+   transitions in isolation from the DOM. The Elgg AMD wrapper
+   (`define(function (require) { ... })`) is testable: extract the
+   pure-logic helpers into named exports the AMD module re-exports
+   so the helper is reachable from both AMD callers and a plain
+   `import` in vitest. Trivial init scripts (one-shot event listener
+   wiring, view extensions) get **zero** vitest coverage — Playwright
+   covers them by exercising the view.
+
+2. **Playwright for end-to-end coverage.** Per-plugin
+   `tests/playwright/`, browser-driven against a running elgg
+   container. Cover render-time view shape and user-flow happy paths.
+   Already established on ~36 of the ~50 plugins in the fleet.
+
+**Decision rationale** (bead `elgg-migrate-1y7z`): the AMD→ES module
+boundary changed across Elgg 3.x→4.x, and the bundler/cache invalidation
+behavior of `elgg_define_js` differs from the 3.x require pipeline. A
+JS unit test that pins the *logic* (separate from the AMD wrapper) is
+the only thing that catches regressions where the bundler ships the
+right file but the function inside it has drifted. Playwright catches
+the inverse — wiring drifts where the logic is right but the bundler
+loaded the wrong module. Neither layer subsumes the other.
+
+**Skip rule**: a plugin with **no** JS files needs neither layer. A
+plugin with JS that's purely "attach to DOM, fire ajax" (no testable
+helpers) needs Playwright only. The maintainer decides at the file
+level by extracting helpers when the logic is worth pinning.
+
+The wrapper's `node` service runs both via the same Playwright base
+image. Vitest installs as a per-plugin dev dep on first run:
+
+```bash
+docker compose --project-name em-<plugin>-<sha> --profile test \
+  run --rm node sh -c "npm ci && npx vitest run"
+```
+
+For the canonical hypeinbox example see
+`bodyology/plugins/hypeinbox/tests/vitest/`.
+
 ### Quick setup
 
 ```bash
