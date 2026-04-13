@@ -205,6 +205,84 @@ cmd_resolve() {
   resolve_deps "$pdir" "$src"
 }
 
+# --- post-up hooks ---
+
+# Poll for the .elgg-installed marker the install script writes when it
+# finishes. The compose 'up -d' returns as soon as the container is
+# *started*, but elgg-install.sh runs a multi-step composer install +
+# plugin activation before Apache starts; without waiting, subsequent
+# exec calls race against the install and see missing vendor/ entries.
+wait_for_install() {
+  local project="$1"
+  local service="${2:-elgg}"
+  local max_seconds="${3:-180}"
+  local elapsed=0
+  while (( elapsed < max_seconds )); do
+    if docker compose --project-name "$project" exec -T "$service" \
+        test -f /var/www/html/.elgg-installed 2>/dev/null; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$(( elapsed + 2 ))
+  done
+  echo "timed out waiting for .elgg-installed after ${max_seconds}s" >&2
+  return 1
+}
+
+# Parse a plugin's composer.json 'require' block and emit each non-core,
+# non-virtual dep as a packagist name. Skips:
+#   - php / ext-* / lib-* (virtual platform requires)
+#   - elgg/elgg (already installed as the root project)
+#   - composer/installers (already in the base image)
+#   - self-references matching the plugin's own composer name
+plugin_lib_requires() {
+  local plugin_dir="$1"
+  local composer="$plugin_dir/composer.json"
+  [[ -f "$composer" ]] || return 0
+  local self
+  self="$(jq -r '.name // empty' "$composer")"
+  jq -r --arg self "$self" '
+    .require // {}
+    | to_entries[]
+    | select(.key | test("^(php$|ext-|lib-|elgg/elgg$|composer/installers$)") | not)
+    | select(.key != $self)
+    | .key
+  ' "$composer"
+}
+
+# Run composer require inside the running elgg service for every plugin
+# library dep declared by the plugin under test and its mounted siblings.
+# Runs inside the container so the install uses the same composer version
+# and vendor path as the rest of the environment, and the installed libs
+# persist for the lifetime of the container (until 'down -v').
+install_plugin_libs() {
+  local project="$1" plugin_dir="$2" deps_json="$3"
+  local -a libs=()
+  # start with the plugin under test
+  while IFS= read -r lib; do
+    [[ -n "$lib" ]] && libs+=("$lib")
+  done < <(plugin_lib_requires "$plugin_dir")
+  # then each mounted local dep
+  while IFS= read -r dep_path; do
+    [[ -z "$dep_path" ]] && continue
+    while IFS= read -r lib; do
+      [[ -n "$lib" ]] && libs+=("$lib")
+    done < <(plugin_lib_requires "$dep_path")
+  done < <(jq -r '.[] | select(.source=="local") | .path' <<< "$deps_json")
+  (( ${#libs[@]} )) || { echo "no plugin library deps to install"; return 0; }
+  # dedup preserving order
+  local -a uniq=()
+  local seen lib
+  for lib in "${libs[@]}"; do
+    seen=0
+    for u in "${uniq[@]:-}"; do [[ "$u" == "$lib" ]] && { seen=1; break; }; done
+    (( seen )) || uniq+=("$lib")
+  done
+  echo "installing plugin library deps: ${uniq[*]}"
+  docker compose --project-name "$project" exec -T -w /var/www/html elgg \
+    composer require --no-interaction "${uniq[@]}"
+}
+
 # --- compose invocation ---
 compose_args() {
   local plugin="$1" sha="$2" version="$3" jdir="$4"
@@ -294,6 +372,10 @@ EOF
 EOF
   # shellcheck disable=SC2046
   ( cd "$jdir" && docker compose $(compose_args "$plugin" "$sha" "$version" "$jdir") up -d --build )
+  local project="em-${plugin}-${sha}"
+  wait_for_install "$project" || echo "  (install still running — rerun composer require manually if libs are missing)" >&2
+  install_plugin_libs "$project" "$(readlink -f "$pdir")" "$deps" || \
+    echo "  (plugin-lib install failed — rerun manually: docker compose --project-name $project exec elgg composer require ...)" >&2
   echo "job dir: $jdir"
   echo "elgg:    http://localhost:$port"
 }
