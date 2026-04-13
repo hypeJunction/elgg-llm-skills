@@ -1,7 +1,7 @@
 # Agent failure modes, escalation, and recovery
 
-Cross-cutting guidance that applies to `elgg-migrate`, `elgg-plugin-fleet`,
-and `elgg-site-upgrade`. Read this once at the start of any migration
+Cross-cutting guidance that applies to `elgg-migrate` and
+`elgg-site-upgrade`. Read this once at the start of any migration
 session; refer back when you're stuck or tempted to cut corners.
 
 ## Cost of failure (not every rule is equal)
@@ -154,13 +154,18 @@ is recoverable if you act before you've forgotten state. Commit what
 works (even incomplete), push to remote, update the beads issue with: the
 branch name, the last gate that passed, the next gate to attempt, and any
 known issues. A fresh session can resume from that state without
-re-deriving it.
+re-deriving it. **A partial commit with a clear `WIP:` message
+("WIP: activation fails with X, needs investigation") is recoverable —
+an uncommitted buffer you planned to "clean up at the end" is not.**
+Don't ever leave a plugin's working directory dirty across sessions.
 
-**Fleet-wide disaster (multiple plugins broken).** Don't roll everything
-back. File a beads issue per broken plugin, mark them blocked, and
-continue with the unblocked work. Iron Law 4 of `elgg-plugin-fleet` (fail
-fast, fix forward) is specifically for this case — stopping the whole
-fleet on one hard case is worse than leaving that plugin behind.
+**A neighbor plugin is broken (multiple plugins look broken).** Don't
+roll back, and don't try to fix neighbors as part of the current
+plugin's migration — that's a sweep, which is forbidden (see memory:
+*One plugin at a time*). File a separate beads issue for each broken
+neighbor, mark the current plugin blocked on whichever neighbor is in
+its way, and stop. The next session picks up the highest-priority
+unblocked plugin.
 
 **Accidental destructive git operation.** `git reflog` is your friend. Any
 commit made in the last 90 days is still in the reflog even after `reset
