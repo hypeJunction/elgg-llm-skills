@@ -804,6 +804,69 @@ its own), run `--security` one last time on the final state, and generate a
 report. The acceptance gates at the top of this skill list everything that
 must be true before closing the beads issue — verify each one explicitly.
 
+### Capture before closing (mandatory, Iron Law 12)
+
+The skill's durable value is the knowledge each migration generates, and
+that only survives if the agent forces itself to capture it *before*
+`bd close`. The biggest failure mode here is not "the agent wrote the
+lesson in the wrong place" — it's "the agent closed the issue and moved
+on, and the lesson evaporated."
+
+Before closing **any** migration issue, ask two questions out loud:
+
+1. **"Did I hit anything surprising?"** — count a hand-fix, an unexpected
+   error, a workaround, or a gate that failed the first time as
+   surprising. If yes, it belongs in one of the destinations below
+   *before* the issue closes.
+2. **"Would a future session migrating the next similar plugin benefit
+   from what I learned?"** — if yes, that's the signal to capture it,
+   even if it's just a memory note. The cost of capture is seconds; the
+   cost of forgetting is hours, because the next session re-derives
+   everything.
+
+If you can't honestly answer "nothing surprising, nothing worth passing
+on" — and you usually can't, because every non-trivial migration has
+surprises — then capture is mandatory, not optional.
+
+| Destination | What belongs there |
+|-------------|-------------------|
+| `rules/{from}-to-{to}/manifest.json` `llm_instructions` | An existing rule's prompt was wrong or incomplete |
+| New rule entry in the same `manifest.json` | A breaking change the manifest was missing |
+| `references/common-mistakes.md` | A recurring hand-fix or non-obvious gate failure |
+| `references/breaking-changes/<version>.md` | A previously undocumented breaking change |
+| `bd remember "<key>" "<lesson>"` (or auto-memory feedback file) | Plugin-migration insight that doesn't yet have a home |
+
+When the same hand-fix appears in three or more separate plugin
+migrations, file a P2 bead to promote it from documentation to an
+automated AST rule. Don't try to write the rule mid-migration — finish
+the current plugin first, then the new-rule bead is its own
+single-plugin-scoped task.
+
+### The first migration of a version step is different from the tenth
+
+When this is the *first* plugin you're migrating across a particular
+version boundary in the current session (or the first since the manifest
+was last updated), treat it as a learning exercise rather than a
+production run:
+
+- **Invest in understanding, not speed.** Read the AST rule output
+  fully, even for rules you've seen before. Watch for surprises.
+- **Pick an easy first target if you have a choice.** A small,
+  well-structured plugin with an upstream reference is the ideal first
+  pick — it gives you a clean signal for what the rules should produce.
+  Save the weird ones for later.
+- **Push learnings into the manifest immediately.** If you hit a
+  hand-fix on the first plugin of a step, update the rule's
+  `llm_instructions` (or file a P2 bead for a new rule) before closing
+  the issue. The next plugin should benefit from what you learned.
+- **Expect the first migration of a step to take 3–5× longer than the
+  average.** That's not a bug — that's where the manifest and skill
+  documentation get refined. By the third or fourth plugin of the same
+  step the rules should be in their final shape and the work nearly
+  mechanical. If you're on plugin ten of a step and still finding new
+  breaking changes, surface that to the human — either the rules are
+  undercooked or the plugins are unusually diverse.
+
 ---
 
 
