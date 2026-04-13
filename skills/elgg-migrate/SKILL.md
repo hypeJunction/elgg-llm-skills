@@ -332,8 +332,43 @@ How to decide what to do with what you find:
 
 - Already at the target version → skip migration, mark done.
 - Migration branch exists but is incomplete → continue from that branch, don't restart.
-- An upstream fork has a working migration → use it instead of re-migrating.
+- An upstream fork has a working migration → use it instead of re-migrating, **but vet it first** (next subsection).
 - Nothing exists anywhere → proceed to pre-migration tests.
+
+### Trust but verify: adopting an upstream migration
+
+Finding an upstream migration is not the same as adopting one. Upstream work
+can be broken, stale, target a different fork of Elgg, or aim at a version
+you're not migrating to. Before merging an upstream branch or `composer
+require`-ing a new version:
+
+- **Check what it actually targets.** Read the upstream's `composer.json`
+  `require.elgg/elgg` — if it says `^5.0` and you're migrating to 4.x, it's
+  not useful. If it says `^4.0` but the code already uses `\Elgg\Event`, the
+  metadata is lying.
+- **Look at the commit history, not just the branch name.** A branch called
+  `migrate/elgg-4.x` that hasn't been touched in two years and has three
+  commits is probably abandoned work, not a done migration. Check the latest
+  commit date and how complete it looks.
+- **Run the same Docker activation gate on it that you'd run on your own
+  migration.** If it doesn't activate cleanly in your `elgg{N}` container, it
+  isn't a working migration regardless of who wrote it.
+- **Run your pre-migration tests against it.** If you've already written
+  tests for the plugin (Phase 1.8), point them at the upstream version.
+  Failing tests against an upstream migration tells you the upstream
+  regressed something — sometimes fixable, sometimes a sign to walk away.
+- **Check for unrelated changes.** Upstream branches often contain new
+  features mixed with the migration. If the "migration" also adds a feature
+  you don't want, the branch isn't a pure migration — you're adopting both.
+- **Check the license and authorship.** A fork in a random org with no
+  attribution is a licensing risk; a fork on the original author's account
+  usually isn't.
+
+When an upstream migration passes all these, adopt it with confidence and
+note the source in your commit message ("Adopted from `<fork-url>@<sha>`").
+When it fails any of them, document what failed and fall back to migrating
+yourself — but keep the upstream work as a reference to diff against later
+in Phase 2.
 
 ### Version state indicators
 
