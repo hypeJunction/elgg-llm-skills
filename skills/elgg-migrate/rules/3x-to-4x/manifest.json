@@ -155,14 +155,6 @@
       "priority": 150
     },
     {
-      "id": "018-hook-callback-signatures",
-      "name": "Rewrite hook/event handler signatures to Elgg 4.x single-arg format",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\HookCallbackSignatures",
-      "breaking_change": "Handlers registered via elgg-plugin.php receive single \\Elgg\\Hook or \\Elgg\\Event object",
-      "priority": 200
-    },
-    {
       "id": "019-plugin-settings-vars",
       "name": "Replace $vars['plugin'] with $vars['entity'] in settings forms",
       "automated": false,
