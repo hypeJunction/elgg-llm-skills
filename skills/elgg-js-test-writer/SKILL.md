@@ -75,29 +75,70 @@ The plugin's source directory is mounted at `/plugin` inside the node container 
 
 ---
 
-## Phase 1: SCAN PLUGIN JS
+## Phase 1: SCAN PLUGIN FOR TEST TARGETS
 
-Inventory all JavaScript files in the plugin:
+Read three layers together — views, CSS, and JS — to understand what behaviors to test.
+
+### 1a. JavaScript inventory
 
 ```bash
-# Find all JS files
+# Find all JS/MJS files
 find <plugin>/views -name "*.js" -o -name "*.mjs" | sort
 
-# Check for AMD modules (define/require pattern)
+# AMD modules (define/require pattern)
 grep -rl "define(\|require(\[" <plugin>/views --include="*.js"
 
-# Check for ES modules (import/export)
+# ES modules (import/export)
 grep -rl "^import \|^export " <plugin>/views --include="*.mjs"
 
-# Check for inline scripts in PHP views
+# Inline scripts in PHP views
 grep -rl "<script" <plugin>/views --include="*.php"
 ```
 
-For each JS file, identify:
-- What it exports (functions, classes, objects)
-- What it imports (dependencies)
-- What DOM interactions it performs
-- What Elgg APIs it uses (hooks, ajax, i18n)
+For each JS file, note:
+- What it **exports** (functions, classes, objects)
+- What **DOM selectors** it binds to (classes, data-* attributes, element types)
+- What **state transitions** it drives (CSS class adds/removes, show/hide, disabled)
+- What **Elgg APIs** it calls (hooks, ajax actions, i18n keys)
+- What **third-party libs** it wraps (Select2, Dropzone, Parsley, etc.)
+- What **events** it fires or listens to (custom events, Elgg hooks)
+
+### 1b. CSS state inventory
+
+```bash
+find <plugin>/views -name "*.css" -o -name "*.less" | sort
+```
+
+For each stylesheet, extract:
+- **State classes** that JS toggles (`has-errors`, `success`, `loading`, `hidden`, `active`)
+- **Data-driven rules** (attribute selectors like `[data-dz-*]`, `[data-src]`)
+- **Transition/animation** rules (what visual feedback exists)
+
+These classes are the observable test signals in Playwright.
+
+### 1c. PHP view anatomy
+
+```bash
+find <plugin>/views/default -name "*.php" | sort
+```
+
+For each view file, identify:
+- What **HTML structure** it renders (forms, inputs, containers, menus)
+- What **data-* attributes** it sets (JS reads these for config)
+- What **inline `<script>` tags** bootstrap JS modules
+- What **Elgg view helpers** it uses (`elgg_view_form`, `elgg_view_menu`, `elgg_view_field`, `elgg_view_module`)
+
+### 1d. Build the test target map
+
+Before writing any test, produce a table:
+
+| File | What it does | Observable signals |
+|------|-------------|-------------------|
+| `views/default/myplugin/form.php` | Renders upload form with `data-max-size` | Form element with `data-max-size` attr |
+| `views/default/myplugin/upload.js` | Initializes Dropzone on `.elgg-dropzone` | `.elgg-dropzone-success` class after upload |
+| `views/default/myplugin/styles.css` | `.has-errors` turns label orange | Label color computed style |
+
+This map drives Phase 4 (Vitest) and Phase 5 (Playwright) test targets.
 
 ---
 
@@ -450,8 +491,6 @@ Add to `.github/workflows/tests.yml`:
 
 ### Combined with Playwright (browser-level)
 
-For testing JS behavior in a real Elgg instance:
-
 ```bash
 # Start Elgg in Docker
 docker compose -f docker/docker-compose.yml up -d
@@ -461,16 +500,395 @@ docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugin/tests/playwright && npm ci && npx playwright test"
 ```
 
-Playwright tests are better for:
-- Form submission behavior
-- AJAX interactions
-- Dynamic UI updates
-- Permission-dependent UI
+**Decision guide — Vitest vs Playwright:**
 
-Vitest is better for:
-- Pure logic (no DOM/server needed)
-- Individual module behavior
-- Fast iteration (uses jsdom, no Elgg server needed — but still runs in the node container)
+| Use Vitest for | Use Playwright for |
+|---------------|--------------------|
+| Pure functions, data transforms | AJAX form submissions hitting real Elgg actions |
+| Hook registration/triggering | CSS state class transitions after user interaction |
+| Individual module logic | Third-party library integration (Dropzone, Select2, Parsley) |
+| Fast iteration (no Elgg server) | Permission-dependent UI (logged in vs. out) |
+| AMD/ESM import wiring | Multi-step workflows (upload → progress → success) |
+
+---
+
+## Phase 5b: PLAYWRIGHT TESTS — BEHAVIORAL PATTERNS
+
+**Setup:** `tests/playwright/playwright.config.ts`
+
+```typescript
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  use: {
+    baseURL: 'http://elgg:8080',  // Elgg container hostname in Docker network
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+  },
+  testDir: './tests',
+  timeout: 30_000,
+});
+```
+
+**Shared login helper:** `tests/playwright/helpers/login.ts`
+
+```typescript
+import { Page } from '@playwright/test';
+
+export async function loginAsAdmin(page: Page) {
+  await page.goto('/login');
+  await page.fill('input[name="username"]', 'admin');
+  await page.fill('input[name="password"]', 'password');
+  await page.click('[type=submit]');
+  await page.waitForURL(/\/dashboard/);
+}
+```
+
+---
+
+### Pattern A: State class transitions
+
+When JS adds/removes CSS classes in response to events, test the class directly.
+
+```typescript
+// tests/playwright/tests/validation.spec.ts
+import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from '../helpers/login';
+
+test('shows inline error when required field is empty', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/path/to/form-page');
+
+  // Submit without filling required field
+  await page.click('[type=submit]');
+
+  // Field row should have error class
+  const field = page.locator('.elgg-field').filter({ has: page.locator('[name="title"]') });
+  await expect(field).toHaveClass(/elgg-field-has-errors/);
+
+  // Error message list should be visible
+  await expect(field.locator('.elgg-field-feedback')).toBeVisible();
+  await expect(field.locator('.elgg-field-feedback li')).toContainText(['required']);
+});
+
+test('clears error class when field is corrected', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/path/to/form-page');
+
+  await page.click('[type=submit]');
+  const field = page.locator('.elgg-field').filter({ has: page.locator('[name="title"]') });
+  await expect(field).toHaveClass(/elgg-field-has-errors/);
+
+  await page.fill('[name="title"]', 'Valid title');
+  await page.locator('[name="title"]').blur();
+  await expect(field).not.toHaveClass(/elgg-field-has-errors/);
+});
+```
+
+---
+
+### Pattern B: AJAX form submission lifecycle
+
+For plugins that intercept form submit with JS (e.g. hypeajax-style forms):
+
+```typescript
+// tests/playwright/tests/ajax-form.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('submit button is disabled during AJAX request', async ({ page }) => {
+  await page.goto('/path/to/ajax-form');
+
+  // Intercept the action to delay response
+  await page.route('**/action/myplugin/save', async (route) => {
+    await new Promise(r => setTimeout(r, 500));
+    await route.fulfill({ json: { status: 0, value: {} } });
+  });
+
+  const btn = page.locator('[type=submit]');
+  await page.fill('[name="body"]', 'Test content');
+  await btn.click();
+
+  // Button should be disabled mid-flight
+  await expect(btn).toBeDisabled();
+
+  // After response, button re-enables
+  await expect(btn).toBeEnabled({ timeout: 2000 });
+});
+
+test('success callback runs and updates UI', async ({ page }) => {
+  await page.goto('/path/to/ajax-form');
+
+  await page.route('**/action/myplugin/save', (route) =>
+    route.fulfill({ json: { status: 0, value: { guid: 42 } } })
+  );
+
+  await page.fill('[name="body"]', 'Hello world');
+  await page.click('[type=submit]');
+
+  // Expect success feedback (class, message, or redirect)
+  await expect(page.locator('.elgg-system-messages')).toContainText('saved');
+});
+
+test('error response shows system error message', async ({ page }) => {
+  await page.goto('/path/to/ajax-form');
+
+  await page.route('**/action/myplugin/save', (route) =>
+    route.fulfill({ json: { status: -1, messages: { errors: ['Permission denied'] } } })
+  );
+
+  await page.fill('[name="body"]', 'Hello');
+  await page.click('[type=submit]');
+
+  await expect(page.locator('.elgg-system-messages')).toContainText('Permission denied');
+});
+```
+
+---
+
+### Pattern C: File upload with progress
+
+For plugins using Dropzone or similar:
+
+```typescript
+// tests/playwright/tests/file-upload.spec.ts
+import { test, expect } from '@playwright/test';
+import path from 'path';
+
+test('file upload shows progress then success class', async ({ page }) => {
+  await page.goto('/path/to/upload-page');
+
+  // Set input file (works even with hidden inputs when Dropzone is active)
+  const dropzone = page.locator('.elgg-dropzone');
+  await expect(dropzone).toBeVisible();
+
+  // Use setInputFiles on the hidden fallback input
+  await page.setInputFiles('input[type=file]', path.join(__dirname, '../fixtures/test-image.jpg'));
+
+  // Progress bar should appear
+  const preview = page.locator('.dz-preview').first();
+  await expect(preview).toBeVisible();
+
+  // Wait for success class (Dropzone adds this after server confirms)
+  await expect(preview).toHaveClass(/elgg-dropzone-success/, { timeout: 10_000 });
+
+  // File name should appear in preview
+  await expect(preview.locator('.dz-filename')).toContainText('test-image');
+});
+
+test('failed upload shows error class and message', async ({ page }) => {
+  await page.route('**/action/dropzone/**', (route) =>
+    route.fulfill({ status: 500, body: 'Server error' })
+  );
+
+  await page.goto('/path/to/upload-page');
+  await page.setInputFiles('input[type=file]', path.join(__dirname, '../fixtures/test-image.jpg'));
+
+  const preview = page.locator('.dz-preview').first();
+  await expect(preview).toHaveClass(/elgg-dropzone-error/, { timeout: 5_000 });
+  await expect(preview.locator('.dz-error-message')).toBeVisible();
+});
+
+test('remove button deletes the file', async ({ page }) => {
+  await page.goto('/path/to/upload-page');
+  await page.setInputFiles('input[type=file]', path.join(__dirname, '../fixtures/test-image.jpg'));
+
+  const preview = page.locator('.dz-preview').first();
+  await expect(preview).toHaveClass(/elgg-dropzone-success/, { timeout: 10_000 });
+
+  // Click remove
+  await preview.locator('.dz-remove').click();
+  await expect(preview).not.toBeAttached();
+});
+```
+
+---
+
+### Pattern D: Dynamic content loading (placeholders / lazy views)
+
+For plugins that render `data-src` placeholders and load content via AJAX:
+
+```typescript
+// tests/playwright/tests/placeholder.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('placeholder loads deferred view content', async ({ page }) => {
+  await page.goto('/path/to/page-with-placeholder');
+
+  // Initially shows a loading spinner or nothing
+  const placeholder = page.locator('[data-src*="_deferred/"]').first();
+  await expect(placeholder).toBeVisible();
+
+  // Wait for content to load (JS replaces placeholder with real HTML)
+  await expect(placeholder).not.toHaveAttribute('data-src', { timeout: 5_000 });
+
+  // Actual content should be present
+  await expect(page.locator('.myplugin-widget-content')).toBeVisible();
+});
+
+test('deferred view does not make duplicate requests', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('_deferred')) requests.push(req.url());
+  });
+
+  await page.goto('/path/to/page-with-placeholder');
+  await page.waitForTimeout(2000);
+
+  // Count unique deferred URLs — should load each only once
+  const unique = new Set(requests);
+  expect(requests.length).toBe(unique.size);
+});
+```
+
+---
+
+### Pattern E: Autocomplete / select2 inputs
+
+For plugins that enhance `<select>` elements with Select2 or similar:
+
+```typescript
+// tests/playwright/tests/autocomplete.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('typing in autocomplete fetches and shows results', async ({ page }) => {
+  await page.goto('/path/to/form-with-autocomplete');
+
+  // Click the Select2 container to open
+  await page.click('.select2-container');
+
+  // Type in the search field that Select2 creates
+  await page.fill('.select2-search__field', 'admin');
+
+  // Mock or wait for AJAX results
+  await expect(page.locator('.select2-results__option')).toHaveCount({ minimum: 1 }, { timeout: 3_000 });
+
+  // Select first result
+  await page.locator('.select2-results__option').first().click();
+
+  // The underlying <select> should have the value set
+  const selectValue = await page.locator('select[name="user_guid"]').inputValue();
+  expect(selectValue).not.toBe('');
+});
+
+test('selected item renders with icon if provided', async ({ page }) => {
+  await page.route('**/path/to/autocomplete/source*', (route) =>
+    route.fulfill({
+      json: [{ id: 1, text: 'Admin User', icon: '/path/to/avatar.jpg' }]
+    })
+  );
+
+  await page.goto('/path/to/form-with-autocomplete');
+  await page.click('.select2-container');
+  await page.fill('.select2-search__field', 'Ad');
+  await page.locator('.select2-results__option').first().click();
+
+  // Rendered selection should contain an image
+  await expect(page.locator('.select2-selection .select-img')).toBeVisible();
+});
+```
+
+---
+
+### Pattern F: Toggle visibility / show-hide UI
+
+For plugins with toggler buttons (attachments, collapsible panels, drawers):
+
+```typescript
+// tests/playwright/tests/toggle.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('attachments panel is hidden by default', async ({ page }) => {
+  await page.goto('/path/to/post-form');
+  await expect(page.locator('.attachments-form')).toBeHidden();
+});
+
+test('toggler button shows the attachments panel', async ({ page }) => {
+  await page.goto('/path/to/post-form');
+  await page.click('.attachments-toggler');
+  await expect(page.locator('.attachments-form')).toBeVisible();
+});
+
+test('form reset hides the attachments panel again', async ({ page }) => {
+  await page.goto('/path/to/post-form');
+  await page.click('.attachments-toggler');
+  await expect(page.locator('.attachments-form')).toBeVisible();
+
+  await page.click('[type=reset]');
+  await expect(page.locator('.attachments-form')).toBeHidden();
+});
+```
+
+---
+
+### Pattern G: Permission-dependent UI
+
+For plugins that show/hide UI based on login state or capabilities:
+
+```typescript
+// tests/playwright/tests/permissions.spec.ts
+import { test, expect } from '@playwright/test';
+import { loginAsAdmin } from '../helpers/login';
+
+test('action buttons hidden for guests', async ({ page }) => {
+  // No login — guest session
+  await page.goto('/path/to/content');
+  await expect(page.locator('.elgg-menu-entity .elgg-menu-item-edit')).not.toBeVisible();
+});
+
+test('edit button visible for content owner', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/path/to/content');
+  await expect(page.locator('.elgg-menu-entity .elgg-menu-item-edit')).toBeVisible();
+});
+```
+
+---
+
+### Pattern H: Elgg system messages
+
+Every AJAX action in Elgg surfaces feedback through `elgg.system_message()` / `elgg.register_error()`. Test these for any action-based workflow:
+
+```typescript
+// Check for success system message
+await expect(page.locator('.elgg-system-messages .elgg-message-success')).toBeVisible({ timeout: 5_000 });
+
+// Check for error system message
+await expect(page.locator('.elgg-system-messages .elgg-message-error')).toBeVisible({ timeout: 5_000 });
+```
+
+---
+
+### Playwright test file structure
+
+```
+<plugin>/
+  tests/
+    playwright/
+      playwright.config.ts
+      package.json          # { "devDependencies": { "@playwright/test": "^1.x" } }
+      helpers/
+        login.ts            # loginAsAdmin(), loginAsUser()
+      fixtures/
+        test-image.jpg      # Small test file for upload tests
+        test-doc.pdf
+      tests/
+        validation.spec.ts  # Form validation state classes
+        ajax-form.spec.ts   # AJAX submit lifecycle
+        file-upload.spec.ts # Dropzone/upload flows
+        toggle.spec.ts      # Show/hide UI panels
+        permissions.spec.ts # Guest vs owner visibility
+```
+
+### Playwright test coverage checklist
+
+- [ ] Every CSS state class that JS toggles is tested (success, error, loading, active, hidden)
+- [ ] Every AJAX action has: pending state, success path, error path
+- [ ] Every toggler has: initial state, after click, after reset
+- [ ] File upload has: progress, success class, error class, removal
+- [ ] Autocomplete has: typing triggers results, selection updates hidden input
+- [ ] Permission-gated UI tested as both guest and authenticated user
+- [ ] System messages tested for all action outcomes
+- [ ] `data-*` driven initialization tested (element has attribute → JS activates)
 
 ---
 
@@ -551,9 +969,18 @@ Key 6.x JS changes:
 
 ### Coverage checklist
 
+**Vitest (unit):**
 - [ ] Each exported function has at least one test
 - [ ] Edge cases tested (empty input, null, undefined)
 - [ ] Elgg hook interactions tested (register, trigger, return values)
 - [ ] Ajax calls tested (action name, parameters, error handling)
 - [ ] DOM manipulation tested (element creation, event binding, visibility)
 - [ ] i18n tested (translation keys used correctly)
+
+**Playwright (behavioral):**
+- [ ] Every CSS state class that JS toggles is tested (see Phase 5b checklist)
+- [ ] Every AJAX action: pending → success → error
+- [ ] Every toggle/show-hide: initial state, after click, after reset
+- [ ] File upload flows: progress, success, error, removal
+- [ ] Permission-gated UI: guest vs authenticated
+- [ ] System messages verified for all action outcomes
