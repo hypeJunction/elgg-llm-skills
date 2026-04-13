@@ -186,6 +186,21 @@ docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 | LLM report | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
 | Verify only | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
 
+### Shared rules that run on every migration
+
+Every manifest (2x→3x, 3x→4x, 4x→5x, 5x→6x, 6x→7x) ends with
+`999-add-docblocks`, a shared rule that walks every `.php` file in the
+plugin and attaches a PHPDoc block to any function, method, or class
+property that doesn't already have one. It infers types from PHP
+hints (falling back to `mixed`), leaves existing docblocks alone, and
+uses nikic/php-parser's format-preserving printer so nothing else in
+the file is reformatted. The summary line is intentionally blank for
+a human or LLM to fill in — the value is the type scaffolding, not
+the prose. Constructors are rendered without `@return`, variadic
+params render `...$name`, and `void` / `never` return types flow
+through unchanged. It runs automatically as the last rule of every
+manifest — no separate invocation needed. Re-running is idempotent.
+
 ### CLI Flags
 
 | Flag | Purpose |

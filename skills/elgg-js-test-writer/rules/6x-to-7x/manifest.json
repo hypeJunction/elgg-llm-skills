@@ -1,182 +1,190 @@
 {
-    "from": "6.x",
-    "to": "7.x",
-    "rules": [
-        {
-            "id": "000-update-manifest-version",
-            "name": "Update composer.json to target Elgg 7.x",
-            "automated": false,
-            "llm_instructions": "Update the plugin's `composer.json` to require Elgg 7.x:\n\n```json\n\"require\": {\n    \"php\": \">=8.3\",\n    \"elgg/elgg\": \"~7.0.0\"\n}\n```\n\nEnsure `ext-intl` is required.",
-            "breaking_change": "Plugin must declare Elgg 7.x compatibility, PHP 8.3+ required",
-            "priority": 1
-        },
-        {
-            "id": "001-elggobject-abstract",
-            "name": "Replace direct ElggObject instantiation with subclassed entities",
-            "automated": false,
-            "llm_instructions": "**`ElggObject` is now abstract** — you can no longer create `ElggObject` entities directly. Every object must use a subclass.\n\n```php\n// Before (6.x):\n$entity = new ElggObject();\n$entity->subtype = 'my_subtype';\n$entity->save();\n\n// After (7.x): Must have a registered entity class\nclass MyEntity extends ElggObject {\n    public const SUBTYPE = 'my_subtype';\n    protected function initializeAttributes() {\n        parent::initializeAttributes();\n        $this->attributes['subtype'] = self::SUBTYPE;\n    }\n}\n\n// In elgg-plugin.php:\n'entities' => [\n    [\n        'type' => 'object',\n        'subtype' => 'my_subtype',\n        'class' => MyEntity::class,\n    ],\n],\n\n// Usage:\n$entity = new MyEntity();\n$entity->save();\n```\n\nSearch for direct ElggObject instantiation:\n```bash\ngrep -rn 'new ElggObject\\b\\|new \\\\ElggObject\\b' classes/ views/ actions/ --include='*.php'\n```\n\nAlso check factory patterns and tests.",
-            "breaking_change": "ElggObject is abstract — cannot be instantiated directly, must use subclasses",
-            "priority": 10
-        },
-        {
-            "id": "002-css-crush-removed",
-            "name": "Remove CSS Crush preprocessing and use native CSS",
-            "automated": false,
-            "llm_instructions": "CSS Crush preprocessing has been completely removed from Elgg 7.x. CSS files are served as-is.\n\n**What breaks:**\n- CSS Crush variables (`$(varname)`) no longer work → use CSS custom properties (`var(--elgg-varname)`)\n- CSS Crush nesting no longer works → use native CSS nesting (supported in PHP 8.3+ target browsers)\n- Media query variables no longer resolved → hardcode values\n- The `'vars:compiler', 'css'` event is removed\n\n```css\n/* Before (CSS Crush): */\n.my-element {\n    color: $(text-color);\n    @media $(mobile) {\n        font-size: 14px;\n    }\n}\n\n/* After (Native CSS): */\n.my-element {\n    color: var(--elgg-text-color);\n    @media (max-width: 820px) {\n        font-size: 14px;\n    }\n}\n```\n\nSearch for CSS Crush syntax:\n```bash\ngrep -rn '\\$(' views/ --include='*.css'\ngrep -rn 'vars:compiler.*css\\|css_compiler' classes/ elgg-plugin.php --include='*.php'\n```",
-            "breaking_change": "CSS Crush removed — use native CSS variables and features",
-            "priority": 20
-        },
-        {
-            "id": "003-cache-backends-removed",
-            "name": "Remove Redis and Memcached cache configuration",
-            "automated": false,
-            "llm_instructions": "Built-in Redis and Memcached support has been removed from Elgg 7.x.\n\n**Removed config options:**\n- `memcache`\n- `memcache_namespace_prefix`\n- `memcache_servers`\n- `redis`\n- `redis_options`\n- `redis_servers`\n\nIf your plugin configures or depends on these cache backends:\n```bash\ngrep -rn 'memcache\\|redis' elgg-plugin.php classes/ --include='*.php'\ngrep -rn 'memcache\\|redis' settings.php 2>/dev/null\n```\n\nRemove any references to these cache backends. Elgg 7.x uses filesystem caching only.\n\n**If your production site uses Redis/Memcached**, you'll need to find an alternative caching strategy before upgrading.",
-            "breaking_change": "Redis and Memcached built-in support removed",
-            "priority": 30
-        },
-        {
-            "id": "004-mailer-laminas-to-symfony",
-            "name": "Replace Laminas\\Mail with Symfony Mailer",
-            "automated": false,
-            "llm_instructions": "The email system switched from `laminas/laminas-mail` to `symfony/mailer`.\n\n**Key changes:**\n- `emailer_transport` config format changed\n- `emailer_sendmail_settings` config option removed\n- `emailer_smtp_settings` config option removed\n- Event `'zend:message', 'system:email'` renamed to `'message', 'system:email'`\n- `\\Elgg\\Email\\Address` removed → use `\\Symfony\\Component\\Mime\\Address`\n- `\\Elgg\\Email\\HtmlPart` removed\n- `\\Elgg\\Email\\PlainTextPart` removed\n\n```php\n// Before (6.x):\nuse Elgg\\Email\\Address;\n$addr = Address::fromEntity($user);\n\n// After (7.x):\nuse Symfony\\Component\\Mime\\Address;\n$addr = new Address($user->email, $user->getDisplayName());\n```\n\nSearch:\n```bash\ngrep -rn 'Elgg\\\\Email\\\\Address\\|Elgg\\\\Email\\\\HtmlPart\\|Elgg\\\\Email\\\\PlainTextPart' classes/ views/ --include='*.php'\ngrep -rn 'zend:message\\|emailer_transport\\|emailer_sendmail\\|emailer_smtp' classes/ elgg-plugin.php --include='*.php'\ngrep -rn 'Laminas\\\\Mail\\|laminas.*mail' classes/ --include='*.php'\n```",
-            "breaking_change": "Email system switched from Laminas Mail to Symfony Mailer — classes and config changed",
-            "priority": 40
-        },
-        {
-            "id": "005-font-awesome-v7",
-            "name": "Update Font Awesome icon usage for v7",
-            "automated": false,
-            "llm_instructions": "Font Awesome was updated to v7 in Elgg 7.x. Icon class names may have changed.\n\n**Common changes:**\n- Class prefix changes: `fa-*` naming may differ\n- Some icon names renamed or reorganized\n- New icon style categories\n\nSearch for FA icon usage:\n```bash\ngrep -rn 'fa-\\|elgg_view_icon\\|icon.*fa' views/ --include='*.php' --include='*.css' --include='*.js'\n```\n\nVerify each icon name still exists in FA v7. Check the Font Awesome migration guide for renamed icons.",
-            "breaking_change": "Font Awesome updated to v7 — icon names may have changed",
-            "priority": 50
-        },
-        {
-            "id": "006-notification-handler-renames",
-            "name": "Update notification handler class references",
-            "automated": false,
-            "llm_instructions": "Notification handler classes were moved and renamed in Elgg 7.x:\n\n**Handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateCommentEventHandler` | `Elgg\\Notifications\\Handlers\\CreateComment` |\n| `Elgg\\Notifications\\MakeAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\MakeAdminUser` |\n| `Elgg\\Notifications\\MentionsEventHandler` | `Elgg\\Notifications\\Handlers\\Mentions` |\n| `Elgg\\Notifications\\RemoveAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\RemoveAdminUser` |\n| `Elgg\\Notifications\\UnbanUserEventHandler` | `Elgg\\Notifications\\Handlers\\UnbanUser` |\n\n**Event handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateContentEventHandler` | `Elgg\\Notifications\\Events\\CreateContent` |\n| `Elgg\\Notifications\\EnqueueEventHandler` | `Elgg\\Notifications\\Events\\Enqueue` |\n| `Elgg\\Notifications\\MentionsEnqueueEventHandler` | `Elgg\\Notifications\\Events\\MentionsEnqueue` |\n\n**API changes:**\n- `elgg_register_notification_event()` changed `array $actions` to `string $action` (singular)\n- `elgg_unregister_notification_event()` now requires a `$handler` parameter\n- Multiple notification handlers per action now supported\n\nSearch:\n```bash\ngrep -rn 'CreateCommentEventHandler\\|MakeAdminUserEventHandler\\|MentionsEventHandler\\|RemoveAdminUserEventHandler\\|UnbanUserEventHandler\\|CreateContentEventHandler\\|EnqueueEventHandler\\|MentionsEnqueueEventHandler' classes/ elgg-plugin.php --include='*.php'\ngrep -rn 'elgg_register_notification_event\\|elgg_unregister_notification_event' classes/ elgg-plugin.php --include='*.php'\n```",
-            "breaking_change": "Notification handler classes moved to Handlers/Events subnamespaces, API signatures changed",
-            "priority": 60
-        },
-        {
-            "id": "007-form-action-renames",
-            "name": "Update renamed plugin forms and actions",
-            "automated": false,
-            "llm_instructions": "Core plugin forms and actions were renamed for consistency:\n\n| Old | New |\n|-----|-----|\n| `forms/blog/save` | `forms/blog/edit` |\n| `forms/bookmarks/save` | `forms/bookmarks/edit` |\n| `forms/discussion/save` | `forms/discussion/edit` |\n| `forms/file/upload` | `forms/file/edit` |\n| `action/blog/save` | `action/blog/edit` |\n| `action/bookmarks/save` | `action/bookmarks/edit` |\n| `action/discussion/save` | `action/discussion/edit` |\n| `action/file/upload` | `action/file/edit` |\n\nIf your plugin overrides these forms/actions or references them:\n```bash\ngrep -rn 'blog/save\\|bookmarks/save\\|discussion/save\\|file/upload' classes/ views/ actions/ elgg-plugin.php --include='*.php'\n```\n\nUpdate both view paths and action references.",
-            "breaking_change": "Core plugin forms renamed: save→edit, upload→edit",
-            "priority": 70
-        },
-        {
-            "id": "008-response-event-changes",
-            "name": "Update response and ajax event handlers",
-            "automated": false,
-            "llm_instructions": "Response event changes in Elgg 7.x:\n\n1. **`response` and `ajax_response` event types changed**: The path segment is replaced by `route_name`\n2. **`ajax_response` event replaced with `ajax_results`**\n3. **Legacy `forward` event removed** — use `response` event\n\n```php\n// Before (6.x):\nelgg_register_event_handler('ajax_response', 'path:action/myplugin/save', function($event) { ... });\n\n// After (7.x):\nelgg_register_event_handler('ajax_results', 'route:action/myplugin/save', function($event) { ... });\n```\n\nSearch:\n```bash\ngrep -rn 'ajax_response\\|forward.*event' classes/ elgg-plugin.php --include='*.php'\ngrep -rn \"response.*path:\" classes/ elgg-plugin.php --include='*.php'\n```",
-            "breaking_change": "response/ajax_response events restructured, forward event removed",
-            "priority": 80
-        },
-        {
-            "id": "009-button-classes-removed",
-            "name": "Replace removed button CSS classes",
-            "automated": false,
-            "llm_instructions": "Two button CSS classes were removed in Elgg 7.x:\n- `elgg-button-special` — replaced by theme color scheme classes\n- `elgg-button-action-done` — removed\n\nSearch:\n```bash\ngrep -rn 'elgg-button-special\\|elgg-button-action-done' views/ --include='*.php' --include='*.css' --include='*.js'\n```\n\nReplace with appropriate Elgg 7.x button classes. Check the Elgg 7.x theme documentation for available button styles.",
-            "breaking_change": "elgg-button-special and elgg-button-action-done CSS classes removed",
-            "priority": 90
-        },
-        {
-            "id": "010-group-route-changes",
-            "name": "Update group collection routes (subpage variable dropped)",
-            "automated": false,
-            "llm_instructions": "Group route definitions dropped the `subpage` variable for these routes:\n- `collection:object:blog:group`\n- `collection:object:bookmarks:group`\n- `collection:object:page:group`\n\nIf your plugin generates URLs for these routes with a `subpage` parameter:\n```php\n// Before:\nelgg_generate_url('collection:object:blog:group', [\n    'guid' => $group->guid,\n    'subpage' => 'all',\n]);\n\n// After:\nelgg_generate_url('collection:object:blog:group', [\n    'guid' => $group->guid,\n]);\n```\n\nSearch:\n```bash\ngrep -rn 'subpage' classes/ views/ --include='*.php' | grep -i 'group\\|collection'\n```",
-            "breaking_change": "Group collection routes dropped subpage variable",
-            "priority": 100
-        },
-        {
-            "id": "011-action-renames",
-            "name": "Update renamed actions",
-            "automated": false,
-            "llm_instructions": "The following action was renamed:\n- `admin/site/flush_cache` → `admin/site/cache/clear`\n\nSearch:\n```bash\ngrep -rn 'flush_cache\\|admin/site/flush' classes/ views/ actions/ --include='*.php'\n```\n\nUpdate any references to the old action name.",
-            "breaking_change": "admin/site/flush_cache action renamed to admin/site/cache/clear",
-            "priority": 110
-        },
-        {
-            "id": "012-members-route-renames",
-            "name": "Update members route names",
-            "automated": false,
-            "llm_instructions": "Members routes were renamed:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nSearch:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```\n\nUpdate `elgg_generate_url()` calls and route references.",
-            "breaking_change": "Members routes renamed: collection:user:user→:all, search:user:user→:search",
-            "priority": 120
-        },
-        {
-            "id": "013-messages-parameter-rename",
-            "name": "Update messages recipient parameter",
-            "automated": false,
-            "llm_instructions": "The messages `recipients` parameter was renamed to `recipient` (singular).\n\nSearch:\n```bash\ngrep -rn 'recipients' classes/ views/ actions/ --include='*.php' | grep -i message\n```\n\nUpdate parameter names in forms and action handlers.",
-            "breaking_change": "Messages 'recipients' parameter renamed to 'recipient' (singular)",
-            "priority": 130
-        },
-        {
-            "id": "014-external-pages-rewrite",
-            "name": "Update external pages / site pages usage",
-            "automated": false,
-            "llm_instructions": "The external pages plugin was completely rewritten in Elgg 7.x:\n\n- Separate subtypes merged into single `external_page` subtype\n- `expages/edit` action replaced by generic `EntityEditAction` controller\n- Extra pages extendable via `'names', 'externalpages'` event\n\nIf your plugin extends or interacts with external pages:\n```bash\ngrep -rn 'expages\\|external_page\\|externalpages' classes/ views/ actions/ elgg-plugin.php --include='*.php'\n```\n\nUpdate to use the new single subtype and event-based extension system.",
-            "breaking_change": "External pages plugin rewritten — single subtype, new action controller",
-            "priority": 140
-        },
-        {
-            "id": "015-min-password-length",
-            "name": "Handle minimum password length change to 16",
-            "automated": false,
-            "llm_instructions": "The default `min_password_length` changed from 6 to 16 in Elgg 7.x.\n\nIf your plugin validates passwords or has custom password requirements:\n```bash\ngrep -rn 'min_password_length\\|password.*length\\|strlen.*password' classes/ views/ --include='*.php'\n```\n\nExisting users with shorter passwords can still log in, but new passwords must meet the new minimum.",
-            "breaking_change": "Default minimum password length increased from 6 to 16 characters",
-            "priority": 150
-        },
-        {
-            "id": "016-phpunit-12",
-            "name": "Update PHPUnit tests for PHPUnit 12.5",
-            "automated": false,
-            "llm_instructions": "Elgg 7.x uses PHPUnit 12.5 (up from 10.5). Key changes from 10 to 12:\n\n- Further removal of deprecated assertion methods\n- Attribute-based annotations required (no more `@test`, `@dataProvider` docblocks)\n- Mock builder API changes\n- Test class naming requirements may be stricter\n\nRun the migration tool:\n```bash\nphpunit --migrate-configuration\n```\n\nSearch for deprecated patterns:\n```bash\ngrep -rn '@test\\|@dataProvider\\|@depends\\|@group' tests/ --include='*.php'\n```",
-            "breaking_change": "PHPUnit 12.5 — annotations must use PHP attributes, further API removals",
-            "priority": 160
-        },
-        {
-            "id": "017-river-emittable-capability",
-            "name": "Register river_emittable capability for entities that create river items",
-            "automated": false,
-            "llm_instructions": "River activity is now controlled by the `river_emittable` capability in `elgg-plugin.php`.\n\nIf your entity type should generate river activity:\n```php\n// In elgg-plugin.php:\nreturn [\n    'entities' => [\n        [\n            'type' => 'object',\n            'subtype' => 'my_subtype',\n            'class' => MyEntity::class,\n            'capabilities' => [\n                'river_emittable' => true,\n            ],\n        ],\n    ],\n];\n```\n\nSearch:\n```bash\ngrep -rn 'elgg_create_river_item\\|river' classes/ elgg-plugin.php --include='*.php'\n```",
-            "breaking_change": "River items require river_emittable capability registered in elgg-plugin.php",
-            "priority": 170
-        },
-        {
-            "id": "018-entity-listing-limit-clamped",
-            "name": "Handle entity listing limit clamping (min 1, max 100)",
-            "automated": false,
-            "llm_instructions": "The `limit` parameter from query string in `elgg_list_entities()` is now clamped to min 1, max 100.\n\nIf your plugin relies on listing more than 100 entities via URL parameter, or passing limit=0 to get unlimited results, this will be clamped.\n\nSearch:\n```bash\ngrep -rn 'elgg_list_entities\\|limit.*=.*0' classes/ views/ --include='*.php'\n```\n\nFor internal queries needing more than 100 results, set the limit directly in the options array (not from query string).",
-            "breaking_change": "elgg_list_entities() limit from query string clamped to 1-100",
-            "priority": 180
-        },
-        {
-            "id": "019-ckeditor-v47",
-            "name": "Update CKEditor customizations for v47",
-            "automated": false,
-            "llm_instructions": "CKEditor was updated to v47 in Elgg 7.x. If your plugin customizes or extends CKEditor:\n\n```bash\ngrep -rn 'ckeditor\\|CKEditor\\|CKEDITOR' views/ --include='*.js' --include='*.php'\n```\n\nCheck the CKEditor changelog for breaking changes between your current version and v47.",
-            "breaking_change": "CKEditor updated to v47 — custom plugins and configuration may need updating",
-            "priority": 190
-        },
-        {
-            "id": "020-likes-visibility",
-            "name": "Handle likes visibility change",
-            "automated": false,
-            "llm_instructions": "In Elgg 7.x, only content owners can see who liked their content by default. A new plugin setting controls public visibility.\n\nIf your plugin extends or depends on likes visibility:\n```bash\ngrep -rn 'likes\\|who_liked' classes/ views/ --include='*.php'\n```\n\nCheck if your UI assumes likes are always publicly visible.",
-            "breaking_change": "Likes visibility restricted to content owners by default",
-            "priority": 200
-        },
-        {
-            "id": "021-webservices-changes",
-            "name": "Handle webservices REST API response changes",
-            "automated": false,
-            "llm_instructions": "Webservices changes in Elgg 7.x:\n\n- REST API responses include `Content-Disposition: attachment` header\n- Error responses return proper HTTP status codes (404, 403, 500) instead of 200\n- REST endpoint segments URL part changed\n\nIf your plugin provides or consumes web services:\n```bash\ngrep -rn 'webservices\\|rest_api\\|ws_expose\\|api_methods' classes/ elgg-plugin.php --include='*.php'\n```\n\nAPI clients that check HTTP status codes may need updating to handle new error codes.",
-            "breaking_change": "REST API returns proper HTTP error codes, Content-Disposition header added",
-            "priority": 210
-        }
-    ]
+  "from": "6.x",
+  "to": "7.x",
+  "rules": [
+    {
+      "id": "000-update-manifest-version",
+      "name": "Update composer.json to target Elgg 7.x",
+      "automated": false,
+      "llm_instructions": "Update the plugin's `composer.json` to require Elgg 7.x:\n\n```json\n\"require\": {\n    \"php\": \">=8.3\",\n    \"elgg/elgg\": \"~7.0.0\"\n}\n```\n\nEnsure `ext-intl` is required.",
+      "breaking_change": "Plugin must declare Elgg 7.x compatibility, PHP 8.3+ required",
+      "priority": 1
+    },
+    {
+      "id": "001-elggobject-abstract",
+      "name": "Replace direct ElggObject instantiation with subclassed entities",
+      "automated": false,
+      "llm_instructions": "**`ElggObject` is now abstract** — you can no longer create `ElggObject` entities directly. Every object must use a subclass.\n\n```php\n// Before (6.x):\n$entity = new ElggObject();\n$entity->subtype = 'my_subtype';\n$entity->save();\n\n// After (7.x): Must have a registered entity class\nclass MyEntity extends ElggObject {\n    public const SUBTYPE = 'my_subtype';\n    protected function initializeAttributes() {\n        parent::initializeAttributes();\n        $this->attributes['subtype'] = self::SUBTYPE;\n    }\n}\n\n// In elgg-plugin.php:\n'entities' => [\n    [\n        'type' => 'object',\n        'subtype' => 'my_subtype',\n        'class' => MyEntity::class,\n    ],\n],\n\n// Usage:\n$entity = new MyEntity();\n$entity->save();\n```\n\nSearch for direct ElggObject instantiation:\n```bash\ngrep -rn 'new ElggObject\\b\\|new \\\\ElggObject\\b' classes/ views/ actions/ --include='*.php'\n```\n\nAlso check factory patterns and tests.",
+      "breaking_change": "ElggObject is abstract — cannot be instantiated directly, must use subclasses",
+      "priority": 10
+    },
+    {
+      "id": "002-css-crush-removed",
+      "name": "Remove CSS Crush preprocessing and use native CSS",
+      "automated": false,
+      "llm_instructions": "CSS Crush preprocessing has been completely removed from Elgg 7.x. CSS files are served as-is.\n\n**What breaks:**\n- CSS Crush variables (`$(varname)`) no longer work → use CSS custom properties (`var(--elgg-varname)`)\n- CSS Crush nesting no longer works → use native CSS nesting (supported in PHP 8.3+ target browsers)\n- Media query variables no longer resolved → hardcode values\n- The `'vars:compiler', 'css'` event is removed\n\n```css\n/* Before (CSS Crush): */\n.my-element {\n    color: $(text-color);\n    @media $(mobile) {\n        font-size: 14px;\n    }\n}\n\n/* After (Native CSS): */\n.my-element {\n    color: var(--elgg-text-color);\n    @media (max-width: 820px) {\n        font-size: 14px;\n    }\n}\n```\n\nSearch for CSS Crush syntax:\n```bash\ngrep -rn '\\$(' views/ --include='*.css'\ngrep -rn 'vars:compiler.*css\\|css_compiler' classes/ elgg-plugin.php --include='*.php'\n```",
+      "breaking_change": "CSS Crush removed — use native CSS variables and features",
+      "priority": 20
+    },
+    {
+      "id": "003-cache-backends-removed",
+      "name": "Remove Redis and Memcached cache configuration",
+      "automated": false,
+      "llm_instructions": "Built-in Redis and Memcached support has been removed from Elgg 7.x.\n\n**Removed config options:**\n- `memcache`\n- `memcache_namespace_prefix`\n- `memcache_servers`\n- `redis`\n- `redis_options`\n- `redis_servers`\n\nIf your plugin configures or depends on these cache backends:\n```bash\ngrep -rn 'memcache\\|redis' elgg-plugin.php classes/ --include='*.php'\ngrep -rn 'memcache\\|redis' settings.php 2>/dev/null\n```\n\nRemove any references to these cache backends. Elgg 7.x uses filesystem caching only.\n\n**If your production site uses Redis/Memcached**, you'll need to find an alternative caching strategy before upgrading.",
+      "breaking_change": "Redis and Memcached built-in support removed",
+      "priority": 30
+    },
+    {
+      "id": "004-mailer-laminas-to-symfony",
+      "name": "Replace Laminas\\Mail with Symfony Mailer",
+      "automated": false,
+      "llm_instructions": "The email system switched from `laminas/laminas-mail` to `symfony/mailer`.\n\n**Key changes:**\n- `emailer_transport` config format changed\n- `emailer_sendmail_settings` config option removed\n- `emailer_smtp_settings` config option removed\n- Event `'zend:message', 'system:email'` renamed to `'message', 'system:email'`\n- `\\Elgg\\Email\\Address` removed → use `\\Symfony\\Component\\Mime\\Address`\n- `\\Elgg\\Email\\HtmlPart` removed\n- `\\Elgg\\Email\\PlainTextPart` removed\n\n```php\n// Before (6.x):\nuse Elgg\\Email\\Address;\n$addr = Address::fromEntity($user);\n\n// After (7.x):\nuse Symfony\\Component\\Mime\\Address;\n$addr = new Address($user->email, $user->getDisplayName());\n```\n\nSearch:\n```bash\ngrep -rn 'Elgg\\\\Email\\\\Address\\|Elgg\\\\Email\\\\HtmlPart\\|Elgg\\\\Email\\\\PlainTextPart' classes/ views/ --include='*.php'\ngrep -rn 'zend:message\\|emailer_transport\\|emailer_sendmail\\|emailer_smtp' classes/ elgg-plugin.php --include='*.php'\ngrep -rn 'Laminas\\\\Mail\\|laminas.*mail' classes/ --include='*.php'\n```",
+      "breaking_change": "Email system switched from Laminas Mail to Symfony Mailer — classes and config changed",
+      "priority": 40
+    },
+    {
+      "id": "005-font-awesome-v7",
+      "name": "Update Font Awesome icon usage for v7",
+      "automated": false,
+      "llm_instructions": "Font Awesome was updated to v7 in Elgg 7.x. Icon class names may have changed.\n\n**Common changes:**\n- Class prefix changes: `fa-*` naming may differ\n- Some icon names renamed or reorganized\n- New icon style categories\n\nSearch for FA icon usage:\n```bash\ngrep -rn 'fa-\\|elgg_view_icon\\|icon.*fa' views/ --include='*.php' --include='*.css' --include='*.js'\n```\n\nVerify each icon name still exists in FA v7. Check the Font Awesome migration guide for renamed icons.",
+      "breaking_change": "Font Awesome updated to v7 — icon names may have changed",
+      "priority": 50
+    },
+    {
+      "id": "006-notification-handler-renames",
+      "name": "Update notification handler class references",
+      "automated": false,
+      "llm_instructions": "Notification handler classes were moved and renamed in Elgg 7.x:\n\n**Handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateCommentEventHandler` | `Elgg\\Notifications\\Handlers\\CreateComment` |\n| `Elgg\\Notifications\\MakeAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\MakeAdminUser` |\n| `Elgg\\Notifications\\MentionsEventHandler` | `Elgg\\Notifications\\Handlers\\Mentions` |\n| `Elgg\\Notifications\\RemoveAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\RemoveAdminUser` |\n| `Elgg\\Notifications\\UnbanUserEventHandler` | `Elgg\\Notifications\\Handlers\\UnbanUser` |\n\n**Event handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateContentEventHandler` | `Elgg\\Notifications\\Events\\CreateContent` |\n| `Elgg\\Notifications\\EnqueueEventHandler` | `Elgg\\Notifications\\Events\\Enqueue` |\n| `Elgg\\Notifications\\MentionsEnqueueEventHandler` | `Elgg\\Notifications\\Events\\MentionsEnqueue` |\n\n**API changes:**\n- `elgg_register_notification_event()` changed `array $actions` to `string $action` (singular)\n- `elgg_unregister_notification_event()` now requires a `$handler` parameter\n- Multiple notification handlers per action now supported\n\nSearch:\n```bash\ngrep -rn 'CreateCommentEventHandler\\|MakeAdminUserEventHandler\\|MentionsEventHandler\\|RemoveAdminUserEventHandler\\|UnbanUserEventHandler\\|CreateContentEventHandler\\|EnqueueEventHandler\\|MentionsEnqueueEventHandler' classes/ elgg-plugin.php --include='*.php'\ngrep -rn 'elgg_register_notification_event\\|elgg_unregister_notification_event' classes/ elgg-plugin.php --include='*.php'\n```",
+      "breaking_change": "Notification handler classes moved to Handlers/Events subnamespaces, API signatures changed",
+      "priority": 60
+    },
+    {
+      "id": "007-form-action-renames",
+      "name": "Update renamed plugin forms and actions",
+      "automated": false,
+      "llm_instructions": "Core plugin forms and actions were renamed for consistency:\n\n| Old | New |\n|-----|-----|\n| `forms/blog/save` | `forms/blog/edit` |\n| `forms/bookmarks/save` | `forms/bookmarks/edit` |\n| `forms/discussion/save` | `forms/discussion/edit` |\n| `forms/file/upload` | `forms/file/edit` |\n| `action/blog/save` | `action/blog/edit` |\n| `action/bookmarks/save` | `action/bookmarks/edit` |\n| `action/discussion/save` | `action/discussion/edit` |\n| `action/file/upload` | `action/file/edit` |\n\nIf your plugin overrides these forms/actions or references them:\n```bash\ngrep -rn 'blog/save\\|bookmarks/save\\|discussion/save\\|file/upload' classes/ views/ actions/ elgg-plugin.php --include='*.php'\n```\n\nUpdate both view paths and action references.",
+      "breaking_change": "Core plugin forms renamed: save→edit, upload→edit",
+      "priority": 70
+    },
+    {
+      "id": "008-response-event-changes",
+      "name": "Update response and ajax event handlers",
+      "automated": false,
+      "llm_instructions": "Response event changes in Elgg 7.x:\n\n1. **`response` and `ajax_response` event types changed**: The path segment is replaced by `route_name`\n2. **`ajax_response` event replaced with `ajax_results`**\n3. **Legacy `forward` event removed** — use `response` event\n\n```php\n// Before (6.x):\nelgg_register_event_handler('ajax_response', 'path:action/myplugin/save', function($event) { ... });\n\n// After (7.x):\nelgg_register_event_handler('ajax_results', 'route:action/myplugin/save', function($event) { ... });\n```\n\nSearch:\n```bash\ngrep -rn 'ajax_response\\|forward.*event' classes/ elgg-plugin.php --include='*.php'\ngrep -rn \"response.*path:\" classes/ elgg-plugin.php --include='*.php'\n```",
+      "breaking_change": "response/ajax_response events restructured, forward event removed",
+      "priority": 80
+    },
+    {
+      "id": "009-button-classes-removed",
+      "name": "Replace removed button CSS classes",
+      "automated": false,
+      "llm_instructions": "Two button CSS classes were removed in Elgg 7.x:\n- `elgg-button-special` — replaced by theme color scheme classes\n- `elgg-button-action-done` — removed\n\nSearch:\n```bash\ngrep -rn 'elgg-button-special\\|elgg-button-action-done' views/ --include='*.php' --include='*.css' --include='*.js'\n```\n\nReplace with appropriate Elgg 7.x button classes. Check the Elgg 7.x theme documentation for available button styles.",
+      "breaking_change": "elgg-button-special and elgg-button-action-done CSS classes removed",
+      "priority": 90
+    },
+    {
+      "id": "010-group-route-changes",
+      "name": "Update group collection routes (subpage variable dropped)",
+      "automated": false,
+      "llm_instructions": "Group route definitions dropped the `subpage` variable for these routes:\n- `collection:object:blog:group`\n- `collection:object:bookmarks:group`\n- `collection:object:page:group`\n\nIf your plugin generates URLs for these routes with a `subpage` parameter:\n```php\n// Before:\nelgg_generate_url('collection:object:blog:group', [\n    'guid' => $group->guid,\n    'subpage' => 'all',\n]);\n\n// After:\nelgg_generate_url('collection:object:blog:group', [\n    'guid' => $group->guid,\n]);\n```\n\nSearch:\n```bash\ngrep -rn 'subpage' classes/ views/ --include='*.php' | grep -i 'group\\|collection'\n```",
+      "breaking_change": "Group collection routes dropped subpage variable",
+      "priority": 100
+    },
+    {
+      "id": "011-action-renames",
+      "name": "Update renamed actions",
+      "automated": false,
+      "llm_instructions": "The following action was renamed:\n- `admin/site/flush_cache` → `admin/site/cache/clear`\n\nSearch:\n```bash\ngrep -rn 'flush_cache\\|admin/site/flush' classes/ views/ actions/ --include='*.php'\n```\n\nUpdate any references to the old action name.",
+      "breaking_change": "admin/site/flush_cache action renamed to admin/site/cache/clear",
+      "priority": 110
+    },
+    {
+      "id": "012-members-route-renames",
+      "name": "Update members route names",
+      "automated": false,
+      "llm_instructions": "Members routes were renamed:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nSearch:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```\n\nUpdate `elgg_generate_url()` calls and route references.",
+      "breaking_change": "Members routes renamed: collection:user:user→:all, search:user:user→:search",
+      "priority": 120
+    },
+    {
+      "id": "013-messages-parameter-rename",
+      "name": "Update messages recipient parameter",
+      "automated": false,
+      "llm_instructions": "The messages `recipients` parameter was renamed to `recipient` (singular).\n\nSearch:\n```bash\ngrep -rn 'recipients' classes/ views/ actions/ --include='*.php' | grep -i message\n```\n\nUpdate parameter names in forms and action handlers.",
+      "breaking_change": "Messages 'recipients' parameter renamed to 'recipient' (singular)",
+      "priority": 130
+    },
+    {
+      "id": "014-external-pages-rewrite",
+      "name": "Update external pages / site pages usage",
+      "automated": false,
+      "llm_instructions": "The external pages plugin was completely rewritten in Elgg 7.x:\n\n- Separate subtypes merged into single `external_page` subtype\n- `expages/edit` action replaced by generic `EntityEditAction` controller\n- Extra pages extendable via `'names', 'externalpages'` event\n\nIf your plugin extends or interacts with external pages:\n```bash\ngrep -rn 'expages\\|external_page\\|externalpages' classes/ views/ actions/ elgg-plugin.php --include='*.php'\n```\n\nUpdate to use the new single subtype and event-based extension system.",
+      "breaking_change": "External pages plugin rewritten — single subtype, new action controller",
+      "priority": 140
+    },
+    {
+      "id": "015-min-password-length",
+      "name": "Handle minimum password length change to 16",
+      "automated": false,
+      "llm_instructions": "The default `min_password_length` changed from 6 to 16 in Elgg 7.x.\n\nIf your plugin validates passwords or has custom password requirements:\n```bash\ngrep -rn 'min_password_length\\|password.*length\\|strlen.*password' classes/ views/ --include='*.php'\n```\n\nExisting users with shorter passwords can still log in, but new passwords must meet the new minimum.",
+      "breaking_change": "Default minimum password length increased from 6 to 16 characters",
+      "priority": 150
+    },
+    {
+      "id": "016-phpunit-12",
+      "name": "Update PHPUnit tests for PHPUnit 12.5",
+      "automated": false,
+      "llm_instructions": "Elgg 7.x uses PHPUnit 12.5 (up from 10.5). Key changes from 10 to 12:\n\n- Further removal of deprecated assertion methods\n- Attribute-based annotations required (no more `@test`, `@dataProvider` docblocks)\n- Mock builder API changes\n- Test class naming requirements may be stricter\n\nRun the migration tool:\n```bash\nphpunit --migrate-configuration\n```\n\nSearch for deprecated patterns:\n```bash\ngrep -rn '@test\\|@dataProvider\\|@depends\\|@group' tests/ --include='*.php'\n```",
+      "breaking_change": "PHPUnit 12.5 — annotations must use PHP attributes, further API removals",
+      "priority": 160
+    },
+    {
+      "id": "017-river-emittable-capability",
+      "name": "Register river_emittable capability for entities that create river items",
+      "automated": false,
+      "llm_instructions": "River activity is now controlled by the `river_emittable` capability in `elgg-plugin.php`.\n\nIf your entity type should generate river activity:\n```php\n// In elgg-plugin.php:\nreturn [\n    'entities' => [\n        [\n            'type' => 'object',\n            'subtype' => 'my_subtype',\n            'class' => MyEntity::class,\n            'capabilities' => [\n                'river_emittable' => true,\n            ],\n        ],\n    ],\n];\n```\n\nSearch:\n```bash\ngrep -rn 'elgg_create_river_item\\|river' classes/ elgg-plugin.php --include='*.php'\n```",
+      "breaking_change": "River items require river_emittable capability registered in elgg-plugin.php",
+      "priority": 170
+    },
+    {
+      "id": "018-entity-listing-limit-clamped",
+      "name": "Handle entity listing limit clamping (min 1, max 100)",
+      "automated": false,
+      "llm_instructions": "The `limit` parameter from query string in `elgg_list_entities()` is now clamped to min 1, max 100.\n\nIf your plugin relies on listing more than 100 entities via URL parameter, or passing limit=0 to get unlimited results, this will be clamped.\n\nSearch:\n```bash\ngrep -rn 'elgg_list_entities\\|limit.*=.*0' classes/ views/ --include='*.php'\n```\n\nFor internal queries needing more than 100 results, set the limit directly in the options array (not from query string).",
+      "breaking_change": "elgg_list_entities() limit from query string clamped to 1-100",
+      "priority": 180
+    },
+    {
+      "id": "019-ckeditor-v47",
+      "name": "Update CKEditor customizations for v47",
+      "automated": false,
+      "llm_instructions": "CKEditor was updated to v47 in Elgg 7.x. If your plugin customizes or extends CKEditor:\n\n```bash\ngrep -rn 'ckeditor\\|CKEditor\\|CKEDITOR' views/ --include='*.js' --include='*.php'\n```\n\nCheck the CKEditor changelog for breaking changes between your current version and v47.",
+      "breaking_change": "CKEditor updated to v47 — custom plugins and configuration may need updating",
+      "priority": 190
+    },
+    {
+      "id": "020-likes-visibility",
+      "name": "Handle likes visibility change",
+      "automated": false,
+      "llm_instructions": "In Elgg 7.x, only content owners can see who liked their content by default. A new plugin setting controls public visibility.\n\nIf your plugin extends or depends on likes visibility:\n```bash\ngrep -rn 'likes\\|who_liked' classes/ views/ --include='*.php'\n```\n\nCheck if your UI assumes likes are always publicly visible.",
+      "breaking_change": "Likes visibility restricted to content owners by default",
+      "priority": 200
+    },
+    {
+      "id": "021-webservices-changes",
+      "name": "Handle webservices REST API response changes",
+      "automated": false,
+      "llm_instructions": "Webservices changes in Elgg 7.x:\n\n- REST API responses include `Content-Disposition: attachment` header\n- Error responses return proper HTTP status codes (404, 403, 500) instead of 200\n- REST endpoint segments URL part changed\n\nIf your plugin provides or consumes web services:\n```bash\ngrep -rn 'webservices\\|rest_api\\|ws_expose\\|api_methods' classes/ elgg-plugin.php --include='*.php'\n```\n\nAPI clients that check HTTP status codes may need updating to handle new error codes.",
+      "breaking_change": "REST API returns proper HTTP error codes, Content-Disposition header added",
+      "priority": 210
+    },
+    {
+      "id": "999-add-docblocks",
+      "name": "Add PHPDoc blocks to functions, methods, and class properties",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\Shared\\AddDocBlocks",
+      "breaking_change": "None — quality-of-life improvement applied at the end of every migration so migrated plugins carry type-bearing docblocks",
+      "priority": 9999
+    }
+  ]
 }

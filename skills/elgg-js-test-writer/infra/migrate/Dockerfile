@@ -9,8 +9,10 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-# Install composer dependencies first (cache layer)
-COPY composer.json composer.lock ./
+# Install composer dependencies first (cache layer). composer.lock is
+# gitignored, so we only COPY composer.json and let composer resolve
+# and lock inside the image.
+COPY composer.json ./
 RUN composer install --no-interaction --prefer-dist --no-dev
 
 # Copy application code
