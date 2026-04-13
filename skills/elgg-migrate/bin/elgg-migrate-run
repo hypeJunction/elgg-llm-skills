@@ -125,23 +125,29 @@ job_path() {
 # block) are NOT returned — they are composer-install targets, not bind
 # mounts.
 #
-# Override: if the plugin declares tests/deps.txt, that file wins. Each
-# non-comment line is a plugin id; order matters (top-of-file activates
-# first). This is the escape hatch for plugins whose manifest.xml deps
-# include broken transitive plugins that fatal during bootCore. The list
-# in tests/deps.txt is the *exact* set the test suite needs active; the
-# resolver does not recurse into it.
+# Override: if the plugin declares tests/deps.txt, that file wins. Format:
+#   <plugin-id> [git-url-with-#ref]    # optional inline comment
+# Lines starting with '#' are comments, blank lines are skipped. The
+# optional URL+ref suffix lets the deps file be self-bootstrapping for
+# plugins not yet in the workspace, but for now the resolver only uses
+# the first whitespace-separated token (the plugin id) and looks the
+# directory up under $plugins_source. Plugins not present locally land
+# as source=missing and cmd_up bails. The resolver does NOT recurse
+# into tests/deps.txt entries — the file is the exact set.
 #
 # Emits deps.lock.json: [{"name": "...", "source": "local|missing", "path": "..."}]
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
   local override="$plugin_dir/tests/deps.txt"
   if [[ -f "$override" ]]; then
-    local out="[]" name lower path source
+    local out="[]" line stripped name lower path source
     while IFS= read -r line; do
-      # strip comments + whitespace
-      name="${line%%#*}"
-      name="${name//[[:space:]]/}"
+      # Strip everything from a leading '#' (full-line comment) so
+      # entries with trailing '# ...' notes also work.
+      stripped="${line%%#*}"
+      # First whitespace-separated token = plugin id; ignore the rest
+      # (URL/ref suffix used by the bootstrap-from-clone path).
+      read -r name _rest <<< "$stripped"
       [[ -z "$name" ]] && continue
       lower="${name,,}"
       path=""; source="missing"
@@ -301,6 +307,17 @@ write_override() {
     jq -r '.[] | select(.source=="local") | .name' <<< "$deps_json"
     echo "$plugin"
   } > "$order"
+  # Mask subpaths: any subpath of a bind-mounted plugin where an in-
+  # container install would otherwise write through to the host source
+  # tree. Each mask gets backed by a per-job host directory under
+  # $jdir/node_modules/<plugin>/<sub>, which the wrapper creates with the
+  # caller's uid so the in-container install (running as the same user
+  # via the 'user:' override) can write into it. The result: the source
+  # tree stays untouched, package-lock.json + node_modules contents live
+  # under $XDG_STATE_HOME/elgg-migrate/jobs/<plugin>-<sha>/node_modules/,
+  # ownership is the user (deletable, gitignorable, no root).
+  local mask_subpaths=(tests/vitest/node_modules tests/playwright/node_modules)
+  mkdir -p "$jdir/node_modules"
   {
     echo "services:"
     echo "  elgg:"
@@ -313,6 +330,45 @@ write_override() {
     # Activation order file — makes the install script activate transitive
     # deps before the plugin under test, instead of alphabetical.
     echo "      - ${order}:/var/www/html/mod/.plugin-order.txt"
+    echo "  node:"
+    # Run as the host user so any file the container writes through a
+    # bind mount (package-lock.json, node_modules contents) is owned by
+    # the user, not by root. The playwright base image runs as root by
+    # default, which would leave files the user can't delete.
+    echo "    user: \"$(id -u):$(id -g)\""
+    echo "    volumes:"
+    echo "      - ${pdir}:/plugins/${plugin}"
+    # Mask container-side install dirs for the plugin under test by
+    # bind-mounting a job-dir subdir over them — empty + user-owned, so
+    # in-container 'npm install' writes there instead of the source tree.
+    #
+    # Pre-create the host-side mount-point inside the source tree as the
+    # caller's uid before compose runs. Without this Docker creates the
+    # empty stub root-owned (mount-point setup happens before the
+    # 'user:' override applies), leaving an undeletable dir on disk.
+    local mask_dir host_stub
+    for sub in "${mask_subpaths[@]}"; do
+      mask_dir="$jdir/node_modules/${plugin}/${sub}"
+      mkdir -p "$mask_dir"
+      host_stub="${pdir}/${sub}"
+      mkdir -p "$host_stub"
+      echo "      - ${mask_dir}:/plugins/${plugin}/${sub}"
+    done
+    # Same treatment for each mounted dep.
+    while IFS= read -r dep_name; do
+      [[ -z "$dep_name" ]] && continue
+      local dep_path
+      dep_path="$(jq -r --arg n "$dep_name" '.[] | select(.name==$n) | .path' <<< "$deps_json")"
+      [[ -z "$dep_path" ]] && continue
+      echo "      - ${dep_path}:/plugins/${dep_name}"
+      for sub in "${mask_subpaths[@]}"; do
+        mask_dir="$jdir/node_modules/${dep_name}/${sub}"
+        mkdir -p "$mask_dir"
+        host_stub="${dep_path}/${sub}"
+        mkdir -p "$host_stub"
+        echo "      - ${mask_dir}:/plugins/${dep_name}/${sub}"
+      done
+    done < <(jq -r '.[] | select(.source=="local") | .name' <<< "$deps_json")
   } > "$file"
 }
 
