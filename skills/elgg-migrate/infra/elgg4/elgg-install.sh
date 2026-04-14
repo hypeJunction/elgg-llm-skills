@@ -118,6 +118,18 @@ SETTINGS_VALUES
         " 2>&1 || echo "Plugin activation completed (check for errors above)."
     fi
 
+    # Clear system cache so it regenerates on next boot with all active plugins'
+    # views registered. Without this, the boot cache built before activation
+    # is stale and PHPUnit sees no plugin views on first run.
+    echo "Clearing system cache..."
+    php -r "
+        require_once 'vendor/autoload.php';
+        \$app = \Elgg\Application::getInstance();
+        \$app->bootCore();
+        elgg_clear_caches();
+        echo 'System cache cleared.' . PHP_EOL;
+    " 2>&1 || echo "Cache clear completed (check for errors above)."
+
     # Hand the data root over to the Apache user. The installer ran as
     # root (entrypoint context) and left every cache subdirectory
     # root-owned, which makes Phpfastcache throw IOException on the
