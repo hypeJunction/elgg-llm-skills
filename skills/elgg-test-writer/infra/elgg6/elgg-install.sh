@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Wait for MySQL to be ready (using PHP since mysqladmin isn't available)
+# Wait for MySQL to be ready
 echo "Waiting for MySQL..."
 until php -r "new PDO('mysql:host=${ELGG_DB_HOST:-db}', '${ELGG_DB_USER:-elgg}', '${ELGG_DB_PASS:-elgg}');" 2>/dev/null; do
     sleep 1
@@ -12,9 +12,9 @@ cd /var/www/html
 
 # Check if Elgg is already installed
 if [ ! -f /var/www/html/.elgg-installed ]; then
-    echo "Installing Elgg..."
+    echo "Installing Elgg 6.x..."
 
-    # Create settings.php (must use 'global $CONFIG' for Elgg to detect it)
+    # Create settings.php
     mkdir -p elgg-config
     cat > elgg-config/settings.php <<'SETTINGS_TEMPLATE'
 <?php
@@ -38,7 +38,7 @@ SETTINGS_TEMPLATE
 \$CONFIG->assetroot = '${ELGG_DATA_ROOT:-/var/www/data/}assets/';
 SETTINGS_VALUES
 
-    # Run the installer using PHP directly
+    # Run the installer
     php -r "
         require_once 'vendor/autoload.php';
 
@@ -49,7 +49,7 @@ SETTINGS_VALUES
             'dbhost' => '${ELGG_DB_HOST:-db}',
             'dbport' => '3306',
             'dbprefix' => 'elgg_',
-            'sitename' => 'Elgg Migration Test',
+            'sitename' => 'Elgg 6.x Migration Test',
             'siteemail' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
             'wwwroot' => '${ELGG_SITE_URL:-http://localhost/}',
             'dataroot' => '${ELGG_DATA_ROOT:-/var/www/data/}',
@@ -61,8 +61,8 @@ SETTINGS_VALUES
 
         \$installer = new \ElggInstaller();
         \$installer->batchInstall(\$params);
-        echo 'Elgg installed successfully.' . PHP_EOL;
-    " 2>&1 || echo "Install via PHP API completed (check for errors above)."
+        echo 'Elgg 6.x installed successfully.' . PHP_EOL;
+    " 2>&1 || echo "Install completed (check for errors above)."
 
     # Activate plugins in priority order
     echo "Activating plugins..."
@@ -81,11 +81,12 @@ SETTINGS_VALUES
                 \$id = trim(\$id);
                 if (empty(\$id) || \$id[0] === '#') continue;
                 \$plugin = elgg_get_plugin_from_id(\$id);
-                if (!\$plugin) continue;
+                if (!\$plugin) { echo 'Plugin not found: ' . \$id . PHP_EOL; continue; }
                 if (\$plugin->isActive()) { \$activated++; continue; }
                 try {
                     \$plugin->activate();
                     \$activated++;
+                    echo '  + ' . \$id . PHP_EOL;
                 } catch (\Throwable \$e) {
                     \$failed[] = \$id . ': ' . \$e->getMessage();
                 }
@@ -117,17 +118,8 @@ SETTINGS_VALUES
         " 2>&1 || echo "Plugin activation completed (check for errors above)."
     fi
 
-    # Hand the data root over to the Apache user. The installer ran as
-    # root (entrypoint context) and left every cache subdirectory
-    # root-owned, which makes Phpfastcache throw IOException on the
-    # first request and the site renders Elgg's "fatal error" stub. Doing
-    # this once on first install is enough — Apache (www-data) extends
-    # the tree from there.
-    chown -R www-data:www-data "${ELGG_DATA_ROOT:-/var/www/data/}"
-    chmod -R u+rwX,g+rX,o+rX "${ELGG_DATA_ROOT:-/var/www/data/}"
-
     touch /var/www/html/.elgg-installed
-    echo "Elgg setup complete."
+    echo "Elgg 6.x setup complete."
 fi
 
 # Start Apache

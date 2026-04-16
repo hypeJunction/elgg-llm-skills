@@ -352,7 +352,11 @@ final class HookCallbackSignatures extends AbstractRule
             );
         }
 
-        // 7. Replace $hook used as string name (old first arg) — only if hookVar != 'hook'
+        // 7. Replace $hook used as string name (old first arg).
+        // Same shape as the event handler: when the original parameter was
+        // already named 'hook', wholesale replacement would break the new
+        // object usages we just inserted. Translate string-context shapes
+        // only — see translateStringContextUsages() for the rationale.
         if ($hookVar !== 'hook') {
             $hookIsModified = (bool) preg_match('/\$' . preg_quote($hookVar) . '\s*(\.=|=|\+=|-=)/', $body);
             if ($hookIsModified) {
@@ -364,6 +368,8 @@ final class HookCallbackSignatures extends AbstractRule
                     $body
                 );
             }
+        } else {
+            $body = $this->translateStringContextUsages($body, '$hook', '$hook->getName()');
         }
 
         $code = substr($code, 0, $bodyStart) . $body . substr($code, $bodyEnd);
@@ -428,7 +434,22 @@ final class HookCallbackSignatures extends AbstractRule
             );
         }
 
-        // Replace $event used as string name (old first arg) — only if eventVar != 'event'
+        // Replace $event used as string name (old first arg).
+        //
+        // When the original parameter was named anything other than 'event'
+        // (e.g. 'evt'), every use of $evt in the body referred to the string
+        // event name and should become $event->getName(). The local variable
+        // is renamed wholesale.
+        //
+        // When the original parameter was already named 'event', we cannot
+        // rename — $event now refers to the new \Elgg\Event object. But we
+        // still need to translate the string-context usages, otherwise:
+        //
+        //   switch ($event)            // switching on the OBJECT, no case ever matches
+        //   if ($event === 'create')   // always false (object !== string)
+        //
+        // remain in the migrated code as silent runtime bugs. Apply targeted
+        // pattern rewrites for those specific shapes.
         if ($eventVar !== 'event') {
             $eventIsModified = (bool) preg_match('/\$' . preg_quote($eventVar) . '\s*(\.=|=|\+=|-=)/', $body);
             if ($eventIsModified) {
@@ -440,11 +461,67 @@ final class HookCallbackSignatures extends AbstractRule
                     $body
                 );
             }
+        } else {
+            $body = $this->translateStringContextUsages($body, '$event', '$event->getName()');
         }
 
         $code = substr($code, 0, $bodyStart) . $body . substr($code, $bodyEnd);
 
         return $code;
+    }
+
+    /**
+     * Rewrite specific string-context usages of a parameter that is
+     * shadowed by the new object-typed parameter of the same name.
+     *
+     * Targets:
+     *   switch ($var)              → switch ($accessor)
+     *   if ($var === 'literal')    → if ($accessor === 'literal')
+     *   if ($var !== 'literal')    → if ($accessor !== 'literal')
+     *   if ($var == 'literal')     → if ($accessor == 'literal')
+     *   if ($var != 'literal')     → if ($accessor != 'literal')
+     *   in_array($var, [...])      → in_array($accessor, [...])
+     *
+     * Object-context usages like `$var->getObject()`, `$var->getType()`,
+     * `$var->getName()`, `$var->getValue()`, `$var->getParam(...)` are
+     * left untouched — those are the legitimate new-API calls the rest of
+     * the rewriter just inserted.
+     */
+    private function translateStringContextUsages(string $body, string $var, string $accessor): string
+    {
+        $varQ = preg_quote($var, '/');
+
+        // switch ($var) — anchored on the closing paren so we don't accidentally
+        // match a nested $var->method() call inside a more complex expression
+        $body = preg_replace(
+            '/(switch\s*\(\s*)' . $varQ . '(\s*\))/',
+            '$1' . $accessor . '$2',
+            $body
+        );
+
+        // String comparisons: $var === 'lit', $var !== "lit", $var == 'lit', $var != 'lit'
+        // Capture the operator to preserve it.
+        $body = preg_replace(
+            '/' . $varQ . '(\s*(?:===|!==|==|!=)\s*[\'"][^\'"]*[\'"])/',
+            $accessor . '$1',
+            $body
+        );
+
+        // Reverse direction: 'lit' === $var
+        $body = preg_replace(
+            '/([\'"][^\'"]*[\'"]\s*(?:===|!==|==|!=)\s*)' . $varQ . '\b/',
+            '$1' . $accessor,
+            $body
+        );
+
+        // in_array($var, ...) — the parameter passed as a value, not a method receiver
+        $body = preg_replace(
+            '/in_array\s*\(\s*' . $varQ . '\s*,/',
+            'in_array(' . $accessor . ',',
+            $body
+        );
+
+        return $body;
     }
 
     /**
