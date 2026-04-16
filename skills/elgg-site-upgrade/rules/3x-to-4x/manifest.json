@@ -155,12 +155,12 @@
       "priority": 150
     },
     {
-      "id": "018-hook-callback-signatures",
-      "name": "Rewrite hook/event handler signatures to Elgg 4.x single-arg format",
+      "id": "029-lowercase-plugin-id-callsites",
+      "name": "Lowercase plugin ID string arguments in API callsites",
       "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\HookCallbackSignatures",
-      "breaking_change": "Handlers registered via elgg-plugin.php receive single \\Elgg\\Hook or \\Elgg\\Event object",
-      "priority": 200
+      "class": "ElggMigrate\\Rules\\V3ToV4\\LowercasePluginIdCallsites",
+      "breaking_change": "Elgg 4.x requires plugin IDs to be lowercase; camelCase IDs silently return false",
+      "priority": 205
     },
     {
       "id": "019-plugin-settings-vars",
