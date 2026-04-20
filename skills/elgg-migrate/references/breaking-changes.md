@@ -8,7 +8,7 @@ Details in `rules/{from}-to-{to}/manifest.json`. Key highlights:
 
 **2.x → 3.x** (largest): metastrings removed, subtypes→strings, page handlers→routes, libraries→autoloading, ~50 functions removed, entity queries unified.
 
-**3.x → 4.x** (structural): start.php→elgg-plugin.php+Bootstrap, `\DI\object()`→`\DI\create()`, `Zend\Mail`→`Laminas\Mail`, entity attribute setters changed, canWriteToContainer() requires type+subtype, `run_sql_script()` removed, `forward()` removed, JS `elgg.action/get/getJSON/post` → `elgg/Ajax` module, plugin dirs must match composer.json lowercase name, `elgg_register_entity_type()` → entities key in elgg-plugin.php.
+**3.x → 4.x** (structural): start.php→elgg-plugin.php+Bootstrap, `\DI\object()`→`\DI\create()`, `Zend\Mail`→`Laminas\Mail`, entity attribute setters changed, canWriteToContainer() requires type+subtype, `run_sql_script()` removed, `forward()` removed, JS `elgg.action/get/getJSON/post` → `elgg/Ajax` module, plugin dirs must match composer.json lowercase name, `elgg_register_entity_type()` → entities key in elgg-plugin.php. **AMD JS removals**: `elgg/init` removed — drop `require('elgg/init')` from all AMD modules. `elgg.echo()` removed from the `elgg` AMD module — require `elgg/i18n` and call `i18n.echo()`. `elgg.provide()` removed — replace `elgg.provide('elgg.ui.foo')` + deprecated_settings pattern with a plain `$.extend(settings, opts)`.
 
 **4.x → 5.x**: hooks+events merged, private settings→metadata, PHP 8.0+.
 
