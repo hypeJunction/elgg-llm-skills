@@ -650,6 +650,9 @@ test to write next.
 - No closures in elgg-plugin.php (use class callbacks)
 - `canWriteToContainer()` requires `($uid, $type, $subtype)`
 - IntegrationTestCase uses DB prefix `c_i_elgg_` — must create test tables first
+- **Namespaced constants in test bootstrap**: if a plugin lib file (`lib/functions.php`) uses a namespaced constant (e.g. `hypeJunction\Geo\PLUGIN_ID`), define it in the test bootstrap BEFORE calling `\Elgg\Application::loadCore()`. Use the lowercase plugin ID value — 4.x normalizes all plugin IDs to lowercase. If the Bootstrap defines the constant in `load()` or `init()`, the test bootstrap must replicate it.
+- **Undefined `$type`/`$return`/`$params` in migrated hook handlers**: the signature rewrite rule converts `($hook, $type, $return, $params)` → `(\Elgg\Hook $hook)` but does NOT fix the handler body. Tests that invoke these handlers will fail with "Undefined variable" PHP notices/fatals. Grep the plugin's classes for bare `$type`, `$return`, `$params` after migration and replace with `$hook->getType()`, `$hook->getValue()`, `$hook->getParam('key')`.
+- **`register/menu:*` hook return value is a `MenuItems` collection**: `$hook->getValue()` returns an `Elgg\Collections\Collection`, not a plain array. `array_merge($return, $items)` will throw. Use `$return->merge($items)` instead.
 
 ### Elgg 5.x+
 - `_elgg_services()->session_manager->setLoggedInUser($user)` for session
