@@ -33,59 +33,20 @@ Detection order:
 Persist the resolved value back to `config.json`. Never write into the plugin
 dir and never into the skill dir.
 
-**Automated discovery.** Use `bin/discover-plugins.sh` at the repo root to run
-all of the above in one command and to wire the Docker compose environment:
-
-```bash
-# Scan, cache to XDG config, and write docker/elgg4/.env for the plugin under test
-bin/discover-plugins.sh --root "$PLUGINS_SOURCE" --plugin <plugin-id> \
-    --save-config --write-env docker/elgg4/.env
-
-# Subsequent runs — just switch the plugin under test
-bin/discover-plugins.sh --plugin <other-plugin-id>
-```
-
-`docker/elgg4/.env` (and the elgg3/elgg5/... equivalents) are **gitignored**.
-They contain `PLUGINS_DIR` and `PLUGIN_ID`, which the per-version compose
-override files consume to mount exactly one plugin at a time. Each migration
-is therefore verified in isolation — no fleet-wide bind mounts, no cross-
-plugin contamination. Baking any `/home/...` or `/Users/...` path into a
-committed file is a bug; fix it by parameterizing via `.env`.
-
 **2. `ELGG_MIGRATE_STATE`** — where per-job state (reports, logs, dep locks,
 container names) lives. Default:
 `${XDG_STATE_HOME:-$HOME/.local/state}/elgg-migrate/`. Each migration job
 gets its own subdirectory: `$ELGG_MIGRATE_STATE/jobs/<plugin-id>-<short-sha>/`.
 
-**3. Skill root** — Resolve `$SKILL` once at session start as the
-absolute path of the directory containing this `SKILL.md`. The skill
-bundles everything it needs under that root:
+**3. Skill infra root** — Docker templates, install scripts, and other
+runtime assets live at `<skill-root>/infra/`, resolved relative to this
+`SKILL.md` at runtime. Do not hard-code repo paths; the skill must run
+identically whether it's installed globally, vendored into a project, or
+loaded from a worktree.
 
-    <skill-dir>/
-      SKILL.md                  # this file
-      bin/migrate.php           # AST migration engine CLI
-      bin/migrate-plugin.sh     # one-shot per-plugin wrapper
-      bin/elgg-migrate-run      # isolated per-plugin orchestrator
-      src/                      # ElggMigrate\ PHP namespace
-      rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
-      composer.json             # nikic/php-parser dep + PSR-4 autoload
-      phpunit.xml               # test runner config
-      tests/                    # PHPUnit tests for src/
-      references/               # required-reading docs
-      formulas/                 # beads formulas (siblings only)
-      infra/
-        elgg{2..7}/             # per-target-version Docker stack
-        migrate/                # AST engine Docker stack
-
-`$SKILL_INFRA` is `$SKILL/infra`. Before running anything that depends
-on the AST engine, run `cd $SKILL && composer install` once to create
-`vendor/` — the skill ships composer.json but not vendor. Docker builds
-handle this automatically inside the `migrate` container.
-
-Every example uses `$PLUGINS_SOURCE`, `$ELGG_MIGRATE_STATE`, `$SKILL`,
+Every example in this skill uses `$PLUGINS_SOURCE`, `$ELGG_MIGRATE_STATE`,
 and `$SKILL_INFRA` as the only roots. If you find yourself typing an
-absolute host path or a CWD-relative `docker/elgg{N}/...` path, stop
-and re-run Step 0.
+absolute host path, stop and re-run Step 0.
 
 ## Required Reading
 
@@ -114,9 +75,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 7. **LINEAR VERSION KNOWLEDGE ONLY** — When migrating from version N to N+1, the agent MUST only apply N+1 APIs, patterns, and conventions. Do NOT use APIs from version N+2 or later. Example: when migrating 3.x→4.x, use `\Elgg\Hook` (4.x), NOT `\Elgg\Event` (5.x); use `elgg_trigger_plugin_hook()` (4.x, deprecated), NOT `elgg_trigger_event_results()` (5.x). Run `--verify` after every migration to catch leakage.
 8. **SECURITY SWEEP AFTER EVERY MIGRATION** — Run `--security` after applying rules. Fix critical findings before committing. Security debt from legacy code gets inherited — catch it at the version boundary.
 9. **DOCUMENT AFTER MIGRATION** — After each version step, generate a plugin architecture summary documenting the current structure, registered hooks/events, entities, routes, and any migration notes for future reference.
-10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `references/coding-standards.md` for version-specific rules.
-11. **NEVER POLYFILL REMOVED APIS** — When the target version has removed a function, refactor every call site to the modern target-version API. Do NOT re-define the removed function in plugin code (no `if (!function_exists('foo')) { function foo() { ... } }` shims, no `lib/polyfills.php` files, no compatibility wrappers). Polyfills preserve the legacy call shape, drag forward patterns the next major will remove again, and hide the real surface area of the breaking change from any future audit. The migration's whole point is that the plugin is *on* the target API after the step closes — `grep <removed_func>` against the source must come up empty. Polymorphic guards on hook/event handler signatures are NOT polyfills and remain acceptable: those preserve a method's call signature so callers in version N and N+1 both work, they don't re-define removed APIs. If a refactor is non-trivial because of closure scoping or return-value handling, that effort *is* the migration — do it, don't shortcut it. If you're tempted to polyfill, that's a sign the plugin is too far from the target version and needs more migration work — surface to the human, don't paper over it.
-12. **DOCUMENT EVERY SURPRISE** — Unexpected failures, hand-fixes, workarounds, and non-obvious gate failures belong in `SKILL.md`'s common-mistakes table, the relevant `rules/{from}-to-{to}/manifest.json`, or memory before the migration issue closes. The skill's durable value is the knowledge each migration generates; closing issues without capturing what you learned is how migrations get more expensive instead of cheaper. See **Capture before closing** below.
+10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `docs/coding-standards.md` for version-specific rules.
 
 ---
 
@@ -168,114 +127,28 @@ container propagated to 44 of 47 plugins on the host. Per-plugin isolation
 guarantees blast radius = one plugin, even under the worst in-container
 command. See bead `elgg-migrate-c0ou`.
 
-### Per-session project isolation (MANDATORY for parallel work)
-
-Running raw `docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up`
-uses `elgg{N}` as the compose project name, so every session targeting
-the same Elgg version collides on a singleton `elgg{N}-elgg-1` container.
-Two sessions migrating different plugins overwrite each other's mounts
-and `.env` mid-run.
-
-**Use `bin/elgg-migrate-run` as the canonical entry point** for any
-per-plugin activation/test work. The wrapper:
-
-- Spawns each job under a unique compose project name
-  (`em-<plugin>-<sha>`) so containers, networks, volumes, and DB data
-  are all scoped per-session. Multiple sessions coexist cleanly.
-- Generates a per-job `.env` under
-  `$XDG_STATE_HOME/elgg-migrate/jobs/<plugin>-<sha>/` so the shared
-  `docker/elgg{N}/.env` is never read or written.
-- Resolves plugin dependencies transitively from `manifest.xml`
-  (`<requires><type>plugin</type>…</requires>`) and writes a
-  post-order `plugin-order.txt` so the install script activates leaves
-  before parents.
-- Picks random ELGG_PORT/DB_PORT so parallel jobs don't fight over
-  host ports.
-
-```bash
-# Once per workstation:
-bin/elgg-migrate-run init --plugins-source=/abs/path/to/plugins
-
-# Per-plugin:
-bin/elgg-migrate-run up     hypeinbox --version=elgg4
-bin/elgg-migrate-run status hypeinbox
-bin/elgg-migrate-run down   hypeinbox
-```
-
-The top-level `docker/elgg{N}/` directory contains legacy singleton
-configs kept for one-off interactive poking; new per-plugin work should
-always go through the wrapper so parallel sessions don't stomp each
-other (bead `elgg-migrate-0atl`).
-
 
 | Service | Purpose | Location |
 |---------|---------|----------|
 | `migrate` | AST migration rules (PHP 8.1 + php-parser) | Root `docker-compose.yml` |
-| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
-| `node` | Playwright and Vitest tests | `$SKILL_INFRA/elgg{N}/docker-compose.yml` (profile: test) |
-| `db` | MySQL database | `$SKILL_INFRA/elgg{N}/docker-compose.yml` |
-
-### JS test coverage policy
-
-Plugins that ship JS (anything under `views/default/**/*.js` or
-`views/default/js/`) need TWO layers of test coverage; they are
-complementary, not alternatives:
-
-1. **Vitest for unit tests of pure JS logic.** Per-plugin
-   `tests/vitest/*.test.js`, run inside the wrapper's `node` service.
-   Cover anything with branching logic, formatting, parsing, or state
-   transitions in isolation from the DOM. The Elgg AMD wrapper
-   (`define(function (require) { ... })`) is testable: extract the
-   pure-logic helpers into named exports the AMD module re-exports
-   so the helper is reachable from both AMD callers and a plain
-   `import` in vitest. Trivial init scripts (one-shot event listener
-   wiring, view extensions) get **zero** vitest coverage — Playwright
-   covers them by exercising the view.
-
-2. **Playwright for end-to-end coverage.** Per-plugin
-   `tests/playwright/`, browser-driven against a running elgg
-   container. Cover render-time view shape and user-flow happy paths.
-   Already established on ~36 of the ~50 plugins in the fleet.
-
-**Decision rationale** (bead `elgg-migrate-1y7z`): the AMD→ES module
-boundary changed across Elgg 3.x→4.x, and the bundler/cache invalidation
-behavior of `elgg_define_js` differs from the 3.x require pipeline. A
-JS unit test that pins the *logic* (separate from the AMD wrapper) is
-the only thing that catches regressions where the bundler ships the
-right file but the function inside it has drifted. Playwright catches
-the inverse — wiring drifts where the logic is right but the bundler
-loaded the wrong module. Neither layer subsumes the other.
-
-**Skip rule**: a plugin with **no** JS files needs neither layer. A
-plugin with JS that's purely "attach to DOM, fire ajax" (no testable
-helpers) needs Playwright only. The maintainer decides at the file
-level by extracting helpers when the logic is worth pinning.
-
-The wrapper's `node` service runs both via the same Playwright base
-image. Vitest installs as a per-plugin dev dep on first run:
-
-```bash
-docker compose --project-name em-<plugin>-<sha> --profile test \
-  run --rm node sh -c "npm ci && npx vitest run"
-```
-
-For the canonical hypeinbox example see
-`bodyology/plugins/hypeinbox/tests/vitest/`.
+| `elgg` | Plugin activation, PHPUnit, Elgg bootstrap | `docker/elgg{N}/docker-compose.yml` |
+| `node` | Playwright and Vitest tests | `docker/elgg{N}/docker-compose.yml` (profile: test) |
+| `db` | MySQL database | `docker/elgg{N}/docker-compose.yml` |
 
 ### Quick setup
 
 ```bash
 # Build the migration tool (once)
-docker compose -f $SKILL_INFRA/migrate/docker-compose.yml build migrate
+docker compose build migrate
 
 # Start target Elgg environment
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml up -d
+docker compose -f docker/elgg{N}/docker-compose.yml up -d
 
 # Run migration
-docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
+docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin>
 
 # Run tests
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test"
 ```
 
@@ -283,27 +156,27 @@ docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --r
 
 ```bash
 # Elgg container logs (PHP errors, Apache errors)
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml logs elgg
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
+docker compose -f docker/elgg{N}/docker-compose.yml logs elgg
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg tail -f /var/log/apache2/error.log
 
 # Interactive shell in Elgg container
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg bash
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg bash
 
 # Check PHP error log
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg cat /var/log/apache2/error.log
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg cat /var/log/apache2/error.log
 
 # MySQL queries (interactive)
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
+docker compose -f docker/elgg{N}/docker-compose.yml exec db mysql -uelgg -pelgg elgg
 
 # Check container status
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml ps
+docker compose -f docker/elgg{N}/docker-compose.yml ps
 
 # Node container — debug Playwright
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
+docker compose -f docker/elgg{N}/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugins/<plugin>/tests/playwright && npm ci && npx playwright test --debug"
 
 # Rebuild containers after Dockerfile changes
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
+docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 ```
 
 ---
@@ -312,25 +185,10 @@ docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml build --no-cache
 
 | Step | Command |
 |------|---------|
-| Analyze | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
-| Apply + all gates | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
-| LLM report | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
-| Verify only | `docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
-
-### Shared rules that run on every migration
-
-Every manifest (2x→3x, 3x→4x, 4x→5x, 5x→6x, 6x→7x) ends with
-`999-add-docblocks`, a shared rule that walks every `.php` file in the
-plugin and attaches a PHPDoc block to any function, method, or class
-property that doesn't already have one. It infers types from PHP
-hints (falling back to `mixed`), leaves existing docblocks alone, and
-uses nikic/php-parser's format-preserving printer so nothing else in
-the file is reformatted. The summary line is intentionally blank for
-a human or LLM to fill in — the value is the type scaffolding, not
-the prose. Constructors are rendered without `@return`, variadic
-params render `...$name`, and `void` / `never` return types flow
-through unchanged. It runs automatically as the last rule of every
-manifest — no separate invocation needed. Re-running is idempotent.
+| Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
+| Apply + all gates | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
+| LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
+| Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
 
 ### CLI Flags
 
@@ -378,7 +236,6 @@ is the load-bearing part.
 | PHP_CodeSniffer passes for target version | Style regressions accumulate and make future migrations harder |
 | ARCHITECTURE.md generated | The knowledge of what the plugin *is* at this version is the second-most valuable migration output after the code itself |
 | CHANGELOG.md updated | Downstream consumers need to know what changed |
-| Plugin version bumped in `composer.json` and git tag created | Major bump on new Elgg target, minor/patch for follow-ups; tags make fleet tooling and `git log --simplify-by-decoration` give a useful history |
 | `Elgg\Upgrade\Batch` script added if data migration is needed | Schema/data changes without an upgrade script mean the plugin works on fresh installs but breaks on real sites with existing data |
 | Commit message format: `migrate({TARGET}.x): <summary>` | Consistent prefixes make `git log --grep` usable across the fleet |
 | Issue closed with `--reason` | Future-you reading the beads history needs the "what changed" summary |
@@ -397,7 +254,19 @@ commit without a gate report is incomplete — redo the work.
 **Tools that enforce gates**:
 - Gate 6: `php bin/migrate.php ... --verify` (PostMigrationVerifier)
 - Gate 7: `php bin/migrate.php ... --security` (SecuritySweep)
-- Gate 9-10: `docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg ...`
+- Gates 5, 9, 10, 8 (tests): `$SKILL_INFRA/../bin/elgg-migrate-verify <plugin-dir> [--phpunit]`
+
+The `elgg-migrate-verify` script runs all Docker-based checks in one command
+and outputs a structured PASS/FAIL report:
+
+```bash
+# After `docker compose -f docker/docker-compose.yml up -d` in the plugin dir:
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-verify /path/to/plugin
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-verify /path/to/plugin --phpunit
+```
+
+Gates covered: PHP syntax (excl. vendor/tests), homepage render (>1000 bytes),
+login render (>1000 bytes), PHP Fatal/Error count in Apache log, PHPUnit suite.
 
 ---
 
@@ -443,94 +312,8 @@ How to decide what to do with what you find:
 
 - Already at the target version → skip migration, mark done.
 - Migration branch exists but is incomplete → continue from that branch, don't restart.
-- An upstream fork has a working migration → use it instead of re-migrating, **but vet it first** (next subsection).
+- An upstream fork has a working migration → use it instead of re-migrating.
 - Nothing exists anywhere → proceed to pre-migration tests.
-
-### Trust but verify: adopting an upstream migration
-
-Finding an upstream migration is not the same as adopting one. Upstream work
-can be broken, stale, target a different fork of Elgg, or aim at a version
-you're not migrating to. Before merging an upstream branch or `composer
-require`-ing a new version:
-
-- **Check what it actually targets.** Read the upstream's `composer.json`
-  `require.elgg/elgg` — if it says `^5.0` and you're migrating to 4.x, it's
-  not useful. If it says `^4.0` but the code already uses `\Elgg\Event`, the
-  metadata is lying.
-- **Look at the commit history, not just the branch name.** A branch called
-  `migrate/elgg-4.x` that hasn't been touched in two years and has three
-  commits is probably abandoned work, not a done migration. Check the latest
-  commit date and how complete it looks.
-- **Run the same Docker activation gate on it that you'd run on your own
-  migration.** If it doesn't activate cleanly in your `elgg{N}` container, it
-  isn't a working migration regardless of who wrote it.
-- **Run your pre-migration tests against it.** If you've already written
-  tests for the plugin (Phase 1.8), point them at the upstream version.
-  Failing tests against an upstream migration tells you the upstream
-  regressed something — sometimes fixable, sometimes a sign to walk away.
-- **Check for unrelated changes.** Upstream branches often contain new
-  features mixed with the migration. If the "migration" also adds a feature
-  you don't want, the branch isn't a pure migration — you're adopting both.
-- **Check the license and authorship.** A fork in a random org with no
-  attribution is a licensing risk; a fork on the original author's account
-  usually isn't.
-
-When an upstream migration passes all these, adopt it with confidence and
-note the source in your commit message ("Adopted from `<fork-url>@<sha>`").
-When it fails any of them, document what failed and fall back to migrating
-yourself — but keep the upstream work as a reference to diff against later
-in Phase 2.
-
-### Cross-plugin dependencies (run before Phase 2)
-
-Before claiming the migration, find out what other plugins this one
-depends on. Most plugins migrate independently; some genuinely don't.
-Missing this is the single most common process miss in plugin migration —
-you'll migrate the plugin, fail to activate it, and waste hours debugging
-before realizing a dependency isn't ready.
-
-There are **two kinds** of cross-plugin dependency. Both can sink the
-Docker activation gate:
-
-**1. Per-pair declared deps** — this plugin names another in its config or
-guards on its presence. Detect by reading:
-
-- **`composer.json` `require`** — the authoritative source from 3.x on.
-  Any `"hypejunction/hypeX"`, `"coldtrick/..."`, or similar `vendor/plugin`
-  line is a declared dependency.
-- **`manifest.xml` `<requires><type>plugin</type><name>X</name></requires>`** —
-  the 2.x equivalent. Translate these into composer requires during the
-  3→4 step.
-- **`elgg-plugin.php` `'plugin'.'dependencies'`** — the 4.x+ runtime
-  declaration; should mirror the composer require list (plus core plugins
-  like `members` that don't have separate composer packages).
-- **Actual code** — `elgg_is_active_plugin('X')` guards, `use` statements
-  referencing classes in another plugin's namespace, view extensions
-  targeting another plugin's views. Quick check:
-  `grep -rn "elgg_is_active_plugin\|hypejunction\\\\\|coldtrick\\\\" classes/ views/`.
-
-Each declared dep must be present in the target Elgg container *at the
-same version step* before this plugin's activation gate can pass. If a
-dependency isn't migrated yet, stop — escalate, don't try to migrate
-this plugin against an unmigrated neighbor.
-
-**2. The bootCore() neighbor-services trap (Elgg 4.x+)** — `bootCore()`
-triggers `plugins_load`, which `include`s **every** plugin's
-`elgg-services.php` regardless of active state. If ANY one of them throws
-(PHP-DI 5 syntax `\DI\object()` instead of `\DI\create()`; removed
-`Elgg\Di\ServiceFacade` trait; missing 4.x class names; etc.), the
-entire `bootCore()` aborts and **no plugin's `IntegrationTestCase` suite
-can run** until the broken neighbor is fixed.
-
-This is invisible to per-pair dep checks because the broken plugin
-doesn't *declare* any relationship to its victims — they just share the
-same `mod/` directory in the test container.
-
-When a Phase 1.8 test run dies during Elgg bootstrap with no obvious
-cause, suspect a broken neighbor's `elgg-services.php`. The fix is to
-either migrate that neighbor first or stub it with `<?php return [];` —
-but *never* leave a broken neighbor stubbed silently; file a separate
-issue tracking the real fix.
 
 ### Version state indicators
 
@@ -567,7 +350,7 @@ the manifest. Use as many as needed to be confident.
 
 Capture the plugin's current style state before migrating so you can tell
 whether the migration regressed it. Ensure `.phpcs.xml` exists for the target
-version (see `references/coding-standards.md` for the template), then run
+version (see `docs/coding-standards.md` for the template), then run
 `vendor/bin/phpcs --standard=PSR12 classes/ actions/ lib/` to generate a
 baseline. Post-migration style must not regress.
 
@@ -579,37 +362,9 @@ you don't have a baseline of working behavior, you can't tell whether the
 migration broke anything. Tests are the only way the skill's other gates stop
 being theater.
 
-The only exception is plugins with zero PHP logic (pure views/CSS/JS). For
-those, document the exception in the commit message and rely on the Phase 2
-Docker activation+render gate as the regression check — there's no behavior
-to write a PHPUnit test against.
-
-**Iron Law 4 waiver for 2.x starting points.** The skill ships Docker envs
-for elgg3 and elgg4 only — there is no elgg2 environment. Strict
-pre-migration test execution against the current version is structurally
-impossible when migrating from 2.x. The accepted waiver:
-
-1. Write the **PHPUnit unit suite** so it runs in a plain `php:8.1-cli`
-   container against the 2.x source — autoload via a tiny
-   `tests/bootstrap.php` and stub any global `elgg_*` functions and
-   removed core interfaces (e.g. `\Elgg\Cache\Pool` in 2.x) in a
-   `tests/phpunit/stubs/` file. Run it standalone:
-   ```bash
-   docker run --rm -v "$PWD:/plugin" -w /plugin --entrypoint sh \
-     php:8.1-cli -c 'curl -sSL https://phar.phpunit.de/phpunit-10.phar \
-     -o /tmp/phpunit.phar && php /tmp/phpunit.phar -c tests/phpunit.xml'
-   ```
-   This must pass against the unmigrated 2.x source — it's the part of
-   the safety net you can actually green-light pre-migration.
-2. Write the **Playwright smoke suite** ahead of time but defer first
-   execution to the elgg3 container post-migration. The 2.x baseline
-   for browser-level behavior is "uncovered" — accept it.
-3. **Commit both suites on the source branch** (e.g. `master`) before
-   creating the `migrate/elgg-3.x` branch. Note the waiver explicitly
-   in the test commit message so the gate report can cite it.
-
-This waiver is *only* for `from = 2.x`. From 3.x onward both elgg3 and
-elgg4 envs exist and the strict gate applies normally.
+The only exception is plugins with zero PHP logic (pure views/CSS/JS). Those
+are safe to cover with a fleet-wide smoke test in Phase 4 of `elgg-plugin-fleet`
+— document the exception in the commit message.
 
 **Check for existing tests first.** If `tests/phpunit.xml` already exists, you
 may not need to write anything. Read what's there and assess coverage against
@@ -687,13 +442,11 @@ The fields every plugin needs from 3.x onward:
 | `license` | SPDX identifier (e.g. `GPL-2.0-or-later`) | |
 | `authors` | from `manifest.xml` `<author>` | |
 | `require.php` | TARGET version's minimum (see constraints table) | |
+| `require.elgg/elgg` | TARGET version constraint | |
 | `require.composer/installers` | `^2.0` (3.x: `~1.0`) | |
 | `require.<vendor>/<dep>` | one entry per `<requires><type>plugin</type>` in manifest.xml | |
-| `require.<third-party>` | only NON-Elgg packages the plugin actually loads (Flintstone, Guzzle, etc.) | |
-| `config.allow-plugins.composer/installers` | `true` | **required by composer 2.2+ from 3.x onwards** — without this, `composer install -d <plugin>` aborts |
+| `config.allow-plugins.composer/installers` | `true` | required by composer 2.2+ |
 | `extra.elgg-plugin.id` | the plugin id (lowercase dir name) | useful when name differs from id |
-
-**Do NOT add `elgg/elgg` to `require`.** A plugin is always installed inside an Elgg site by being placed in `mod/`; it's never composer-installed standalone. Declaring `elgg/elgg` in the plugin's `require` causes `composer install -d mod/<plugin>` to try to resolve `elgg/elgg` transitively, which pulls in `bower-asset/fontawesome` from asset-packagist — a repo the plugin's `composer.json` doesn't (and shouldn't) declare. The Elgg version constraint already lives in `manifest.xml` (3.x) and `extra.elgg-plugin` metadata (4.x+); that's the right place for it. The `elgg/elgg` constraint table below is the constraint the *site* uses, not the plugin.
 
 Per-version constraints:
 
@@ -745,7 +498,7 @@ two most common silent failures (future-version API leakage and security
 regressions) and are cheap enough to always be on:
 
 ```bash
-docker compose -f $SKILL_INFRA/migrate/docker-compose.yml run --rm migrate bin/migrate.php \
+docker compose run --rm migrate bin/migrate.php \
   rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security
 ```
 
@@ -771,7 +524,7 @@ PHP version inside the Elgg container. This is cheap and catches problems
 before the much-slower Docker activation:
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   find mod/<plugin-id> -name "*.php" -not -path "*/vendor/*" -exec php -l {} \; | grep -v "No syntax errors"
 ```
 
@@ -781,7 +534,7 @@ If the plugin has its own `composer.json` with third-party packages, install
 them in the container before activation:
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   composer install -d mod/<plugin-id> --no-interaction
 ```
 
@@ -796,10 +549,10 @@ The full gate has several parts, all required:
 
 ```bash
 # Copy into container (use lowercase dir name matching composer.json)
-docker cp <plugin>/. $(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
+docker cp <plugin>/. $(docker compose -f docker/elgg{N}/docker-compose.yml ps -q elgg):/var/www/html/mod/<plugin-id>/
 
 # Activate — must succeed without throwing
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg php -r "
   require_once '/var/www/html/vendor/autoload.php';
   \$app = \Elgg\Application::getInstance(); \$app->bootCore();
   _elgg_services()->plugins->generateEntities();
@@ -810,11 +563,11 @@ docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg php -r "
 "
 
 # Homepage renders — must return a full page, not a stub
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   curl -sL http://localhost/ | wc -c
 
 # No PHP errors in the log
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   grep -c "PHP Fatal\|PHP Error" /var/log/apache2/error.log 2>/dev/null
 ```
 
@@ -823,9 +576,9 @@ on some CSS, and the only symptom is a zero-byte CSS file that doesn't block
 activation but does break the site visually:
 
 ```bash
-TS=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
+TS=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL http://localhost/ | grep -oP 'cache/\K\d+' | head -1)
-SIZE=$(docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec -T elgg \
+SIZE=$(docker compose -f docker/elgg{N}/docker-compose.yml exec -T elgg \
   curl -sL -o /dev/null -w "%{size_download}" "http://localhost/cache/${TS}/default/elgg.css")
 test "$SIZE" -gt 1000 && echo "CSS OK (${SIZE} bytes)" || echo "CSS BROKEN (${SIZE} bytes) — see REFERENCE.md §18"
 ```
@@ -872,19 +625,19 @@ business-logic flaws (IDOR, race conditions, mass assignment), hook/event
 handlers trusting unvalidated input, and migration-introduced issues like
 Bootstrap classes doing privileged operations or custom endpoints missing
 CSRF. Address HIGH and MEDIUM findings before committing. See
-`references/llm-security-review.md` for the full workflow.
+`docs/llm-security-review.md` for the full workflow.
 
 #### Coding standards
 
 Run PHP_CodeSniffer against Elgg's ruleset for the target version:
 
 ```bash
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcs --standard=<path-to-elgg-phpcs.xml> \
   mod/<plugin-id>/classes/ mod/<plugin-id>/actions/ mod/<plugin-id>/views/
 
 # Auto-fix what's mechanical
-docker compose -f $SKILL_INFRA/elgg{N}/docker-compose.yml exec elgg \
+docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
   vendor/bin/phpcbf --standard=<path-to-elgg-phpcs.xml> mod/<plugin-id>/classes/
 ```
 
@@ -907,39 +660,7 @@ code itself — future migrations and future developers rely on it. Cover:
 - **Migration notes** — what changed in this version step, known issues, workarounds
 
 Update `CHANGELOG.md` with a human-readable summary of the version bump.
-
-#### Bump plugin version and create a git tag
-
-Every completed migration step (and every follow-up fix on the same branch)
-gets a version bump and a tag in the **plugin repo**. The rules:
-
-- **Completing a migration to a new Elgg major** → bump the plugin's **major**
-  version. Convention: align the major with the Elgg target (Elgg 3 → `3.0.0`,
-  Elgg 4 → `4.0.0`, etc.). If the plugin was already on major `N` for some
-  other reason, just increment it by one.
-- **Follow-up commits on the same migration branch** (test adaptations, style
-  fixes, LLM-guided hand fixes, security fixes) → bump **minor** or **patch**
-  depending on scope.
-
-Set the `version` field in the plugin's `composer.json`, update `CHANGELOG.md`,
-commit, and tag:
-
-```bash
-# 1. Set version in plugin's composer.json (e.g. "version": "4.0.0")
-# 2. Update CHANGELOG.md with release notes
-git add composer.json CHANGELOG.md
-git commit -m "chore(release): v{VERSION}"
-git tag -a "v{VERSION}" -m "Elgg {TARGET}.x migration — v{VERSION}"
-```
-
-The tag lives in the plugin repo (not in the migration toolkit repo). Tag
-naming convention: `v<major>.<minor>.<patch>` (e.g. `v4.0.0`).
-
 Commit: `git commit -m "docs: add plugin architecture summary for Elgg {TARGET}.x"`.
-
-> **Note**: the docs commit and the release commit are usually the same commit
-> when all changes are tidy — combine them as needed, but always tag *after*
-> the final state is committed.
 
 ### Phase 3: Finalize
 
@@ -947,69 +668,6 @@ Review the branch history for a coherent story (each commit should stand on
 its own), run `--security` one last time on the final state, and generate a
 report. The acceptance gates at the top of this skill list everything that
 must be true before closing the beads issue — verify each one explicitly.
-
-### Capture before closing (mandatory, Iron Law 12)
-
-The skill's durable value is the knowledge each migration generates, and
-that only survives if the agent forces itself to capture it *before*
-`bd close`. The biggest failure mode here is not "the agent wrote the
-lesson in the wrong place" — it's "the agent closed the issue and moved
-on, and the lesson evaporated."
-
-Before closing **any** migration issue, ask two questions out loud:
-
-1. **"Did I hit anything surprising?"** — count a hand-fix, an unexpected
-   error, a workaround, or a gate that failed the first time as
-   surprising. If yes, it belongs in one of the destinations below
-   *before* the issue closes.
-2. **"Would a future session migrating the next similar plugin benefit
-   from what I learned?"** — if yes, that's the signal to capture it,
-   even if it's just a memory note. The cost of capture is seconds; the
-   cost of forgetting is hours, because the next session re-derives
-   everything.
-
-If you can't honestly answer "nothing surprising, nothing worth passing
-on" — and you usually can't, because every non-trivial migration has
-surprises — then capture is mandatory, not optional.
-
-| Destination | What belongs there |
-|-------------|-------------------|
-| `rules/{from}-to-{to}/manifest.json` `llm_instructions` | An existing rule's prompt was wrong or incomplete |
-| New rule entry in the same `manifest.json` | A breaking change the manifest was missing |
-| `references/common-mistakes.md` | A recurring hand-fix or non-obvious gate failure |
-| `references/breaking-changes/<version>.md` | A previously undocumented breaking change |
-| `bd remember "<key>" "<lesson>"` (or auto-memory feedback file) | Plugin-migration insight that doesn't yet have a home |
-
-When the same hand-fix appears in three or more separate plugin
-migrations, file a P2 bead to promote it from documentation to an
-automated AST rule. Don't try to write the rule mid-migration — finish
-the current plugin first, then the new-rule bead is its own
-single-plugin-scoped task.
-
-### The first migration of a version step is different from the tenth
-
-When this is the *first* plugin you're migrating across a particular
-version boundary in the current session (or the first since the manifest
-was last updated), treat it as a learning exercise rather than a
-production run:
-
-- **Invest in understanding, not speed.** Read the AST rule output
-  fully, even for rules you've seen before. Watch for surprises.
-- **Pick an easy first target if you have a choice.** A small,
-  well-structured plugin with an upstream reference is the ideal first
-  pick — it gives you a clean signal for what the rules should produce.
-  Save the weird ones for later.
-- **Push learnings into the manifest immediately.** If you hit a
-  hand-fix on the first plugin of a step, update the rule's
-  `llm_instructions` (or file a P2 bead for a new rule) before closing
-  the issue. The next plugin should benefit from what you learned.
-- **Expect the first migration of a step to take 3–5× longer than the
-  average.** That's not a bug — that's where the manifest and skill
-  documentation get refined. By the third or fourth plugin of the same
-  step the rules should be in their final shape and the work nearly
-  mechanical. If you're on plugin ten of a step and still finding new
-  breaking changes, surface that to the human — either the rules are
-  undercooked or the plugins are unusually diverse.
 
 ---
 

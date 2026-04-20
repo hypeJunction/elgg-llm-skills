@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# elgg-migrate-verify — run acceptance gate checks against a running plugin Docker stack.
+#
+# Usage:
+#   elgg-migrate-verify <plugin-dir> [options]
+#
+# Options:
+#   --compose-file=<path>   Path to docker-compose.yml (default: <plugin-dir>/docker/docker-compose.yml)
+#   --phpunit               Run PHPUnit integration tests
+#   --no-render             Skip HTTP render checks (useful when Elgg isn't installed yet)
+#
+# Gates run:
+#   [syntax]   PHP syntax check on all .php files (excl. vendor/, tests/)
+#   [render]   Homepage and login page render > 1000 bytes
+#   [errors]   Zero PHP Fatal/Error entries in Apache error.log
+#   [phpunit]  PHPUnit test suite (opt-in via --phpunit)
+#
+# Exit codes:
+#   0  All checked gates pass
+#   1  One or more gates failed
+#   2  Usage error
+#
+# The Docker stack must already be running. Start it with:
+#   docker compose -f <plugin-dir>/docker/docker-compose.yml up -d
+
+set -euo pipefail
+
+PLUGIN_DIR="${1:?usage: elgg-migrate-verify <plugin-dir> [--phpunit] [--compose-file=...]}"
+PLUGIN_DIR="$(readlink -f "$PLUGIN_DIR")"
+PLUGIN_ID="$(basename "$PLUGIN_DIR")"
+
+COMPOSE_FILE="$PLUGIN_DIR/docker/docker-compose.yml"
+RUN_PHPUNIT=0
+SKIP_RENDER=0
+
+shift
+for arg in "$@"; do
+  case "$arg" in
+    --compose-file=*) COMPOSE_FILE="${arg#*=}" ;;
+    --phpunit)        RUN_PHPUNIT=1 ;;
+    --no-render)      SKIP_RENDER=1 ;;
+    *) echo "unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
+
+[[ -f "$COMPOSE_FILE" ]] || { echo "ERROR: compose file not found: $COMPOSE_FILE" >&2; exit 1; }
+
+dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+
+PASS=0; FAIL=0; SKIP=0; FAIL_DETAILS=()
+
+gate() {
+  local name="$1" result="$2" detail="${3:-}"
+  local prefix=" "
+  case "$result" in
+    PASS) printf "  \033[32m✓\033[0m  %-55s \033[32mPASS\033[0m\n" "$name"; PASS=$(( PASS + 1 )) ;;
+    FAIL)
+      printf "  \033[31m✗\033[0m  %-55s \033[31mFAIL\033[0m\n" "$name"; FAIL=$(( FAIL + 1 ))
+      [[ -n "$detail" ]] && FAIL_DETAILS+=("$name: $detail")
+      ;;
+    SKIP) printf "  \033[33m-\033[0m  %-55s \033[33mSKIP\033[0m  %s\n" "$name" "$detail"; SKIP=$(( SKIP + 1 )) ;;
+  esac
+}
+
+# ─── check container is up ──────────────────────────────────────────────────
+
+if ! dc ps --services 2>/dev/null | grep -q elgg; then
+  echo "ERROR: elgg service not found in compose project. Is the stack running?" >&2
+  echo "  docker compose -f $COMPOSE_FILE up -d" >&2
+  exit 1
+fi
+
+echo ""
+echo "  elgg-migrate-verify  ·  $PLUGIN_ID"
+echo "  compose: $COMPOSE_FILE"
+echo ""
+
+# ─── gate 1: PHP syntax ─────────────────────────────────────────────────────
+
+echo "  ── PHP syntax ──────────────────────────────────────────────────"
+syntax_errors=$(dc exec elgg sh -c \
+  "find mod/$PLUGIN_ID -name '*.php' | grep -v /vendor/ | grep -v /tests/ | xargs php -l 2>&1 | grep -v 'No syntax errors' || true" 2>&1 \
+  | grep -v "^$" || true)
+if [[ -z "$syntax_errors" ]]; then
+  gate "PHP syntax clean (excl. vendor, tests)" PASS
+else
+  gate "PHP syntax clean (excl. vendor, tests)" FAIL "$(echo "$syntax_errors" | head -3)"
+fi
+
+# ─── gate 2: HTTP render ────────────────────────────────────────────────────
+
+echo ""
+echo "  ── HTTP render ─────────────────────────────────────────────────"
+if [[ "$SKIP_RENDER" -eq 1 ]]; then
+  gate "Homepage renders (>1000 bytes)" SKIP "--no-render"
+  gate "Login page renders (>1000 bytes)" SKIP "--no-render"
+else
+  hp_size=$(dc exec elgg sh -c "curl -sL http://localhost/ | wc -c" 2>&1 | tr -d '[:space:]')
+  if [[ "${hp_size:-0}" -gt 1000 ]]; then
+    gate "Homepage renders (${hp_size} bytes)" PASS
+  else
+    gate "Homepage renders" FAIL "${hp_size:-0} bytes (expected >1000)"
+  fi
+
+  login_size=$(dc exec elgg sh -c "curl -sL http://localhost/login | wc -c" 2>&1 | tr -d '[:space:]')
+  if [[ "${login_size:-0}" -gt 1000 ]]; then
+    gate "Login page renders (${login_size} bytes)" PASS
+  else
+    gate "Login page renders" FAIL "${login_size:-0} bytes (expected >1000)"
+  fi
+fi
+
+# ─── gate 3: PHP errors ─────────────────────────────────────────────────────
+
+echo ""
+echo "  ── PHP errors ──────────────────────────────────────────────────"
+error_count=$(dc exec elgg sh -c \
+  "grep -cE 'PHP Fatal|PHP Error' /var/log/apache2/error.log 2>/dev/null || echo 0" 2>&1 \
+  | head -1 | tr -d '[:space:]' || echo 0)
+if [[ "${error_count:-0}" -eq 0 ]]; then
+  gate "No PHP Fatal/Error in Apache error.log" PASS
+else
+  # grab first offending line for context
+  first_error=$(dc exec elgg sh -c \
+    "grep -m1 -E 'PHP Fatal|PHP Error' /var/log/apache2/error.log 2>/dev/null || true" 2>&1 || true)
+  gate "No PHP Fatal/Error in Apache error.log" FAIL "$error_count error(s): $first_error"
+fi
+
+# ─── gate 4: PHPUnit ────────────────────────────────────────────────────────
+
+echo ""
+echo "  ── PHPUnit ─────────────────────────────────────────────────────"
+if [[ "$RUN_PHPUNIT" -eq 0 ]]; then
+  gate "PHPUnit integration tests" SKIP "pass --phpunit to run"
+elif [[ ! -f "$PLUGIN_DIR/tests/phpunit.xml" ]]; then
+  gate "PHPUnit integration tests" SKIP "no tests/phpunit.xml found"
+else
+  phpunit_out=$(dc exec elgg sh -c \
+    "vendor/bin/phpunit -c mod/$PLUGIN_ID/tests/phpunit.xml 2>&1" 2>&1 || true)
+  ok_line=$(echo "$phpunit_out" | grep -E "^OK \(" || true)
+  if [[ -n "$ok_line" ]]; then
+    gate "PHPUnit: $ok_line" PASS
+  else
+    summary=$(echo "$phpunit_out" | grep -E "Tests:|ERRORS!|FAILURES!" | tail -2 | tr '\n' ' ')
+    gate "PHPUnit integration tests" FAIL "${summary:-check logs}"
+    # print first failure for context
+    echo ""
+    echo "    --- phpunit output (tail) ---"
+    echo "$phpunit_out" | grep -E "FAIL|ERROR|Error:|Exception" | head -5 | sed 's/^/    /'
+    echo ""
+  fi
+fi
+
+# ─── summary ────────────────────────────────────────────────────────────────
+
+echo ""
+echo "  ────────────────────────────────────────────────────────────────"
+printf "  \033[32m%d PASS\033[0m  \033[31m%d FAIL\033[0m  \033[33m%d SKIP\033[0m\n" "$PASS" "$FAIL" "$SKIP"
+
+if [[ "${#FAIL_DETAILS[@]}" -gt 0 ]]; then
+  echo ""
+  echo "  Failed gates:"
+  for d in "${FAIL_DETAILS[@]}"; do echo "    · $d"; done
+fi
+
+echo ""
+[[ "$FAIL" -eq 0 ]]
