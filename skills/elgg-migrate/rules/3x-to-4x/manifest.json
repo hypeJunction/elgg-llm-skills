@@ -131,6 +131,14 @@
       "priority": 150
     },
     {
+      "id": "015b-css-js-registration",
+      "name": "Flag CSS/JS registration functions removed in Elgg 4.x",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\CssRegistration",
+      "breaking_change": "elgg_register_css/js() and elgg_load_css/js() removed — use elgg_register_external_file()",
+      "priority": 127
+    },
+    {
       "id": "016-removed-constants",
       "name": "Replace removed constants",
       "automated": false,
@@ -164,10 +172,10 @@
     },
     {
       "id": "019-plugin-settings-vars",
-      "name": "Replace $vars['plugin'] with $vars['entity'] in settings forms",
-      "automated": false,
-      "llm_instructions": "In plugin settings forms (`views/default/plugins/{plugin_id}/settings` and `forms/` views):\n\nReplace `$vars['plugin']` with `$vars['entity']`.\n\n```php\n// Before:\n$plugin = $vars['plugin'];\n$setting = $plugin->getSetting('my_setting');\n\n// After:\n$entity = $vars['entity'];\n$setting = $entity->getSetting('my_setting');\n```\n\nSearch: `grep -rn \"\\$vars\\['plugin'\\]\" views/ forms/`",
-      "breaking_change": "$vars['plugin'] no longer available in plugin settings forms \u2014 use $vars['entity']",
+      "name": "Replace $vars['plugin'] with $vars['entity'] in plugin settings views",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\PluginSettingsVars",
+      "breaking_change": "$vars['plugin'] renamed to $vars['entity'] in plugin settings forms",
       "priority": 210
     },
     {
@@ -188,18 +196,18 @@
     },
     {
       "id": "022-notification-subscription-rename",
-      "name": "Update notification subscription relationship name",
-      "automated": false,
-      "llm_instructions": "The notification subscription relationship name changed:\n- Before: `notify{method}` (e.g., `notifyemail`, `notifysite`)\n- After: `notify:{method}` (e.g., `notify:email`, `notify:site`)\n\nSearch for the old format in SQL queries and relationship lookups:\n```bash\ngrep -rn 'notify[a-z]' classes/ views/ actions/ --include='*.php' | grep -v 'notify:' | grep -v 'notification'\n```\n\nAlso check for direct relationship queries:\n```php\n// Before:\nadd_entity_relationship($user_guid, 'notifyemail', $target_guid);\n\n// After:\nadd_entity_relationship($user_guid, 'notify:email', $target_guid);\n```",
-      "breaking_change": "Notification subscription relationship format changed: notifymethod \u2192 notify:method",
+      "name": "Rename notification subscription relationship names (notifyemail \u2192 notify:email)",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\NotificationSubscriptionRename",
+      "breaking_change": "Notification relationship names changed: notifyemail \u2192 notify:email, notifysite \u2192 notify:site, etc.",
       "priority": 240
     },
     {
       "id": "023-database-class-rename",
-      "name": "Replace Elgg\\Database with Elgg\\Application\\Database",
-      "automated": false,
-      "llm_instructions": "The `Elgg\\Database` class was replaced by `Elgg\\Application\\Database` in the DI container.\n\nSearch for type hints and use statements:\n```bash\ngrep -rn 'use Elgg\\\\Database;\\|use Elgg\\\\Database as\\|Elgg\\\\Database \\$' classes/ --include='*.php'\n```\n\nReplace:\n```php\n// Before:\nuse Elgg\\Database as ElggDatabase;\n\n// After:\nuse Elgg\\Application\\Database as ElggDatabase;\n```\n\nNote: `Elgg\\Database\\*` sub-namespace classes (QueryBuilder, Select, Insert, etc.) are NOT affected.",
-      "breaking_change": "Elgg\\Database class renamed to Elgg\\Application\\Database \u2014 affects DI type hints",
+      "name": "Rename Elgg\\Database class to Elgg\\Application\\Database",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\DatabaseClassRename",
+      "breaking_change": "Elgg\\Database moved to Elgg\\Application\\Database",
       "priority": 250
     },
     {
@@ -220,10 +228,10 @@
     },
     {
       "id": "026-jquery-deprecated-apis",
-      "name": "Replace jQuery APIs removed or deprecated in jQuery 3.5.x",
-      "automated": false,
-      "llm_instructions": "jQuery was updated to 3.5.x in Elgg 4.0. Several APIs were removed or deprecated.\n\n**Search for deprecated patterns:**\n```bash\ngrep -rn '\\.bind(\\|\\.unbind(\\|\\.delegate(\\|\\.undelegate(\\|\\.click(\\|\\.error(\\|\\.load(\\|\\.unload(\\|\\.size(\\|jQuery\\.parseJSON\\|jQuery\\.isArray\\|jQuery\\.unique\\|jQuery\\.holdReady\\|\\.andSelf(\\|\\.context\\b\\|\\.selector\\b' views/ --include='*.js'\n```\n\n**Replacements:**\n\n| Deprecated | Replacement |\n|------------|-------------|\n| `.bind('event', fn)` | `.on('event', fn)` |\n| `.unbind('event', fn)` | `.off('event', fn)` |\n| `.delegate(sel, 'event', fn)` | `.on('event', sel, fn)` |\n| `.undelegate(sel, 'event', fn)` | `.off('event', sel, fn)` |\n| `.click(fn)` | `.on('click', fn)` |\n| `.load(fn)` (as event) | `.on('load', fn)` |\n| `.error(fn)` | `.on('error', fn)` |\n| `.unload(fn)` | `.on('beforeunload', fn)` |\n| `.size()` | `.length` |\n| `$.parseJSON(str)` | `JSON.parse(str)` |\n| `$.isArray(obj)` | `Array.isArray(obj)` |\n| `$.unique(arr)` | `$.uniqueSort(arr)` |\n| `$.holdReady(hold)` | Remove \u2014 use proper AMD loading |\n| `.andSelf()` | `.addBack()` |\n| `$(el).context` | Not available \u2014 use direct DOM reference |\n| `$(el).selector` | Not available \u2014 store selector yourself |\n\n**jQuery 3.5 HTML parsing change (BREAKING):**\nSelf-closing HTML tags like `$('<div/>')` no longer work for non-void elements. Use `$('<div></div>')` or `$('<div>')` instead.\n\nSearch: `grep -rn \"\\$('<[a-z].*/>\\s*')\" views/ --include='*.js'`",
-      "breaking_change": "jQuery 3.5.x: .bind/.unbind/.delegate removed, self-closing HTML tags changed",
+      "name": "Replace jQuery APIs removed in jQuery 3.5.x (Elgg 4.0)",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\JqueryDeprecatedApis",
+      "breaking_change": "jQuery updated to 3.5.x in Elgg 4.0 — .bind()/.unbind() removed, $.parseJSON/$.isArray deprecated",
       "priority": 280
     },
     {
@@ -257,6 +265,14 @@
       "class": "ElggMigrate\\Rules\\V3ToV4\\AmdRemovedApis",
       "breaking_change": "elgg/init AMD module removed; elgg.echo() moved to elgg/i18n; elgg.provide() removed",
       "priority": 125
+    },
+    {
+      "id": "013c-elgg-instanceof",
+      "name": "Replace elgg_instanceof() with native PHP instanceof checks",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ElggInstanceof",
+      "breaking_change": "elgg_instanceof() removed in Elgg 4.x — use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
+      "priority": 126
     }
   ]
 }
