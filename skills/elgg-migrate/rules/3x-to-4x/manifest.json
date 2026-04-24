@@ -31,7 +31,7 @@
       "name": "Replace \\DI\\object() with \\DI\\create() in elgg-services.php",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\DiObjectToCreate",
-      "breaking_change": "PHP-DI updated: \\DI\\object() → \\DI\\create()",
+      "breaking_change": "PHP-DI updated: \\DI\\object() \u2192 \\DI\\create()",
       "priority": 30
     },
     {
@@ -39,7 +39,7 @@
       "name": "Replace Zend\\Mail with Laminas\\Mail",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\ZendToLaminas",
-      "breaking_change": "Zend\\Mail → Laminas\\Mail",
+      "breaking_change": "Zend\\Mail \u2192 Laminas\\Mail",
       "priority": 40
     },
     {
@@ -78,7 +78,7 @@
       "id": "009-js-ajax-helpers",
       "name": "Replace legacy JS ajax helpers",
       "automated": false,
-      "llm_instructions": "Legacy JavaScript AJAX helpers removed:\n- `elgg.action()` → use `elgg/Ajax` module\n- `elgg.get()` → use `elgg/Ajax` module\n- `elgg.getJSON()` → use `elgg/Ajax` module\n- `elgg.post()` → use `elgg/Ajax` module\n\n```javascript\n// Before:\nelgg.action('myplugin/save', {data: {key: 'value'}});\n\n// After:\nrequire(['elgg/Ajax'], function(Ajax) {\n    var ajax = new Ajax();\n    ajax.action('myplugin/save', {data: {key: 'value'}});\n});\n```\n\nAlso: `boot, system` and `ready, system` JS triggers removed.",
+      "llm_instructions": "Legacy JavaScript AJAX helpers removed:\n- `elgg.action()` \u2192 use `elgg/Ajax` module\n- `elgg.get()` \u2192 use `elgg/Ajax` module\n- `elgg.getJSON()` \u2192 use `elgg/Ajax` module\n- `elgg.post()` \u2192 use `elgg/Ajax` module\n\n```javascript\n// Before:\nelgg.action('myplugin/save', {data: {key: 'value'}});\n\n// After:\nrequire(['elgg/Ajax'], function(Ajax) {\n    var ajax = new Ajax();\n    ajax.action('myplugin/save', {data: {key: 'value'}});\n});\n```\n\nAlso: `boot, system` and `ready, system` JS triggers removed.",
       "breaking_change": "elgg.action/get/getJSON/post removed, use elgg/Ajax module",
       "priority": 90
     },
@@ -126,7 +126,7 @@
       "id": "015-removed-views",
       "name": "Replace removed views",
       "automated": false,
-      "llm_instructions": "Several views removed in 4.0. Search plugin views/ and PHP files for references:\n\n- `notifications/personal` → use `notifications/settings` or `notifications/users`\n- `notifications/groups` → removed\n- `notifications/settings/collections` → removed\n- `notifications/settings/personal` → `notifications/settings/records`\n- `notifications/subscriptions/groups` → `forms/notifications/subscriptions/groups`\n- `notifications/subscriptions/users` → `forms/notifications/subscriptions/users`\n- `resources/river` → `resources/activity/all` or `resources/activity/owner`\n- `resources/comments/view` → use `\\Elgg\\Controllers\\CommentEntityRedirector`\n- `object/plugin/elements/contributors` → removed\n- `input/urlshortener` → removed\n- `navigation/menu/elements/item_deps` → merged into `navigation/menu/elements/item`\n\nAlso: `$vars['plugin']` in settings forms → use `$vars['entity']` instead.",
+      "llm_instructions": "Several views removed in 4.0. Search plugin views/ and PHP files for references:\n\n- `notifications/personal` \u2192 use `notifications/settings` or `notifications/users`\n- `notifications/groups` \u2192 removed\n- `notifications/settings/collections` \u2192 removed\n- `notifications/settings/personal` \u2192 `notifications/settings/records`\n- `notifications/subscriptions/groups` \u2192 `forms/notifications/subscriptions/groups`\n- `notifications/subscriptions/users` \u2192 `forms/notifications/subscriptions/users`\n- `resources/river` \u2192 `resources/activity/all` or `resources/activity/owner`\n- `resources/comments/view` \u2192 use `\\Elgg\\Controllers\\CommentEntityRedirector`\n- `object/plugin/elements/contributors` \u2192 removed\n- `input/urlshortener` \u2192 removed\n- `navigation/menu/elements/item_deps` \u2192 merged into `navigation/menu/elements/item`\n\nAlso: `$vars['plugin']` in settings forms \u2192 use `$vars['entity']` instead.",
       "breaking_change": "Several notification, resource, and plugin views removed or renamed in 4.0",
       "priority": 150
     },
@@ -135,7 +135,7 @@
       "name": "Flag CSS/JS registration functions removed in Elgg 4.x",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\CssRegistration",
-      "breaking_change": "elgg_register_css/js() and elgg_load_css/js() removed — use elgg_register_external_file()",
+      "breaking_change": "elgg_register_css/js() and elgg_load_css/js() removed \u2014 use elgg_register_external_file()",
       "priority": 127
     },
     {
@@ -181,25 +181,26 @@
     {
       "id": "020-field-config-api",
       "name": "Replace elgg_get_config() field lookups with elgg()->fields->get()",
-      "automated": false,
-      "llm_instructions": "Replace deprecated config-based field lookups:\n\n```php\n// Before:\n$fields = elgg_get_config('pages');\n$fields = elgg_get_config('group');\n$fields = elgg_get_config('profile_fields');\n\n// After:\n$fields = elgg()->fields->get('object', 'page');\n$fields = elgg()->fields->get('group', 'group');\n$fields = elgg()->fields->get('user', 'user');\n```\n\nAlso update related hooks:\n- `profile:fields, group` → `fields, group:group`\n- `profile:fields, user` → `fields, user:user`\n\nSearch: `grep -rn \"elgg_get_config.*'pages'\\|elgg_get_config.*'group'\\|elgg_get_config.*'profile_fields'\" classes/ views/`",
-      "breaking_change": "Config-based field lookups removed — use elgg()->fields->get()",
-      "priority": 220
+      "automated": true,
+      "llm_instructions": "Replace deprecated config-based field lookups:\n\n```php\n// Before:\n$fields = elgg_get_config('pages');\n$fields = elgg_get_config('group');\n$fields = elgg_get_config('profile_fields');\n\n// After:\n$fields = elgg()->fields->get('object', 'page');\n$fields = elgg()->fields->get('group', 'group');\n$fields = elgg()->fields->get('user', 'user');\n```\n\nAlso update related hooks:\n- `profile:fields, group` \u2192 `fields, group:group`\n- `profile:fields, user` \u2192 `fields, user:user`\n\nSearch: `grep -rn \"elgg_get_config.*'pages'\\|elgg_get_config.*'group'\\|elgg_get_config.*'profile_fields'\" classes/ views/`",
+      "breaking_change": "Config-based field lookups removed \u2014 use elgg()->fields->get()",
+      "priority": 220,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\FieldConfigApi"
     },
     {
       "id": "021-callback-renames",
       "name": "Update references to renamed core callback functions",
       "automated": false,
       "llm_instructions": "~150 core callback functions were renamed from `_elgg_*()` procedural functions to `Elgg\\ClassName::method()` class-based handlers.\n\nThis mainly affects plugins that UNREGISTER core hooks/events:\n```php\n// Before:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', '_elgg_entity_menu_setup');\n\n// After:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', 'Elgg\\Menus\\Entity::registerEdit');\n```\n\nSearch for `_elgg_` in elgg_unregister_* calls:\n`grep -rn 'elgg_unregister.*_elgg_\\|elgg_unregister.*_groups_\\|elgg_unregister.*_members_' classes/ views/`\n\nFull rename list: see https://learn.elgg.org/en/stable/appendix/upgrade-notes/3.x-to-4.0.html#renamed-hook-event-handler-callbacks",
-      "breaking_change": "~150 core callbacks renamed from _elgg_* to Class::method — breaks unregistration",
+      "breaking_change": "~150 core callbacks renamed from _elgg_* to Class::method \u2014 breaks unregistration",
       "priority": 230
     },
     {
       "id": "022-notification-subscription-rename",
-      "name": "Rename notification subscription relationship names (notifyemail → notify:email)",
+      "name": "Rename notification subscription relationship names (notifyemail \u2192 notify:email)",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\NotificationSubscriptionRename",
-      "breaking_change": "Notification relationship names changed: notifyemail → notify:email, notifysite → notify:site, etc.",
+      "breaking_change": "Notification relationship names changed: notifyemail \u2192 notify:email, notifysite \u2192 notify:site, etc.",
       "priority": 240
     },
     {
@@ -212,7 +213,7 @@
     },
     {
       "id": "024-doctrine-dbal-v3",
-      "name": "Update Doctrine DBAL v2 → v3 usage",
+      "name": "Update Doctrine DBAL v2 \u2192 v3 usage",
       "automated": false,
       "llm_instructions": "Doctrine DBAL was updated from v2 to v3. Key change:\n\n- `$qb->fetch()` now returns an **array**, not an **object**\n- If you need object rows, use `elgg()->db->getData($qb)` instead\n- Query parameters should no longer have `:` prefix in the params array (but still use `:` in the query)\n\n```php\n// Before (DBAL v2):\n$row = $qb->fetch(); // returns object\n$row->name;\n\n// After (DBAL v3):\n$row = $qb->fetch(); // returns array\n$row['name'];\n\n// Or use Elgg wrapper:\n$rows = elgg()->db->getData($qb); // returns objects\n```\n\nSearch: `grep -rn '->fetch()\\|->fetchAll()\\|->fetchColumn()' classes/ --include='*.php'`",
       "breaking_change": "Doctrine DBAL v3: $qb->fetch() returns array not object",
@@ -222,8 +223,8 @@
       "id": "025-type-hints",
       "name": "Check for type-hint compatibility with strict parameter types",
       "automated": false,
-      "llm_instructions": "~80+ Elgg functions now have strict type hints. Passing wrong types (null, wrong int/string) causes TypeError.\n\nCommon pitfalls:\n- `elgg_get_plugin_from_id(null)` — now requires string\n- `elgg_register_action($action, $path, null)` — access must be string\n- `add_user_to_access_collection(null, $id)` — requires int\n- `elgg_error_response('msg', null)` — status_code must be int\n- `get_entity_statistics(null)` — requires int\n\nSearch for potential issues:\n```bash\ngrep -rn 'elgg_error_response\\|elgg_ok_response\\|elgg_redirect_response\\|elgg_register_action\\|elgg_get_plugin_from_id' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure all arguments match expected types. PHP 7.4+ will throw TypeError at runtime.",
-      "breaking_change": "~80+ functions gained strict type hints — TypeError on wrong argument types",
+      "llm_instructions": "~80+ Elgg functions now have strict type hints. Passing wrong types (null, wrong int/string) causes TypeError.\n\nCommon pitfalls:\n- `elgg_get_plugin_from_id(null)` \u2014 now requires string\n- `elgg_register_action($action, $path, null)` \u2014 access must be string\n- `add_user_to_access_collection(null, $id)` \u2014 requires int\n- `elgg_error_response('msg', null)` \u2014 status_code must be int\n- `get_entity_statistics(null)` \u2014 requires int\n\nSearch for potential issues:\n```bash\ngrep -rn 'elgg_error_response\\|elgg_ok_response\\|elgg_redirect_response\\|elgg_register_action\\|elgg_get_plugin_from_id' classes/ views/ actions/ --include='*.php'\n```\n\nEnsure all arguments match expected types. PHP 7.4+ will throw TypeError at runtime.",
+      "breaking_change": "~80+ functions gained strict type hints \u2014 TypeError on wrong argument types",
       "priority": 270
     },
     {
@@ -231,14 +232,14 @@
       "name": "Replace jQuery APIs removed in jQuery 3.5.x (Elgg 4.0)",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\JqueryDeprecatedApis",
-      "breaking_change": "jQuery updated to 3.5.x in Elgg 4.0 — .bind()/.unbind() removed, $.parseJSON/$.isArray deprecated",
+      "breaking_change": "jQuery updated to 3.5.x in Elgg 4.0 \u2014 .bind()/.unbind() removed, $.parseJSON/$.isArray deprecated",
       "priority": 280
     },
     {
       "id": "027-jquery-ui-requires",
       "name": "Add explicit requires for jQuery UI widgets",
       "automated": true,
-      "breaking_change": "jQuery UI no longer fully loaded — must require individual widget modules",
+      "breaking_change": "jQuery UI no longer fully loaded \u2014 must require individual widget modules",
       "priority": 290,
       "class": "ElggMigrate\\Rules\\V3ToV4\\JqueryUiRequires"
     },
@@ -255,7 +256,7 @@
       "name": "Add PHPDoc blocks to functions, methods, and class properties",
       "automated": true,
       "class": "ElggMigrate\\Rules\\Shared\\AddDocBlocks",
-      "breaking_change": "None — quality-of-life improvement applied at the end of every migration so migrated plugins carry type-bearing docblocks",
+      "breaking_change": "None \u2014 quality-of-life improvement applied at the end of every migration so migrated plugins carry type-bearing docblocks",
       "priority": 9999
     },
     {
@@ -271,7 +272,7 @@
       "name": "Replace elgg_instanceof() with native PHP instanceof checks",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\ElggInstanceof",
-      "breaking_change": "elgg_instanceof() removed in Elgg 4.x — use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
+      "breaking_change": "elgg_instanceof() removed in Elgg 4.x \u2014 use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
       "priority": 126
     }
   ]
