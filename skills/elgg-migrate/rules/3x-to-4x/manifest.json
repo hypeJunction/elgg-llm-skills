@@ -190,10 +190,11 @@
     {
       "id": "021-callback-renames",
       "name": "Update references to renamed core callback functions",
-      "automated": false,
+      "automated": true,
       "llm_instructions": "~150 core callback functions were renamed from `_elgg_*()` procedural functions to `Elgg\\ClassName::method()` class-based handlers.\n\nThis mainly affects plugins that UNREGISTER core hooks/events:\n```php\n// Before:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', '_elgg_entity_menu_setup');\n\n// After:\nelgg_unregister_plugin_hook_handler('register', 'menu:entity', 'Elgg\\Menus\\Entity::registerEdit');\n```\n\nSearch for `_elgg_` in elgg_unregister_* calls:\n`grep -rn 'elgg_unregister.*_elgg_\\|elgg_unregister.*_groups_\\|elgg_unregister.*_members_' classes/ views/`\n\nFull rename list: see https://learn.elgg.org/en/stable/appendix/upgrade-notes/3.x-to-4.0.html#renamed-hook-event-handler-callbacks",
       "breaking_change": "~150 core callbacks renamed from _elgg_* to Class::method \u2014 breaks unregistration",
-      "priority": 230
+      "priority": 230,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\CallbackRenames"
     },
     {
       "id": "022-notification-subscription-rename",
@@ -214,10 +215,11 @@
     {
       "id": "024-doctrine-dbal-v3",
       "name": "Update Doctrine DBAL v2 \u2192 v3 usage",
-      "automated": false,
+      "automated": true,
       "llm_instructions": "Doctrine DBAL was updated from v2 to v3. Key change:\n\n- `$qb->fetch()` now returns an **array**, not an **object**\n- If you need object rows, use `elgg()->db->getData($qb)` instead\n- Query parameters should no longer have `:` prefix in the params array (but still use `:` in the query)\n\n```php\n// Before (DBAL v2):\n$row = $qb->fetch(); // returns object\n$row->name;\n\n// After (DBAL v3):\n$row = $qb->fetch(); // returns array\n$row['name'];\n\n// Or use Elgg wrapper:\n$rows = elgg()->db->getData($qb); // returns objects\n```\n\nSearch: `grep -rn '->fetch()\\|->fetchAll()\\|->fetchColumn()' classes/ --include='*.php'`",
       "breaking_change": "Doctrine DBAL v3: $qb->fetch() returns array not object",
-      "priority": 260
+      "priority": 260,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\DoctrineDbalV3"
     },
     {
       "id": "025-type-hints",
