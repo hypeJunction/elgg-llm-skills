@@ -137,7 +137,7 @@ elif [[ ! -f "$PLUGIN_DIR/tests/phpunit.xml" ]]; then
 else
   phpunit_out=$(dc exec elgg sh -c \
     "vendor/bin/phpunit -c mod/$PLUGIN_ID/tests/phpunit.xml 2>&1" 2>&1 || true)
-  ok_line=$(echo "$phpunit_out" | grep -E "^OK \(" || true)
+  ok_line=$(echo "$phpunit_out" | grep -E "^OK( \(|,)" || true)
   if [[ -n "$ok_line" ]]; then
     gate "PHPUnit: $ok_line" PASS
   else
