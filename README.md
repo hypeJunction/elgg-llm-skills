@@ -14,6 +14,33 @@ Automated migration toolkit for upgrading Elgg CMS plugins across major versions
 - **Skills for AI agents** (Claude Code, etc.) with full migration workflows
 - **Structured formulas** for tracking multi-plugin, multi-version migrations
 
+## Repository Layout
+
+This repo ships as a set of self-contained **skills** plus a few shared shell scripts. Each skill has its own `bin/`, `src/`, `rules/`, `tests/`, `references/`, and Docker `infra/` so it can be vendored or distributed independently.
+
+```
+elgg-migrate/
+  bin/                              # Shared scripts (plugin discovery, infra generation/validation)
+    discover-plugins.sh
+    gen-elgg-infra.sh
+    validate-elgg-infra.sh
+  skills/
+    elgg-migrate/                   # PHP migration engine (the workhorse)
+      bin/migrate.php               # CLI entry point
+      rules/{2x-to-3x,…,6x-to-7x}/manifest.json
+      src/                          # RuleRunner, VersionGuard, PostMigrationVerifier, SecuritySweep, DependencyAudit
+      references/                   # Breaking changes, version matrix, security checklist, etc.
+      infra/elgg{2..7}/             # Docker stacks for verification
+      tests/
+    elgg-site-upgrade/              # Whole-site upgrade orchestration
+      formulas/elgg-site-upgrade.formula.json
+    elgg-test-writer/               # PHPUnit test scaffolding
+      formulas/plugin-test-scaffold.formula.json
+      templates/
+    elgg-js-test-writer/            # JS (Vitest/Playwright) test scaffolding
+  AGENTS.md / CLAUDE.md             # Agent instructions
+```
+
 ## Safety Gates
 
 Each migration step is protected by five gates:
@@ -27,21 +54,25 @@ Each migration step is protected by five gates:
 ## Quick Start
 
 ```bash
-# Clone
+# Clone and install the engine's deps
 git clone <repo-url> && cd elgg-migrate
-composer install
+composer install --working-dir=skills/elgg-migrate
 
 # Analyze a plugin (dry run) — version guard runs automatically
-php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run
+php skills/elgg-migrate/bin/migrate.php \
+  skills/elgg-migrate/rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run
 
 # Apply automated transformations with full verification + security sweep
-php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --verify --security
+php skills/elgg-migrate/bin/migrate.php \
+  skills/elgg-migrate/rules/3x-to-4x/manifest.json /path/to/my-plugin --verify --security
 
 # See LLM-guided fixes needed
-php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --report
+php skills/elgg-migrate/bin/migrate.php \
+  skills/elgg-migrate/rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --report
 
 # Verify-only mode (no file changes)
-php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --verify --security
+php skills/elgg-migrate/bin/migrate.php \
+  skills/elgg-migrate/rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --verify --security
 ```
 
 ### CLI Flags
@@ -68,26 +99,29 @@ php bin/migrate.php rules/3x-to-4x/manifest.json /path/to/my-plugin --dry-run --
 
 ## Available Migration Rules
 
-| Version Step | Auto Rules | LLM Rules | Manifest |
-|-------------|:---------:|:---------:|----------|
-| 2.x → 3.x | 13 | 17 | `rules/2x-to-3x/manifest.json` |
-| 3.x → 4.x | 6 | 22 | `rules/3x-to-4x/manifest.json` |
-| 4.x → 5.x | 0 | 21 | `rules/4x-to-5x/manifest.json` |
-| 5.x → 6.x | 0 | 13 | `rules/5x-to-6x/manifest.json` |
-| 6.x → 7.x | 0 | 22 | `rules/6x-to-7x/manifest.json` |
+| Version Step | Auto Rules | LLM Rules | Total | Manifest |
+|-------------|:---------:|:---------:|:---:|----------|
+| 2.x → 3.x | 18 | 20 | 38 | `skills/elgg-migrate/rules/2x-to-3x/manifest.json` |
+| 3.x → 4.x | 27 | 7  | 34 | `skills/elgg-migrate/rules/3x-to-4x/manifest.json` |
+| 4.x → 5.x | 1  | 21 | 22 | `skills/elgg-migrate/rules/4x-to-5x/manifest.json` |
+| 5.x → 6.x | 1  | 13 | 14 | `skills/elgg-migrate/rules/5x-to-6x/manifest.json` |
+| 6.x → 7.x | 1  | 22 | 23 | `skills/elgg-migrate/rules/6x-to-7x/manifest.json` |
 
 **Auto rules** run AST-based PHP code transformations (rename functions, rewrite signatures, etc.).
 **LLM rules** provide detailed instructions for an AI agent or developer to apply manually.
 
 ## AI Agent Skills
 
-This project includes skill definitions for AI coding agents (designed for Claude Code but adaptable):
+This project ships skill definitions for AI coding agents (designed for Claude Code but adaptable):
 
 | Skill | Purpose |
 |-------|---------|
 | `skills/elgg-migrate/` | Migrate a single plugin one major version at a time |
 | `skills/elgg-site-upgrade/` | Upgrade an entire Elgg installation (core + all plugins) |
 | `skills/elgg-test-writer/` | Generate PHPUnit test coverage for Elgg plugins |
+| `skills/elgg-js-test-writer/` | Generate Vitest / Playwright test coverage for plugin JS |
+
+Each skill is self-contained: it bundles its own CLI, rules, references, and Docker infra, so it can be vendored into a downstream project independently.
 
 ### Using Skills with Claude Code
 
@@ -101,6 +135,19 @@ claude "migrate ~/plugins/my-plugin from 3.x to 4.x"
 claude "upgrade my Elgg site from 3.x to 7.x"
 ```
 
+## Docker Verification Environments
+
+Each skill bundles a complete Docker stack per Elgg major version under `skills/<skill>/infra/elgg{2..7}/`. The canonical templates live in `skills/elgg-migrate/infra/`; `bin/gen-elgg-infra.sh` mirrors them into the sibling skills.
+
+```bash
+# Regenerate all per-version infra bundles from the elgg-migrate templates
+./bin/gen-elgg-infra.sh            # safe — skips existing dirs
+./bin/gen-elgg-infra.sh --force    # overwrite
+
+# Verify the generated stacks build and Elgg installs cleanly
+./bin/validate-elgg-infra.sh
+```
+
 ## Task Tracking with Beads
 
 For structured migration of many plugins, we recommend [beads](https://github.com/beads-dev/beads) (`bd`) for issue tracking. Beads provides local-first issue management that integrates well with AI agent workflows.
@@ -111,18 +158,19 @@ For structured migration of many plugins, we recommend [beads](https://github.co
 # Install beads (see https://github.com/beads-dev/beads)
 bd init
 
-# Install the migration formulas
-cp formulas/*.json .beads/formulas/
+# Install the migration formulas (each lives next to the skill that owns it)
+cp skills/elgg-site-upgrade/formulas/*.json   .beads/formulas/
+cp skills/elgg-test-writer/formulas/*.json    .beads/formulas/
 ```
 
 ### Available Formulas
 
-Pre-built workflow templates in `formulas/`:
+Pre-built workflow templates:
 
-| Formula | Purpose |
-|---------|---------|
-| `elgg-site-upgrade.formula.json` | Full site upgrade with assessment, migration, verification gates |
-| `plugin-test-scaffold.formula.json` | Generate test infrastructure for a migrated plugin |
+| Formula | Location | Purpose |
+|---------|----------|---------|
+| `elgg-site-upgrade.formula.json`     | `skills/elgg-site-upgrade/formulas/` | Full site upgrade with assessment, migration, verification gates |
+| `plugin-test-scaffold.formula.json`  | `skills/elgg-test-writer/formulas/`  | Generate test infrastructure for a migrated plugin |
 
 ```bash
 # Pour a formula to create structured issues
@@ -137,7 +185,7 @@ bd stats        # Project health overview
 
 ### Without Beads
 
-The skills and rules work perfectly without beads. Use whatever task tracking you prefer -- the migration rules and skill instructions are self-contained markdown and JSON files.
+The skills and rules work perfectly without beads. Use whatever task tracking you prefer — the migration rules and skill instructions are self-contained markdown and JSON files.
 
 ## Reference Documentation
 
@@ -146,56 +194,33 @@ All migration reference docs live under `skills/elgg-migrate/references/`:
 | Document | Content |
 |----------|---------|
 | `version-api-boundaries.md` | Which APIs belong to which Elgg version (enforced by `--verify`) |
+| `version-matrix.md` | PHP, MySQL, PHPUnit requirements per Elgg version |
+| `breaking-changes.md` + `breaking-changes/` | Breaking changes overview and per-step detail |
 | `plugin-architecture-by-version.md` | Ideal directory structure and file conventions per version |
 | `coding-standards.md` | Elgg coding standards by version (PSR-12 + Elgg extensions) |
 | `security-review-checklist.md` | Security checks performed by `--security` |
 | `llm-security-review.md` | Two-stage security workflow (automated + LLM deep review) |
+| `dependency-audit.md` / `dependabot-alerts.md` | Dependency CVE workflow |
 | `post-migration-documentation.md` | How to document a plugin after migration (ARCHITECTURE.md) |
-
-## Additional References
-
-| Document | Content |
-|----------|---------|
-| `references/breaking-changes/overview.md` | All breaking changes from 1.x through 7.x |
-| `references/breaking-changes/removed-functions.md` | Exhaustive removed function/class/method lists |
-| `references/version-matrix.md` | PHP, MySQL, PHPUnit requirements per Elgg version |
-| `references/testing/` | E2E and unit testing guides for Elgg |
-
-## Project Structure
-
-```
-elgg-migrate/
-  rules/
-    2x-to-3x/manifest.json    # 30 migration rules
-    3x-to-4x/manifest.json    # 28 migration rules
-    4x-to-5x/manifest.json    # 21 migration rules
-    5x-to-6x/manifest.json    # 13 migration rules
-    6x-to-7x/manifest.json    # 22 migration rules
-  src/Rules/                   # Automated rule implementations (PHP)
-  skills/                      # AI agent skill definitions
-  formulas/                    # Beads workflow templates (portable)
-  references/                  # Breaking changes, version matrix, testing guides
-  docker/                      # Docker environments per Elgg version
-  bin/                         # CLI tools
-  tests/                       # Rule unit tests
-```
+| `agent-failure-modes.md` / `common-mistakes.md` | Pitfalls observed in real migrations |
+| `git-hygiene.md` | Branching and commit conventions for migration work |
+| `testing/` and `ci/` | E2E, unit testing, and CI integration guides |
 
 ## Contributing
 
 ### Adding a New Rule
 
-1. Add the rule entry to the appropriate `rules/{from}-to-{to}/manifest.json`
-2. For automated rules: implement in `src/Rules/V{From}ToV{To}/YourRule.php`
+1. Add the rule entry to the appropriate `skills/elgg-migrate/rules/{from}-to-{to}/manifest.json`
+2. For automated rules: implement in `skills/elgg-migrate/src/Rules/V{From}ToV{To}/YourRule.php`
 3. For LLM rules: write detailed `llm_instructions` in the manifest entry
-4. Add tests in `tests/`
+4. Add tests in `skills/elgg-migrate/tests/`
 
 ### Documenting Learnings
 
 When migrating plugins and encountering surprises:
 
-- Add common mistakes to `skills/elgg-migrate/SKILL.md` (Common Mistakes table)
-- Add new breaking changes to `references/breaking-changes/overview.md`
-- Add removed functions to `references/breaking-changes/removed-functions.md`
+- Add common mistakes to `skills/elgg-migrate/references/common-mistakes.md`
+- Add new breaking changes to `skills/elgg-migrate/references/breaking-changes.md` (and the per-step files under `breaking-changes/`)
 - Improve LLM instructions in the relevant `manifest.json` rule
 
 ## License

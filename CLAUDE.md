@@ -59,18 +59,41 @@ bd close <id>         # Complete work
 
 ## Build & Test
 
-_Add your build and test commands here_
+The PHP migration engine lives in `skills/elgg-migrate/`. Each skill is self-contained.
 
 ```bash
-# Example:
-# npm install
-# npm test
+# Install engine dependencies
+composer install --working-dir=skills/elgg-migrate
+
+# Run unit tests for the migration engine
+(cd skills/elgg-migrate && vendor/bin/phpunit)
+
+# Validate generated Docker infra still builds + installs Elgg cleanly
+./bin/validate-elgg-infra.sh
+
+# Regenerate per-version Docker infra from canonical templates
+./bin/gen-elgg-infra.sh            # safe — skips existing dirs
+./bin/gen-elgg-infra.sh --force    # overwrite
 ```
+
+The CLI entry point is `php skills/elgg-migrate/bin/migrate.php <manifest> <plugin> [flags]`. See `README.md` for the full flag/exit-code reference.
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+The repo ships as a set of **self-contained skills** plus shared shell scripts. Skills can be vendored independently.
+
+- `skills/elgg-migrate/` — PHP migration engine (the workhorse). Owns `bin/migrate.php`, the `RuleRunner`, all five safety gates (`VersionGuard`, `PostMigrationVerifier`, `SecuritySweep`, `DependencyAudit`, Docker verification), the rule manifests under `rules/{2x-to-3x..6x-to-7x}/`, and reference docs under `references/`.
+- `skills/elgg-site-upgrade/` — orchestrates whole-site upgrades; ships a beads formula in `formulas/`.
+- `skills/elgg-test-writer/` — scaffolds PHPUnit coverage for migrated plugins; ships templates and a beads formula.
+- `skills/elgg-js-test-writer/` — scaffolds Vitest/Playwright coverage for plugin JS.
+- `bin/` (top-level) — `discover-plugins.sh`, `gen-elgg-infra.sh`, `validate-elgg-infra.sh`. The infra generator mirrors canonical Docker stacks from `skills/elgg-migrate/infra/elgg{2..7}/` into the sibling skills.
+
+Migration model: rules are **either** automated (AST transform via nikic/php-parser, implemented under `src/Rules/V{From}ToV{To}/`) **or** LLM-guided (markdown instructions in the manifest entry, applied by an AI agent or developer). One major version at a time — the version guard rejects skipping.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- **One plugin, one major version per session.** Never sweep changes across plugins. The version guard enforces single-step migrations.
+- **Skills are path-agnostic and self-contained.** Committed infra reads paths from env vars / XDG config, never absolute `/home/...` paths. Use `bin/discover-plugins.sh` to resolve plugin sources.
+- **Plugin-level data migrations ship as `Elgg\Upgrade\Batch` scripts** inside the migrated plugin. Never polyfill removed core functions — refactor call sites.
+- **Docker bind-mount safety:** never `rm -rf /var/www/html/mod/*` inside an Elgg container — those are bind-mounted to host plugin dirs.
+- Lowercase plugin IDs at every `elgg_get_plugin_setting` / `elgg_get_plugin_from_id` callsite (4.x silently returns false on camelCase).
