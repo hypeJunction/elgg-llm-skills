@@ -75,7 +75,7 @@ The principle: dependency auditing is **additive**. A failed audit shouldn't blo
 |------|----------|----------|
 | **`composer audit`** (this gate) | Local scan against Packagist advisories DB | Runs in CI, no auth needed, fast |
 | **roave/security-advisories** | Composer metapackage, prevents installing vulnerable versions | Defensive, runs at install time |
-| **GitHub Dependabot** | CVE-based PR generation | Continuous, requires GitHub |
+| **GitHub Dependabot** | CVE-based PR generation, alerts via API | Continuous, requires GitHub — used as Phase 1 pre-flight baseline (see `dependabot-alerts.md`); complementary to this gate, not a replacement |
 | **Snyk** | Commercial, broader DB | More noise, more coverage |
 | **OWASP Dependency-Check** | NVD CVE feed | Cross-language, heavier |
 

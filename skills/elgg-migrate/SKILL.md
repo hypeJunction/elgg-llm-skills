@@ -58,6 +58,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 | `references/plugin-architecture-by-version.md` | During setup and when writing ARCHITECTURE.md — defines target structure |
 | `references/coding-standards.md` | Before running rules (baseline) and before committing (verify) — version-specific style rules |
 | `references/security-review-checklist.md` | After running `--security` — interpret findings |
+| `references/dependabot-alerts.md` | During Phase 1 pre-flight when the plugin is hosted on GitHub — query, triage, and record the alert baseline before migrating |
 | `references/llm-security-review.md` | During the LLM security review step — second-stage workflow |
 | `references/post-migration-documentation.md` | When writing ARCHITECTURE.md — template |
 | `references/git-hygiene.md` | Before every commit — what belongs (and doesn't) in plugin and site repos |
@@ -345,6 +346,33 @@ the manifest. Use as many as needed to be confident.
 | Has `'restorable'` in entity capabilities | 6.x+ |
 | Uses `elgg_generate_url()` for URLs | 3.x+ |
 | Uses hardcoded URL strings (e.g., `"blog/owner/$name"`) | 2.x |
+
+### Dependabot alert baseline (when plugin is on GitHub)
+
+If the plugin lives on GitHub, capture the open Dependabot alert list before
+migrating. Most alerts get fixed naturally by bumping deps for the new Elgg
+major — this baseline lets you verify that, rather than assume it.
+
+```bash
+OWNER_REPO=$(git -C "$PLUGIN_DIR" remote get-url origin \
+  | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+
+gh api "repos/${OWNER_REPO}/dependabot/alerts" --paginate \
+  -q '.[] | select(.state=="open") |
+       [.security_advisory.severity, .dependency.package.name,
+        .security_advisory.ghsa_id, .dependency.manifest_path] | @tsv'
+```
+
+Skip cleanly when the check doesn't apply: plugin not on GitHub (no remote, or
+remote is not `github.com`), `gh` not authenticated, repo returns `403` for
+the alerts endpoint, or Dependabot is disabled (`404`). Log a one-line note
+and move on — this is informational, not an acceptance gate.
+
+When the check does apply, every open critical/high alert must be classified
+before Phase 2: addressed by the migration (Elgg major bump, plugin dep bump,
+abandoned-dep removal), or carried forward with a documented reason. Read
+`references/dependabot-alerts.md` for triage rules and the post-migration diff
+workflow.
 
 ### Coding style baseline
 
