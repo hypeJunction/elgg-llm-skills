@@ -906,6 +906,17 @@ docker stack runs. Reference workflows live under
 at runtime from `composer.json`, so no per-plugin substitution is
 needed at scaffold time.
 
+**CI is forward-looking, not a migration gate.** The workflows trigger
+on `push` to `main` / `master` and on `pull_request:`. Migration work
+happens on branches like `migrate/elgg-5.x` and is gated by the local
+docker stack (`bin/verify-plugin.sh`), not by GitHub Actions. The
+"completed/failure" runs you may see immediately after scaffolding
+are scheduling skips (the branch filter rejects the push), not real
+test failures — they have 0 jobs and 0s duration. Treat scaffolded
+workflows as **done when committed and pushed**; their first real
+execution happens when a PR lands or the migration branch is merged
+to the default branch.
+
 ### Scaffold
 
 ```bash

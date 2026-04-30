@@ -6,6 +6,16 @@ repository at `.github/workflows/` (use `bin/scaffold-ci.sh` for a
 deterministic copy), then commit. They run unmodified on standard
 GitHub-hosted runners.
 
+**Scope**: these workflows are forward-looking. They gate `main` /
+`master` and PRs against future regressions. They are **not** part of
+the migration validation path — migration work is gated locally by
+`bin/verify-plugin.sh` against the per-plugin docker stack. Pushing
+the workflows on a `migrate/*` branch is expected to produce
+"completed/failure" runs with 0 jobs and 0s duration (the branch
+filter rejects the push); that is a scheduling skip, not a real
+failure. The first real execution happens on the first PR or after
+merge to the default branch.
+
 ## What ships
 
 | File | Purpose | Triggers |
