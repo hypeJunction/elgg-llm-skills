@@ -30,6 +30,8 @@ does not depend on the elgg-migrate skill for infrastructure. After
     <skill-dir>/
       SKILL.md                  # this file
       bin/migrate.php           # AST migration engine CLI
+      bin/scaffold-docker.sh    # copy docker/ into a plugin
+      bin/scaffold-ci.sh        # copy .github/workflows/ into a plugin
       src/                      # ElggMigrate\ PHP namespace
       rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
       composer.json             # nikic/php-parser dep + PSR-4 autoload
@@ -38,6 +40,7 @@ does not depend on the elgg-migrate skill for infrastructure. After
       formulas/                 # plugin-test-scaffold beads formula
       templates/elgg{N}/        # per-target Elgg test stack (N = 2..7)
       templates/DEVELOPMENT.md  # plugin-level testing docs template
+      references/ci/            # GitHub Actions workflow templates
 
 Each `templates/elgg{N}/` directory holds a self-contained docker stack
 — `Dockerfile`, `docker-compose.yml`, `elgg-install.sh`,
@@ -894,6 +897,77 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 
 ---
 
-## CI Setup
+## Phase 5: CI Setup
 
-Copy `references/ci/elgg3-github-actions.yml` to `.github/workflows/tests.yml` and replace `PLUGIN_NAME`. The workflow starts MySQL, installs Elgg, activates the plugin, and runs PHPUnit.
+Once a plugin has the docker stack and a test suite, scaffold GitHub
+Actions workflows so every push and PR runs the same checks the local
+docker stack runs. Reference workflows live under
+`references/ci/` and are copied verbatim — they resolve `PLUGIN_ID`
+at runtime from `composer.json`, so no per-plugin substitution is
+needed at scaffold time.
+
+### Scaffold
+
+```bash
+# From inside the plugin directory:
+$SKILL/bin/scaffold-ci.sh
+
+# Or from anywhere:
+$SKILL/bin/scaffold-ci.sh --plugin-dir=/abs/path/to/plugin
+
+# Overwrite existing workflows:
+$SKILL/bin/scaffold-ci.sh --force
+```
+
+The script writes:
+
+    <plugin>/.github/workflows/tests.yml
+    <plugin>/.github/workflows/lint.yml
+
+### What the workflows do
+
+| File | Jobs | Skips when |
+|------|------|------------|
+| `tests.yml` | `phpunit`, `playwright` | The plugin lacks `docker/docker-compose.yml`, `tests/phpunit.xml`, or `tests/playwright/package.json` (each job key is a `hashFiles()` guard). |
+| `lint.yml` | `php-syntax` (matrix 7.4 / 8.1 / 8.3), `composer-validate`, `json`, `workflow-yaml` | Per-job `hashFiles()` guards — composer-validate skips when no `composer.json`, workflow-yaml skips when no `.github/workflows/*.yml`. |
+
+The test workflow re-uses the per-plugin docker stack
+(`docker compose up`) — the runner does not install PHP, MySQL, or
+Elgg natively. Green CI = green local. There is no separate CI
+install path to maintain.
+
+### Customizing the workflows after scaffold
+
+The reference templates pin choices that suit the typical Elgg 3.x/4.x
+plugin. Change them in the plugin's copy when:
+
+- The plugin targets **Elgg 5.x+** (PHP 8.1+) — bump
+  `phpunit/phpunit:^9.6` to `^10.5` in the *Install PHPUnit* step.
+- The plugin's `composer.json` `require.php` excludes one of the lint
+  matrix versions — drop the row from `lint.yml`'s `php-version`
+  matrix.
+- The plugin uses release branches like `4.x` / `5.x` — add them to
+  the `branches:` list under `on.push`.
+
+### Debugging a CI failure
+
+Failures upload diagnostics as artifacts:
+
+- `phpunit-diagnostics/compose.log` — output of `docker compose logs`.
+- `phpunit-diagnostics/apache-error.log` — Apache/PHP error log from
+  the elgg container (where fatal errors land).
+- `playwright-report/` — Playwright HTML report (always uploaded).
+- `playwright-diagnostics/compose.log` — on Playwright failure.
+
+Reproduce locally with the exact same commands the workflow uses:
+
+```bash
+PLUGIN_ID=<id> docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml exec elgg \
+  vendor/bin/phpunit --configuration mod/$PLUGIN_ID/tests/phpunit.xml --no-coverage
+
+docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
+  "cd /plugin/tests/playwright && npm ci && npx playwright test"
+```
+
+See `references/ci/README.md` for the full design rationale.
