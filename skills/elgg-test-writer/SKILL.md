@@ -32,6 +32,7 @@ does not depend on the elgg-migrate skill for infrastructure. After
       bin/migrate.php           # AST migration engine CLI
       bin/scaffold-docker.sh    # copy docker/ into a plugin
       bin/scaffold-ci.sh        # copy .github/workflows/ into a plugin
+      bin/scaffold-phpcs.sh     # backfill phpcs into existing docker stack
       src/                      # ElggMigrate\ PHP namespace
       rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
       composer.json             # nikic/php-parser dep + PSR-4 autoload
@@ -982,3 +983,42 @@ docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
 ```
 
 See `references/ci/README.md` for the full design rationale.
+
+## Backfilling phpcs into existing docker stacks
+
+Plugins whose docker stacks predate the phpcs gate (added in
+`elgg-migrate@d09e475`) are missing `squizlabs/php_codesniffer` +
+`elgg/sniffs` from `docker/elgg-composer.json` and the
+`phpcs --config-set installed_paths …` step from `docker/Dockerfile`.
+Use `bin/scaffold-phpcs.sh` to backfill them idempotently:
+
+```bash
+# From inside the plugin directory:
+$SKILL/bin/scaffold-phpcs.sh
+
+# Or from anywhere:
+$SKILL/bin/scaffold-phpcs.sh --plugin-dir=/abs/path/to/plugin
+```
+
+The script:
+
+1. Adds `squizlabs/php_codesniffer ^3.9` and `elgg/sniffs dev-master`
+   under `require-dev` in `docker/elgg-composer.json` (creates the
+   block if absent; preserves 4-space indent and existing entries).
+2. Inserts a `RUN vendor/bin/phpcs --config-set installed_paths …`
+   line into `docker/Dockerfile` after the `composer install` step.
+
+Both steps are skipped when the content is already present, so
+re-running is a no-op. After scaffolding, rebuild the docker image,
+run `phpcbf` to auto-fix violations, then commit:
+
+```bash
+docker compose -f docker/docker-compose.yml build --no-cache elgg
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml exec elgg \
+  vendor/bin/phpcbf --standard=Elgg mod/<plugin-id>/ \
+  --ignore='*/vendor/*,*/tests/*,*/node_modules/*'
+git add docker/ && git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
+```
+
+See bodyology workspace `ui_tabs@4621ee1` for a worked example.
