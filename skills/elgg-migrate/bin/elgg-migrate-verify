@@ -8,11 +8,13 @@
 #   --compose-file=<path>   Path to docker-compose.yml (default: <plugin-dir>/docker/docker-compose.yml)
 #   --phpunit               Run PHPUnit integration tests
 #   --no-render             Skip HTTP render checks (useful when Elgg isn't installed yet)
+#   --no-phpcs              Skip PHP_CodeSniffer check
 #
 # Gates run:
 #   [syntax]   PHP syntax check on all .php files (excl. vendor/, tests/)
 #   [render]   Homepage and login page render > 1000 bytes
 #   [errors]   Zero PHP Fatal/Error entries in Apache error.log
+#   [phpcs]    PHP_CodeSniffer with Elgg standard (inside container; skipped if phpcs not installed)
 #   [phpunit]  PHPUnit test suite (opt-in via --phpunit)
 #
 # Exit codes:
@@ -32,6 +34,7 @@ PLUGIN_ID="$(basename "$PLUGIN_DIR")"
 COMPOSE_FILE="$PLUGIN_DIR/docker/docker-compose.yml"
 RUN_PHPUNIT=0
 SKIP_RENDER=0
+SKIP_PHPCS=0
 
 shift
 for arg in "$@"; do
@@ -39,6 +42,7 @@ for arg in "$@"; do
     --compose-file=*) COMPOSE_FILE="${arg#*=}" ;;
     --phpunit)        RUN_PHPUNIT=1 ;;
     --no-render)      SKIP_RENDER=1 ;;
+    --no-phpcs)       SKIP_PHPCS=1 ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
@@ -126,7 +130,37 @@ else
   gate "No PHP Fatal/Error in Apache error.log" FAIL "$error_count error(s): $first_error"
 fi
 
-# ─── gate 4: PHPUnit ────────────────────────────────────────────────────────
+# ─── gate 4: PHP_CodeSniffer ────────────────────────────────────────────────
+
+echo ""
+echo "  ── PHP_CodeSniffer ─────────────────────────────────────────────"
+if [[ "$SKIP_PHPCS" -eq 1 ]]; then
+  gate "PHP_CodeSniffer (Elgg standard)" SKIP "--no-phpcs"
+else
+  phpcs_available=$(dc exec elgg sh -c "test -x vendor/bin/phpcs && echo yes || echo no" 2>&1 | tr -d '[:space:]')
+  if [[ "$phpcs_available" != "yes" ]]; then
+    gate "PHP_CodeSniffer (Elgg standard)" SKIP "vendor/bin/phpcs not found — add squizlabs/php_codesniffer + elgg/sniffs to elgg-composer.json"
+  else
+    phpcs_out=$(dc exec elgg sh -c \
+      "vendor/bin/phpcs --standard=Elgg mod/$PLUGIN_ID/ --ignore='*/vendor/*,*/tests/*,*/node_modules/*' 2>&1" 2>&1 || true)
+    error_count=$(echo "$phpcs_out" | grep -cE '^\s+[0-9]+ \| ERROR' || true)
+    warning_count=$(echo "$phpcs_out" | grep -cE '^\s+[0-9]+ \| WARNING' || true)
+    if [[ "${error_count:-0}" -eq 0 ]]; then
+      if [[ "${warning_count:-0}" -gt 0 ]]; then
+        gate "PHP_CodeSniffer (Elgg standard, ${warning_count} warning(s))" PASS
+      else
+        gate "PHP_CodeSniffer (Elgg standard)" PASS
+      fi
+    else
+      gate "PHP_CodeSniffer (Elgg standard)" FAIL "${error_count} error(s), ${warning_count} warning(s)"
+      echo ""
+      echo "$phpcs_out" | grep -A2 'ERROR' | head -20 | sed 's/^/    /'
+      echo ""
+    fi
+  fi
+fi
+
+# ─── gate 5: PHPUnit ────────────────────────────────────────────────────────
 
 echo ""
 echo "  ── PHPUnit ─────────────────────────────────────────────────────"

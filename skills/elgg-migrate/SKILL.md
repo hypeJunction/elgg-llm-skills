@@ -349,10 +349,14 @@ the manifest. Use as many as needed to be confident.
 ### Coding style baseline
 
 Capture the plugin's current style state before migrating so you can tell
-whether the migration regressed it. Ensure `.phpcs.xml` exists for the target
-version (see `docs/coding-standards.md` for the template), then run
-`vendor/bin/phpcs --standard=PSR12 classes/ actions/ lib/` to generate a
-baseline. Post-migration style must not regress.
+whether the migration regressed it. Run `elgg-migrate-verify` (which includes
+the PHPCS gate) against the running Elgg Docker stack to record the baseline
+error count. Post-migration style must not regress.
+
+The Elgg standard (`elgg/sniffs`) is installed at image build time via
+`elgg-composer.json` (`require-dev`) and pre-configured in the Docker image —
+`vendor/bin/phpcs --standard=Elgg` is ready to use inside the container
+without any extra setup.
 
 ### Phase 1.8: Pre-migration tests (strict gate)
 
@@ -629,17 +633,30 @@ CSRF. Address HIGH and MEDIUM findings before committing. See
 
 #### Coding standards
 
-Run PHP_CodeSniffer against Elgg's ruleset for the target version:
+PHP_CodeSniffer runs **inside the Elgg Docker container** using the `Elgg`
+standard from `elgg/sniffs`, which is installed at image build time and
+pre-configured in every infra template (`elgg3`–`elgg7`). Use the plugin's
+own Docker stack — not the host machine:
 
 ```bash
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpcs --standard=<path-to-elgg-phpcs.xml> \
-  mod/<plugin-id>/classes/ mod/<plugin-id>/actions/ mod/<plugin-id>/views/
+# Check (via elgg-migrate-verify — preferred)
+elgg-migrate-verify /path/to/plugin
 
-# Auto-fix what's mechanical
-docker compose -f docker/elgg{N}/docker-compose.yml exec elgg \
-  vendor/bin/phpcbf --standard=<path-to-elgg-phpcs.xml> mod/<plugin-id>/classes/
+# Or run directly inside the container
+docker compose -f docker/docker-compose.yml exec elgg \
+  vendor/bin/phpcs --standard=Elgg \
+  mod/<plugin-id>/ --ignore='*/vendor/*,*/tests/*,*/node_modules/*'
+
+# Auto-fix mechanical violations
+docker compose -f docker/docker-compose.yml exec elgg \
+  vendor/bin/phpcbf --standard=Elgg \
+  mod/<plugin-id>/ --ignore='*/vendor/*,*/tests/*,*/node_modules/*'
 ```
+
+If `vendor/bin/phpcs` is missing, the stack was built from an old infra
+template — rebuild with `docker compose build --no-cache elgg` after updating
+`docker/elgg-composer.json` to include `squizlabs/php_codesniffer: ^3.9` and
+`elgg/sniffs: dev-master` in `require-dev`.
 
 Style evolves by version: 3.x+ uses PSR-2 with Elgg extensions, 4.x+ requires
 strict types and return type hints, 5.x+ encourages union types and named
