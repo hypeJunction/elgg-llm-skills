@@ -27,6 +27,23 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dep: $1" >&2; exit 2
 need docker
 need jq
 need git
+need php
+
+# Canonical Elgg core-plugin set — the union of what ships under
+# vendor/elgg/elgg/mod/ across Elgg 4.x and 5.x. Override with
+# ELGG_CORE_PLUGINS to extend (whitespace-separated list). Used by the
+# resolver to classify deps that aren't in the workspace but are bundled
+# with the elgg/elgg release; the install script symlinks them into
+# /var/www/html/mod/ before activation.
+ELGG_CORE_PLUGINS_DEFAULT="activity blog bookmarks ckeditor custom_index dashboard developers discussions externalpages file friends garbagecollector groups htmlawed invitefriends legacy_urls likes members messageboard messages notifications pages profile reportedcontent search site_notifications system_log tagcloud theme thewire uservalidationbyemail web_services"
+
+is_core_plugin() {
+  local id="$1" list="${ELGG_CORE_PLUGINS:-$ELGG_CORE_PLUGINS_DEFAULT}" p
+  for p in $list; do
+    [[ "$p" == "$id" ]] && return 0
+  done
+  return 1
+}
 
 # --- config I/O ---
 config_get() {
@@ -117,13 +134,14 @@ job_path() {
 
 # --- dependency resolver ---
 #
-# Default: walks the plugin's manifest.xml <requires><type>plugin</type>
-# declarations recursively, resolving each to a sibling directory under
-# $plugins_source. The lowercase dir name wins (Elgg 4.x plugin-id
-# convention); fall back to the declared name for legacy camelCase
-# sources. Composer library deps (elgg-plugin composer.json 'require'
-# block) are NOT returned — they are composer-install targets, not bind
-# mounts.
+# Default: walks the plugin's declared deps recursively, resolving each
+# to a sibling directory under $plugins_source. Source priority:
+#   1. elgg-plugin.php — keys of the 'plugin.dependencies' array (Elgg 4.x+)
+#   2. manifest.xml — <requires><type>plugin</type></requires> blocks (legacy)
+# The lowercase dir name wins (Elgg 4.x plugin-id convention); falls
+# back to the declared name for legacy camelCase sources. Composer
+# library deps (elgg-plugin composer.json 'require' block) are NOT
+# returned — they are composer-install targets, not bind mounts.
 #
 # Override: if the plugin declares tests/deps.txt, that file wins. Format:
 #   <plugin-id> [git-url-with-#ref]    # optional inline comment
@@ -131,16 +149,85 @@ job_path() {
 # optional URL+ref suffix lets the deps file be self-bootstrapping for
 # plugins not yet in the workspace, but for now the resolver only uses
 # the first whitespace-separated token (the plugin id) and looks the
-# directory up under $plugins_source. Plugins not present locally land
-# as source=missing and cmd_up bails. The resolver does NOT recurse
+# directory up under $plugins_source. The resolver does NOT recurse
 # into tests/deps.txt entries — the file is the exact set.
 #
-# Emits deps.lock.json: [{"name": "...", "source": "local|missing", "path": "..."}]
+# Each dep is classified by source:
+#   local   — present in $plugins_source; will be bind-mounted into the container
+#   core    — bundled with elgg/elgg under vendor/elgg/elgg/mod/; install
+#             script symlinks before activation. Listed in plugin-order.txt
+#             so the install script activates it.
+#   missing — declared but not present locally and not core. cmd_up bails.
+#
+# Emits deps.lock.json: [{"name": "...", "source": "local|core|missing", "path": "..."}]
+
+# Parse a plugin's declared deps. Prefers elgg-plugin.php (Elgg 4.x+);
+# falls back to manifest.xml for legacy plugins or transitional plugins
+# whose elgg-plugin.php declares only bootstrap/routes/etc. but keeps
+# the plugin-metadata block in manifest.xml. Emits one declared plugin
+# id per line, in declaration order.
+read_plugin_deps() {
+  local plugin_dir="$1"
+  local plugin_php="$plugin_dir/elgg-plugin.php"
+  local manifest="$plugin_dir/manifest.xml"
+  if [[ -f "$plugin_php" ]]; then
+    # The elgg-plugin.php file is `<?php return [...];`. Including it in
+    # a sandbox returns the manifest array. Using @include + array
+    # access only — no class autoloading is triggered (::class
+    # references resolve to FQCN strings without loading the class).
+    # Exit code 0 = plugin key present (use elgg-plugin.php as
+    # authoritative, even if dependencies is empty). Exit code 2 = no
+    # plugin key at all → caller falls back to manifest.xml.
+    if php -d display_errors=0 -d error_reporting=0 -r '
+      $file = $argv[1];
+      $a = @include $file;
+      if (!is_array($a) || !array_key_exists("plugin", $a) || !is_array($a["plugin"])) {
+          exit(2);
+      }
+      $deps = $a["plugin"]["dependencies"] ?? [];
+      if (!is_array($deps)) { exit(0); }
+      foreach (array_keys($deps) as $k) { echo $k, "\n"; }
+    ' "$plugin_php" 2>/dev/null; then
+      return 0
+    fi
+    # plugin key absent — fall through to manifest.xml.
+  fi
+  if [[ -f "$manifest" ]]; then
+    python3 -c "
+import re
+t=open('$manifest').read()
+for m in re.finditer(r'<requires>\s*<type>plugin</type>\s*<name>([^<]+)</name>', t):
+    print(m.group(1))
+"
+  fi
+}
+
+# Classify a declared dep id into (source, path). Echoes "<source>\t<path>".
+# - local: $plugins_source/<lower-or-declared> exists and is a plugin dir
+# - core:  matches the known elgg/elgg core-plugin set
+# - missing: anything else
+classify_dep() {
+  local name="$1" plugins_source="$2" lower="${1,,}"
+  local candidate path
+  for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
+    if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
+      path="$(readlink -f "$candidate")"
+      printf 'local\t%s\n' "$path"
+      return 0
+    fi
+  done
+  if is_core_plugin "$lower"; then
+    printf 'core\t\n'
+    return 0
+  fi
+  printf 'missing\t\n'
+}
+
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
   local override="$plugin_dir/tests/deps.txt"
   if [[ -f "$override" ]]; then
-    local out="[]" line stripped name lower path source
+    local out="[]" line stripped name lower classified source path
     while IFS= read -r line; do
       # Strip everything from a leading '#' (full-line comment) so
       # entries with trailing '# ...' notes also work.
@@ -150,12 +237,9 @@ resolve_deps() {
       read -r name _rest <<< "$stripped"
       [[ -z "$name" ]] && continue
       lower="${name,,}"
-      path=""; source="missing"
-      for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
-        if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
-          path="$(readlink -f "$candidate")"; source="local"; break
-        fi
-      done
+      classified="$(classify_dep "$name" "$plugins_source")"
+      source="${classified%%$'\t'*}"
+      path="${classified#*$'\t'}"
       out="$(jq --arg n "$lower" --arg s "$source" --arg p "$path" \
         '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
     done < "$override"
@@ -164,15 +248,8 @@ resolve_deps() {
   fi
   local visited=() out="[]"
   _resolve_deps_rec() {
-    local manifest="$1/manifest.xml"
-    [[ -f "$manifest" ]] || return 0
     local names
-    names="$(python3 -c "
-import re, sys
-t=open('$manifest').read()
-for m in re.finditer(r'<requires>\s*<type>plugin</type>\s*<name>([^<]+)</name>', t):
-    print(m.group(1))
-")"
+    names="$(read_plugin_deps "$1")"
     while IFS= read -r name; do
       [[ -z "$name" ]] && continue
       local lower="${name,,}"
@@ -183,17 +260,16 @@ for m in re.finditer(r'<requires>\s*<type>plugin</type>\s*<name>([^<]+)</name>',
       done
       (( seen )) && continue
       visited+=("$lower")
-      # find matching dir: prefer lowercase, fall back to declared name
-      local path="" source="missing"
-      for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
-        if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
-          path="$(readlink -f "$candidate")"; source="local"; break
-        fi
-      done
+      local classified source path
+      classified="$(classify_dep "$name" "$plugins_source")"
+      source="${classified%%$'\t'*}"
+      path="${classified#*$'\t'}"
       # Post-order: recurse FIRST so deeper deps (leaves) land earlier in
       # the list, and this plugin's parents land after. The resulting order
-      # is a valid activation order for Elgg's plugin-order.txt.
-      [[ -n "$path" ]] && _resolve_deps_rec "$path"
+      # is a valid activation order for Elgg's plugin-order.txt. Recurse
+      # only into local deps — core deps live in vendor/ and aren't
+      # walkable from the host, and missing deps have no path.
+      [[ "$source" == "local" && -n "$path" ]] && _resolve_deps_rec "$path"
       out="$(jq --arg n "$lower" --arg s "$source" --arg p "$path" \
         '. + [{name: $n, source: $s, path: $p}]' <<< "$out")"
     done <<< "$names"
@@ -302,9 +378,13 @@ write_override() {
   local file="$jdir/override.yml"
   local order="$jdir/plugin-order.txt"
   # deps are already in dependency order from the recursive walk (transitive
-  # leaves first). Plugin under test goes last.
+  # leaves first). Both local and core deps need to be activated by the
+  # install script, so both go into the order file. Core deps aren't
+  # bind-mounted (they ship with elgg/elgg) — the install script symlinks
+  # them from vendor/elgg/elgg/mod/ before activation. Plugin under test
+  # goes last.
   {
-    jq -r '.[] | select(.source=="local") | .name' <<< "$deps_json"
+    jq -r '.[] | select(.source=="local" or .source=="core") | .name' <<< "$deps_json"
     echo "$plugin"
   } > "$order"
   # Mask subpaths: any subpath of a bind-mounted plugin where an in-
