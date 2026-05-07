@@ -74,6 +74,70 @@ final class LowercasePluginIdCallsitesTest extends TestCase
         }
     }
 
+    public function testApplyPreservesUntouchedFormatting(): void
+    {
+        // Regression test for elgg-migrate-682r: prettyPrintFile() collapsed
+        // bespoke formatting (blank lines, comments, multi-line arrays).
+        // The rule must only touch the bytes corresponding to the changed
+        // string literal — every other byte must round-trip identically.
+
+        $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
+        mkdir($workDir, 0755, true);
+
+        $original = <<<'PHP'
+            <?php
+
+            /**
+             * Plugin font configuration.
+             *
+             * Long header docblock with multiple lines, deliberate blank
+             * lines, and a short summary that should round-trip exactly.
+             */
+
+            namespace HypeJunction\Theme;
+
+
+            class Fonts
+            {
+                public function getDefaultFamilies(): array
+                {
+                    // Read from plugin settings — the ID must be lowercased.
+                    $families = elgg_get_plugin_setting(
+                        'font_families',
+                        'hypeTheme',
+                        ['Inter', 'Roboto', 'Helvetica']
+                    );
+
+                    return (array) $families;
+                }
+            }
+
+            PHP;
+
+        $file = $workDir . '/Fonts.php';
+        file_put_contents($file, $original);
+
+        try {
+            $result = $this->rule->apply($workDir);
+            $this->assertTrue($result->success);
+            $this->assertCount(1, $result->changes);
+
+            $modified = file_get_contents($file);
+
+            // The targeted change happened.
+            $this->assertStringContainsString("'hypetheme'", $modified);
+            $this->assertStringNotContainsString("'hypeTheme'", $modified);
+
+            // Everything else round-tripped byte-for-byte. Replacing only
+            // the changed token in the original yields exactly the modified
+            // file — no whitespace, comments, or array layout drift.
+            $expected = str_replace("'hypeTheme'", "'hypetheme'", $original);
+            $this->assertSame($expected, $modified);
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
     public function testApplyDoesNotModifyAlreadyLowercaseFiles(): void
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();

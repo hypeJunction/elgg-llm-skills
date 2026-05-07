@@ -12,6 +12,7 @@ use ElggMigrate\RuleResult;
 use PhpParser\Node;
 use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\CloningVisitor;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter;
@@ -250,14 +251,19 @@ final class DeprecatedEntityQueries implements MigrationRule
         $parser = (new ParserFactory())->createForHostVersion();
 
         try {
-            $ast = $parser->parse($code);
+            $oldAst = $parser->parse($code);
         } catch (\Throwable) {
             return ['transformed' => false, 'code' => $code, 'warnings' => []];
         }
 
-        if ($ast === null) {
+        if ($oldAst === null) {
             return ['transformed' => false, 'code' => $code, 'warnings' => []];
         }
+        $tokens = $parser->getTokens();
+
+        $cloneTraverser = new NodeTraverser();
+        $cloneTraverser->addVisitor(new CloningVisitor());
+        $newAst = $cloneTraverser->traverse($oldAst);
 
         $warnings = [];
 
@@ -308,14 +314,14 @@ final class DeprecatedEntityQueries implements MigrationRule
         };
 
         $traverser->addVisitor($visitor);
-        $newAst = $traverser->traverse($ast);
+        $newAst = $traverser->traverse($newAst);
 
         if (!$visitor->hasChanged()) {
             return ['transformed' => false, 'code' => $code, 'warnings' => $warnings];
         }
 
         $printer = new PrettyPrinter\Standard();
-        $newCode = $printer->prettyPrintFile($newAst);
+        $newCode = $printer->printFormatPreserving($newAst, $oldAst, $tokens);
 
         return ['transformed' => true, 'code' => $newCode, 'warnings' => $warnings];
     }
