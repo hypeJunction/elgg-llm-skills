@@ -218,13 +218,27 @@ if [ -f "$dev_md_src" ]; then
     copy_if_missing "$dev_md_src" "$dev_md_dst"
 fi
 
-# Extend .gitignore so local files don't get committed
+# Extend .gitignore so local files don't get committed.
+#
+# Ensure the file ends with a trailing newline before appending — without
+# this, `printf '<entry>\n' >> .gitignore` concatenates the new entry onto
+# the last existing line (e.g. `Gemfile.lockdocker/.env`).
 gitignore="$plugin_dir/.gitignore"
+ensure_trailing_newline() {
+    local f="$1"
+    [ -f "$f" ] || return 0
+    [ -s "$f" ] || return 0
+    if [ "$(tail -c1 "$f" | xxd -p)" != "0a" ]; then
+        printf '\n' >> "$f"
+    fi
+}
 if ! { [ -f "$gitignore" ] && grep -qE '^docker/\.env$' "$gitignore"; }; then
+    ensure_trailing_newline "$gitignore"
     printf 'docker/.env\n' >> "$gitignore"
     echo "  appended to .gitignore: docker/.env"
 fi
 if ! { [ -f "$gitignore" ] && grep -q 'deps.local.txt' "$gitignore"; }; then
+    ensure_trailing_newline "$gitignore"
     printf 'tests/deps.local.txt\n' >> "$gitignore"
     echo "  appended to .gitignore: tests/deps.local.txt"
 fi
