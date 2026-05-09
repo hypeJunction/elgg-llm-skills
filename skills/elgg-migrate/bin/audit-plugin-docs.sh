@@ -140,7 +140,10 @@ if [[ -f "$MANIFEST" ]]; then
   desc_val="$(python3 -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('$MANIFEST')
-d = tree.find('description')
+root = tree.getroot()
+ns = (root.tag.split('}')[0] + '}') if root.tag.startswith('{') else ''
+d = root.find(ns + 'description')
+if d is None: d = root.find('description')
 print((d.text or '').strip() if d is not None else '')
 " 2>/dev/null || true)"
   if [[ -z "$desc_val" ]]; then
