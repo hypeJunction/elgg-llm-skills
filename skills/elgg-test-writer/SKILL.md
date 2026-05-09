@@ -397,6 +397,38 @@ export async function getRelationship(guid_one: number, relationship: string, gu
     [guid_one, relationship, guid_two]
   );
 }
+
+// Direct DB insert — avoids Elgg session/auth requirements in tests.
+// Does NOT include site_guid (removed in 4.x) and supplies value_type (NOT NULL in 4.x).
+export async function createTestObject(ownerGuid: number, subtype: string, title: string, description: string): Promise<number> {
+  const conn = await mysql.createConnection(DB_CONFIG);
+  try {
+    const [result]: any = await conn.execute(
+      `INSERT INTO elgg_entities (type, subtype, owner_guid, container_guid, access_id, time_created, time_updated, enabled)
+       VALUES ('object', ?, ?, ?, 2, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), 'yes')`,
+      [subtype, ownerGuid, ownerGuid]
+    );
+    const guid = result.insertId;
+    await conn.execute(
+      `INSERT INTO elgg_metadata (entity_guid, name, value, value_type, time_created)
+       VALUES (?, 'title', ?, 'text', UNIX_TIMESTAMP()), (?, 'description', ?, 'text', UNIX_TIMESTAMP())`,
+      [guid, title, guid, description]
+    );
+    return guid as number;
+  } finally {
+    await conn.end();
+  }
+}
+
+export async function deleteEntity(guid: number) {
+  const conn = await mysql.createConnection(DB_CONFIG);
+  try {
+    await conn.execute('DELETE FROM elgg_metadata WHERE entity_guid = ?', [guid]);
+    await conn.execute('DELETE FROM elgg_entities WHERE guid = ?', [guid]);
+  } finally {
+    await conn.end();
+  }
+}
 ```
 
 #### Test patterns
@@ -821,7 +853,7 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
     "test:debug": "playwright test --debug"
   },
   "devDependencies": {
-    "@playwright/test": "1.59.1",
+    "@playwright/test": "1.49.0",
     "mysql2": "^3.6.0"
   }
 }
@@ -896,6 +928,9 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
 | Plugin `isActive()` returns false in test even after `activate()` | In Elgg 3.x, `_elgg_services()->plugins->generateEntities()` (commonly called in test bootstraps to register plugins from disk) can leave a freshly-registered plugin entity in `enabled=''` (blank) state. Subsequent `activate()` returns `false` silently and `getError()` is empty. Force the state in your test bootstrap: `if (!$p->isEnabled()) $p->enable(); if (!$p->isActive()) $p->activate();`. If `enable()` doesn't stick, fall back to a direct `UPDATE elgg_entities SET enabled='yes' WHERE guid=?` once during environment setup. |
 | Test looks up `elgg_get_plugin_from_id('hypeFoo')` and gets null | Elgg 3.x normalizes plugin id to lowercase, so a plugin at `mod/hypeFoo/` (camelCase, valid in 3.x) is registered as `hypefoo`. Tests that hardcode the camelCase id silently get `null`. Use the lowercase id, or write a case-tolerant lookup: `elgg_get_plugin_from_id('hypefoo') ?: elgg_get_plugin_from_id('hypeFoo')`. The 3→4 migration enforces lowercase dirs (Iron Law 6), eliminating the dual naming. |
 | Smoke-test pattern for legacy 2.x plugins | When writing pre-migration tests for an old 2.x plugin (Elgg 1.x era code) that's about to go through 2→3, full behavior coverage is wasted work — the structure will change again in 3→4 and 4→5, and tests will be rewritten each time. Write **smoke tests** instead: assert the plugin loads (factory function exists, DI container instantiates, services resolve, hook handlers callable) — not behavior. Catches the regressions a structural transform actually introduces (autoload broken, namespace renamed, signature changed) without locking in tests for code that's about to be rewritten. Use plain `PHPUnit\Framework\TestCase` since 2.x has no `IntegrationTestCase`. |
+| Playwright plugin views missing after activation | `elgg_clear_caches()` alone leaves `localfastcache`/`fastcache` dirs holding pre-activation view paths — late-activated plugin views are shadowed. The elgg-install.sh template already runs `rm -rf cache/fastcache cache/localfastcache` after activation; if you see views from the wrong plugin version, verify this rm is present. |
+| Playwright filter/nav link assertions fail strict mode | `page.locator('text=/Users/i')` matches BOTH the site nav AND the filter menu, triggering Playwright strict-mode "multiple elements" error. Always scope to `.elgg-menu-filter`: `page.locator('.elgg-menu-filter a', { hasText: /Users/i })`. |
+| `createTestObject` inserts include `site_guid` | `elgg_entities.site_guid` column was removed in Elgg 4.x — including it in a direct DB INSERT causes SQL error. Use `createTestObject` from `helpers/elgg.ts` which omits `site_guid` and supplies `value_type` (`NOT NULL` in the metadata table). |
 
 ---
 
