@@ -717,6 +717,47 @@ must be true before closing the beads issue — verify each one explicitly.
 ---
 
 
+## Plugin docs standard
+
+Every plugin should have a clean, up-to-date `README.md` with a single correct Elgg version badge,
+a one-line tagline, features list, and installation instructions.
+
+### Template
+
+`templates/README.md.tpl` — canonical README template. Placeholders:
+`{{NAME}}`, `{{ELGG_VERSION}}`, `{{REPO_SLUG}}`, `{{TAGLINE}}`, `{{FEATURES}}`, `{{LICENSE}}`.
+
+### Scripts
+
+Both scripts are path-agnostic and take a plugin directory as the only required argument.
+
+**`bin/audit-plugin-docs.sh <plugin-path>`** — read-only reporter. Checks:
+- README.md present (case-insensitive)
+- Elgg badge present, exactly one, correct version (derived from `elgg/elgg` constraint in composer.json)
+- `composer.json` description non-empty, `elgg/elgg` in `require`
+- `manifest.xml` `<description>` non-empty (if manifest exists)
+- `hypejunction.com` references (excluding vendor/, node_modules/, .git/)
+- Donation/sponsor CTAs (`paypal.me`, `patreon.com`, `ko-fi.com`, `buymeacoffee`, "Support the development", "Buy me a")
+
+Exits non-zero when any issue is found — suitable for gating per-plugin PRs in CI.
+
+```bash
+bin/audit-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"
+```
+
+**`bin/fix-plugin-docs.sh <plugin-path> [--apply]`** — semi-auto fixer. Dry-run by default.
+- Derives correct badge from `elgg/elgg` constraint
+- Replaces `hypejunction.com` URLs → `https://github.com/hypeJunction/<repo-slug>`
+- Strips donation/sponsor CTAs
+- Collapses duplicate/stale Elgg badges to the single correct one
+
+Does **not** generate the tagline or features — those require human input.
+
+```bash
+bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"          # preview
+bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps" --apply  # write
+```
+
 ## Reference material
 
 Pulled out of this file to keep it scannable. Load when you need it:

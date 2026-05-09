@@ -317,9 +317,9 @@ import { defineConfig } from '@playwright/test';
 // On host (not recommended): ELGG_BASE_URL=http://localhost:8480
 export default defineConfig({
   testDir: './tests',
-  baseURL: process.env.ELGG_BASE_URL || 'http://elgg',
   timeout: 30000,
   use: {
+    baseURL: process.env.ELGG_BASE_URL || 'http://elgg',
     ignoreHTTPSErrors: true,
   },
   // Sequential — tests may share DB state
@@ -352,12 +352,13 @@ const DB_CONFIG = {
   database: process.env.ELGG_DB_NAME || 'elgg',
 };
 
-export async function loginAs(page: Page, username: string, password: string = 'testpass123') {
+export async function loginAs(page: Page, username: string, password: string = process.env.ELGG_ADMIN_PASSWORD || 'admin12345') {
   await page.goto('/login');
-  await page.fill('input[name="username"]', username);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL(/\//);
+  const form = page.locator('.elgg-module-aside, form.elgg-form-login').first();
+  await form.locator('input[name="username"]').fill(username);
+  await form.locator('input[name="password"]').fill(password);
+  await form.locator('button[type="submit"]').click();
+  await page.waitForURL(url => !url.toString().includes('/login'));
 }
 
 export async function queryDb(sql: string, params: any[] = []) {
@@ -820,7 +821,7 @@ In 4.x+, no manual boot needed — `elgg-plugin.php` is loaded by the test frame
     "test:debug": "playwright test --debug"
   },
   "devDependencies": {
-    "@playwright/test": "^1.40.0",
+    "@playwright/test": "1.59.1",
     "mysql2": "^3.6.0"
   }
 }

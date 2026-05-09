@@ -33,7 +33,10 @@ services:
       ELGG_DB_NAME: elgg
       ELGG_DB_USER: elgg
       ELGG_DB_PASS: elgg
-      ELGG_SITE_URL: "http://localhost:${ELGG_PORT:-8580}/"
+      # Use the internal Docker service name so Playwright (running in the node
+      # container) can follow login redirects without host-port rewriting.
+      # Host-port access still works: Apache doesn't enforce the Host header.
+      ELGG_SITE_URL: "${ELGG_SITE_URL:-http://elgg/}"
       ELGG_DATA_ROOT: "/var/www/data/"
       ELGG_DB_PREFIX: "elgg_"
       ELGG_ADMIN_EMAIL: "admin@example.com"
@@ -67,7 +70,7 @@ services:
   # /plugin so a destructive in-container command cannot touch anything
   # outside this repo.
   node:
-    image: mcr.microsoft.com/playwright:v1.49.0-noble
+    image: mcr.microsoft.com/playwright:v1.59.1-noble
     volumes:
       - ..:/plugin
     working_dir: /plugin
