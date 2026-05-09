@@ -1,8 +1,0 @@
-{
-  "id": "030-scaffold-doctor-command",
-  "name": "Scaffold <plugin_id>:doctor CLI command for post-migration data integrity",
-  "automated": true,
-  "class": "ElggMigrate\\Rules\\V3ToV4\\ScaffoldDoctorCommand",
-  "breaking_change": "Elgg 3+ has Symfony Console CLI; doctor command validates migrated data integrity",
-  "priority": 285
-}

@@ -284,6 +284,31 @@
       "class": "ElggMigrate\\Rules\\V3ToV4\\ElggInstanceof",
       "breaking_change": "elgg_instanceof() removed in Elgg 4.x \u2014 use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
       "priority": 126
+    },
+    {
+      "id": "030-scaffold-doctor-command",
+      "name": "Scaffold <plugin_id>:doctor CLI command for post-migration data integrity",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ScaffoldDoctorCommand",
+      "breaking_change": "Elgg 3+ has Symfony Console CLI; doctor command validates migrated data integrity",
+      "priority": 285
+    },
+    {
+      "id": "031-debug-surface-cleanup",
+      "name": "Strip debug residue: elgg_dump, commented var_dump/print_r, Logger constants",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\DebugSurfaceCleanup",
+      "breaking_change": "Debug residue (elgg_dump, commented var_dump) left in migrated code is a security/cleanliness issue",
+      "priority": 291
+    },
+    {
+      "id": "032-action-controller-analyzer",
+      "name": "Identify action files that are candidates for Controller class extraction",
+      "automated": false,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ActionControllerAnalyzer",
+      "llm_instructions": "The analyzer has identified action files with significant procedural logic (>30 LOC, multiple branches, or loops). Refactor each candidate into a Controller class implementing __invoke(\\Elgg\\Request $request). Steps:\n1. Create classes/<PluginNamespace>/Actions/<ActionName>.php extending or implementing the controller pattern\n2. Move validation logic to the top, business logic to the middle, response (forward()/error()) at the bottom\n3. Register the controller class in elgg-plugin.php: 'actions' => ['name' => ['controller' => \\Plugin\\Actions\\Name::class]]\n4. Delete or empty the original action file\nReference: profile_manager BackupController pattern for the __invoke signature.",
+      "breaking_change": "Procedural action files are still supported in Elgg 4/5/6 but Controller classes are the modern pattern and required for testability",
+      "priority": 250
     }
   ]
 }
