@@ -192,6 +192,48 @@ $group = $this->createGroup();
 $object = $this->createObject(['subtype' => 'blog']);  // subtype REQUIRED in 4.x
 ```
 
+#### Plugin Seeder is the canonical fixture source
+
+If the plugin owns entity types/subtypes, it **MUST** ship a
+`Seeder` class extending `\Elgg\Database\Seeds\Seed` registered on
+`seeds, database` (see the elgg-migrate skill's "Introduce a Seeder
+subclass" step). Tests reuse it as the single source of truth for what
+a valid fixture looks like.
+
+When writing tests:
+
+1. **Check first**: does `<Vendor>\<Plugin>\Seeder` (or
+   `<Vendor>\<Plugin>\Seeds\*`) already exist? If yes, instantiate and
+   call its `seed()` / specific helpers from `up()` instead of
+   hand-rolling entity creation in every test method.
+2. **If absent**: stop and add the Seeder before continuing the test
+   suite. A test fixture that diverges from how the plugin actually
+   constructs entities masks real bugs (missing required metadata,
+   wrong owner/container shape, missed access defaults).
+3. **Fixture parity**: any field the Seeder sets is a field the plugin
+   expects to exist. Tests that rely on a subset of those fields are
+   still valid, but tests that bypass the Seeder must justify why in a
+   comment.
+
+```php
+// Preferred — reuse the plugin's Seeder
+public function up() {
+    $this->seeder = new \<Vendor>\<Plugin>\Seeder();
+    $this->seeder->setLimit(3);
+    $this->seeder->seed();
+}
+
+public function down() {
+    $this->seeder->unseed();
+}
+```
+
+For ad-hoc fixtures within a single test, the inherited
+`$this->createObject([...])` helper from `IntegrationTestCase` is fine
+— those entities are auto-tagged with `__faker` and cleaned up. But
+fixtures that mirror the plugin's actual entity shape must come from
+the Seeder.
+
 **IMPORTANT**: `$this->executeAction()` does NOT exist in `IntegrationTestCase` — it's only in `ActionResponseTestCase`. For integration tests, test entity behavior directly instead of through actions.
 
 **Entity CRUD (4.x):**
@@ -654,6 +696,7 @@ test to write next.
 ### Coverage checklist
 
 **PHPUnit (backend):**
+- [ ] Plugin Seeder subclass exists and tests reuse it for fixtures (or absence is justified — no entity surface)
 - [ ] Entity class mapped correctly
 - [ ] Entity CRUD (create, read, update, delete)
 - [ ] Each action has at least one test

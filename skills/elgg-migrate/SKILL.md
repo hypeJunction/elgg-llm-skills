@@ -238,6 +238,7 @@ is the load-bearing part.
 | ARCHITECTURE.md generated | The knowledge of what the plugin *is* at this version is the second-most valuable migration output after the code itself |
 | CHANGELOG.md updated | Downstream consumers need to know what changed |
 | `Elgg\Upgrade\Batch` script added if data migration is needed | Schema/data changes without an upgrade script mean the plugin works on fresh installs but breaks on real sites with existing data |
+| `Seed` subclass present (or absence documented in ARCHITECTURE.md) | Plugins that own entity types/subtypes/relationships must seed them; tests reuse the same helpers, and a fleet without seeders has empty listings in dev/QA |
 | Commit message format: `migrate({TARGET}.x): <summary>` | Consistent prefixes make `git log --grep` usable across the fleet |
 | Issue closed with `--reason` | Future-you reading the beads history needs the "what changed" summary |
 
@@ -691,6 +692,134 @@ strict types and return type hints, 5.x+ encourages union types and named
 arguments, 6.x+ adds readonly properties and enums. Commit style fixes
 separately: `git commit -m "style: fix coding standards for Elgg {TARGET}.x"`.
 
+#### Introduce a Seeder subclass (where appropriate)
+
+Every plugin that owns entity types, subtypes, custom metadata, or
+relationships **MUST** ship a `Seeder` class that extends
+`\Elgg\Database\Seeds\Seed` and is hooked into Elgg's `seeds, database`
+event. This is a hard requirement from 3.x onward (when the `Seed` base
+class became available) and applies equally to fresh migrations and to
+plugins migrated in earlier sessions that lack one.
+
+Why it's mandatory:
+
+- Elgg's built-in `bin/elgg-cli database:seed` populates a site with
+  realistic fake data; a plugin without a seeder leaves visible gaps in
+  any seeded fleet (empty listings, missing relationships, broken UI
+  flows in dev/QA).
+- Integration and Playwright tests reuse the same `Seed` helpers
+  (`createUser`, `createObject`, `createGroup`) for fixture setup —
+  tagging entities with `__faker` metadata so cleanup is automatic. A
+  plugin-owned seeder centralises fixture shapes so tests stay in sync
+  with how the plugin actually creates entities.
+- The contract surfaces a useful migration smoke test: if the seeder
+  can't construct a valid entity using the target version's API, the
+  plugin's CRUD path is broken regardless of what the activation gate says.
+
+When it's NOT appropriate (document the reason and skip):
+
+- Pure UI/widget plugins with no persisted state of their own (e.g.
+  `ui_grid`, `ui_tabs`, `menus_dropdown`).
+- Pure utility/library plugins that only register hooks/views/services
+  but introduce no subtypes, no relationships, no plugin-owned metadata
+  (e.g. `actions_feature`, `forms_api`, `hypeajax`).
+- Admin-only tooling that operates on existing entities rather than
+  creating new ones (e.g. `hypedbexplorer`).
+
+Required shape (4.x+; adapt namespaces to the plugin's vendor):
+
+```php
+namespace <Vendor>\<Plugin>;
+
+use Elgg\Database\Seeds\Seed;
+use Elgg\Event;
+
+class Seeder extends Seed {
+
+    public static function getType(): string {
+        return '<plugin-id>';
+    }
+
+    protected function getCountOptions(): array {
+        return [
+            'types' => 'object',
+            'subtypes' => '<plugin-subtype>',
+            'metadata_names' => '__faker',
+        ];
+    }
+
+    public function seed() {
+        while ($this->getCount() < $this->limit) {
+            $owner = $this->getRandomUser() ?: $this->createUser();
+            $this->createObject([
+                'subtype' => '<plugin-subtype>',
+                'owner_guid' => $owner->guid,
+                'container_guid' => $owner->guid,
+                'access_id' => ACCESS_PUBLIC,
+                'title' => $this->faker()->sentence(6),
+                'description' => $this->faker()->text(500),
+            ]);
+            $this->advance();
+        }
+    }
+
+    public function unseed() {
+        $entities = elgg_get_entities([
+            'types' => 'object',
+            'subtypes' => '<plugin-subtype>',
+            'metadata_names' => '__faker',
+            'limit' => 0,
+            'batch' => true,
+        ]);
+        /* @var $entities \ElggBatch */
+        $entities->setIncrementOffset(false);
+        foreach ($entities as $e) {
+            $e->delete();
+            $this->advance();
+        }
+    }
+
+    public static function addSeed(Event $event) {
+        $value = $event->getValue();
+        $value[] = __CLASS__;
+        return $value;
+    }
+}
+```
+
+Wire the seeder up via the plugin's Bootstrap class (NOT in
+`elgg-plugin.php` — Iron Law 5 forbids closures there):
+
+```php
+// classes/<Vendor>/<Plugin>/Bootstrap.php — inside init() or boot()
+elgg_register_event_handler('seeds', 'database', [Seeder::class, 'addSeed']);
+```
+
+For 5.x+ migrations, the event payload uses `\Elgg\Event` (already
+matches the example above). For 3.x, the older array-based hook signature
+is acceptable but the class still extends `\Elgg\Database\Seeds\Seed`.
+
+Verify the seeder runs end-to-end inside the target Docker container
+before committing:
+
+```bash
+docker compose -f docker/docker-compose.yml exec elgg \
+    php elgg-cli database:seed --type=<plugin-id> --limit=5
+docker compose -f docker/docker-compose.yml exec elgg \
+    php elgg-cli database:unseed --type=<plugin-id>
+```
+
+Both must complete without errors. If `--type` filtering doesn't yet
+exist for the target version, run an unfiltered `database:seed --limit=5`
+and confirm the plugin's entities appear (and are removed by `unseed`).
+
+Commit separately: `git commit -m "feat: add Seeder for {TARGET}.x dev/test seeding"`.
+
+If you skip this step because the plugin has no entity surface, record
+that decision in `ARCHITECTURE.md` under a "Seeding" heading with one
+sentence of rationale. A plugin without a seeder AND without a
+documented reason fails the migration acceptance gate.
+
 #### Document the result
 
 After all gates pass, generate or update `ARCHITECTURE.md` in the plugin
@@ -702,6 +831,7 @@ code itself — future migrations and future developers rely on it. Cover:
 - **Registered hooks/events** — all handlers declared in elgg-plugin.php
 - **Routes, entities, actions, views** — what's exposed and where
 - **Dependencies** — other plugins this plugin relies on
+- **Seeding** — name of the `Seed` subclass and what it seeds; if the plugin ships no seeder, one sentence explaining why (no entity surface)
 - **Migration notes** — what changed in this version step, known issues, workarounds
 
 Update `CHANGELOG.md` with a human-readable summary of the version bump.

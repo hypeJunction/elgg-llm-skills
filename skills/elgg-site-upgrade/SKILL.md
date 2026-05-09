@@ -592,6 +592,43 @@ for p in plugins/*/; do
 done
 ```
 
+**`elgg/login_as` and `composer/installers` — use `replace` to break the chain.**
+`elgg/elgg 3.3` depends on `elgg/login_as ~2.1.0`. That package (last released 2020,
+no newer version) requires `composer/installers ^1.0.8`. There is no upstream fix.
+
+Do NOT use Composer 2.2 as a workaround — it's unnecessary. Instead, use the
+`replace` key in the root `composer.json` to declare that the root project already
+provides `login_as` at the required version. Composer will satisfy `elgg/elgg`'s
+constraint without installing the package (and without bringing in the `^1.0.8`
+constraint). The `login_as` plugin won't be in `mod/`; if the site doesn't use it,
+that's fine — activation-order scripts skip plugins not found in `mod/`.
+
+Also `replace` the three abandoned sort packages that `site_search` depends on
+(they also block installer v2):
+
+```json
+"replace": {
+    "elgg/login_as":              "2.1.0",
+    "hypejunction/user_sort":     "1.1.1",
+    "hypejunction/group_sort":    "1.1.2",
+    "hypejunction/object_sort":   "1.1.3"
+}
+```
+
+After these four replaces, the root can safely require `"composer/installers": "^2.0"`,
+which resolves to v2.3+ and works with Composer 2.9+.
+
+To find other transitive packages blocking installer v2, inspect the lockfile:
+```bash
+php -r "
+\$lock = json_decode(file_get_contents('composer.lock'), true);
+foreach (\$lock['packages'] as \$p) {
+    \$v = (\$p['require'] ?? [])['composer/installers'] ?? null;
+    if (\$v && strpos(\$v, '||') === false && strpos(\$v, '^2') === false)
+        echo \$p['name'].' '.\$p['version'].': '.\$v.PHP_EOL;
+}"
+```
+
 **HTTPS vs SSH for VCS repos.** Use HTTPS URLs (`https://github.com/...`) for
 VCS repos, not SSH (`git@github.com:`). Docker build containers don't have SSH
 keys. HTTPS works for public repos without a token; add a `GITHUB_TOKEN` build
