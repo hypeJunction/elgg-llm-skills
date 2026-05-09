@@ -41,7 +41,7 @@ SETTINGS_TEMPLATE
 \$CONFIG->dbprefix = 'elgg_';
 \$CONFIG->dbencoding = 'utf8mb4';
 \$CONFIG->dataroot = '${ELGG_DATA_ROOT:-/var/www/data/}';
-\$CONFIG->wwwroot = '${ELGG_SITE_URL:-http://localhost:8780/}';
+\$CONFIG->wwwroot = '${ELGG_SITE_URL:-http://elgg/}';
 \$CONFIG->cacheroot = '${ELGG_DATA_ROOT:-/var/www/data/}cache/';
 \$CONFIG->assetroot = '${ELGG_DATA_ROOT:-/var/www/data/}assets/';
 SETTINGS_VALUES
@@ -58,7 +58,7 @@ SETTINGS_VALUES
             'dbprefix' => 'elgg_',
             'sitename' => 'Elgg 7.x Plugin Test',
             'siteemail' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
-            'wwwroot' => '${ELGG_SITE_URL:-http://localhost:8780/}',
+            'wwwroot' => '${ELGG_SITE_URL:-http://elgg/}',
             'dataroot' => '${ELGG_DATA_ROOT:-/var/www/data/}',
             'displayname' => 'Admin',
             'email' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
@@ -94,6 +94,21 @@ SETTINGS_VALUES
             }
         }
     " 2>&1 || echo "Plugin activation completed (check for errors above)."
+
+    # elgg_clear_caches() alone doesn't purge the filesystem cache dirs that Elgg
+    # wrote during bootCore() *before* the plugin was activated. Those stale dirs
+    # shadow the newly-activated plugin's view paths. Wipe them explicitly.
+    php -r "
+        require_once 'vendor/autoload.php';
+        \$app = \Elgg\Application::getInstance();
+        \$app->bootCore();
+        elgg_clear_caches();
+        echo 'Caches cleared.' . PHP_EOL;
+    " 2>&1 || true
+    rm -rf "${ELGG_DATA_ROOT:-/var/www/data/}cache/fastcache" \
+           "${ELGG_DATA_ROOT:-/var/www/data/}cache/localfastcache" 2>/dev/null || true
+    chown -R www-data:www-data "${ELGG_DATA_ROOT:-/var/www/data/}"
+    chmod -R u+rwX,g+rX,o+rX "${ELGG_DATA_ROOT:-/var/www/data/}"
 
     touch /var/www/html/.elgg-installed
     echo "Elgg 7.x setup complete."

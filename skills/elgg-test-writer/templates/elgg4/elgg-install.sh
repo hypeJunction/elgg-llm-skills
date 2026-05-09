@@ -171,6 +171,21 @@ SETTINGS_VALUES
         }
     " 2>&1 || echo "Plugin activation completed (check for errors above)."
 
+    # elgg_clear_caches() alone doesn't purge the filesystem cache dirs that Elgg
+    # wrote during bootCore() *before* the plugin was activated. Those stale dirs
+    # shadow the newly-activated plugin's view paths. Wipe them explicitly.
+    php -r "
+        require_once 'vendor/autoload.php';
+        \$app = \Elgg\Application::getInstance();
+        \$app->bootCore();
+        elgg_clear_caches();
+        echo 'Caches cleared.' . PHP_EOL;
+    " 2>&1 || true
+    rm -rf "${ELGG_DATA_ROOT:-/var/www/data/}cache/fastcache" \
+           "${ELGG_DATA_ROOT:-/var/www/data/}cache/localfastcache" 2>/dev/null || true
+    chown -R www-data:www-data "${ELGG_DATA_ROOT:-/var/www/data/}"
+    chmod -R u+rwX,g+rX,o+rX "${ELGG_DATA_ROOT:-/var/www/data/}"
+
     touch /var/www/html/.elgg-installed
     echo "Elgg 4.x setup complete."
 fi

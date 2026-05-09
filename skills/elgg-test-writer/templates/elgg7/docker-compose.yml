@@ -33,7 +33,8 @@ services:
       ELGG_DB_NAME: elgg
       ELGG_DB_USER: elgg
       ELGG_DB_PASS: elgg
-      ELGG_SITE_URL: "http://localhost:${ELGG_PORT:-8780}/"
+      # Use the internal Docker service name so Playwright follows login redirects.
+      ELGG_SITE_URL: "${ELGG_SITE_URL:-http://elgg/}"
       ELGG_DATA_ROOT: "/var/www/data/"
       ELGG_DB_PREFIX: "elgg_"
       ELGG_ADMIN_EMAIL: "admin@example.com"
