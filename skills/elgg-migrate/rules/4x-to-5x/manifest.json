@@ -5,7 +5,8 @@
     {
       "id": "000-update-manifest-version",
       "name": "Update composer.json to target Elgg 5.x",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\UpdateManifestVersion",
       "llm_instructions": "Update the plugin's `composer.json` to require Elgg 5.x:\n\n```json\n\"require\": {\n    \"elgg/elgg\": \"~5.1.0\"\n}\n```\n\nAlso update `elgg-plugin.php` if it has a version constraint.",
       "breaking_change": "Plugin must declare Elgg 5.x compatibility",
       "priority": 1
@@ -86,7 +87,8 @@
     {
       "id": "008-moved-classes-5x",
       "name": "Update references to moved/renamed classes",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\MovedClasses",
       "llm_instructions": "Several classes were moved in Elgg 5.0:\n\n| Old | New |\n|-----|-----|\n| `\\ElggAutoP` | `\\Elgg\\Views\\AutoParagraph` |\n| `\\ElggCache` | `\\Elgg\\Cache\\BaseCache` |\n| `\\ElggDiskFilestore` | `\\Elgg\\Filesystem\\Filestore\\DiskFilestore` |\n| `\\ElggFilestore` | `\\Elgg\\Filesystem\\Filestore` |\n| `\\ElggRewriteTester` | `\\Elgg\\Router\\RewriteTester` |\n| `\\ElggTempDiskFilestore` | `\\Elgg\\Filesystem\\Filestore\\TempDiskFilestore` |\n| `\\Elgg\\Database\\SiteSecret` | `\\Elgg\\Security\\SiteSecret` |\n\nAlso removed:\n- `\\Elgg\\WebServices\\ApiKeyForm`\n- `Loggable` interface (merged into `ElggData`)\n\nSearch:\n```bash\ngrep -rn 'ElggAutoP\\|ElggCache\\b\\|ElggDiskFilestore\\|ElggFilestore\\b\\|ElggRewriteTester\\|ElggTempDiskFilestore\\|Elgg\\\\Database\\\\SiteSecret\\|Elgg\\\\WebServices\\\\ApiKeyForm\\|\\bLoggable\\b' classes/ --include='*.php'\n```",
       "breaking_change": "7 classes moved to new namespaces, 2 classes removed",
       "priority": 80
@@ -94,7 +96,8 @@
     {
       "id": "009-removed-events-5x",
       "name": "Replace removed events",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\RemovedConstants",
       "llm_instructions": "The following events were removed in Elgg 5.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `access:collections:addcollection, collection` | `create, access_collection` |\n| `access:collections:deletecollection, collection` | `delete, access_collection` |\n| `prepare, breadcrumbs` | `register, menu:breadcrumbs` |\n| `widget_settings, <widget_handler>` | Removed — use widget save logic |\n\nThe `REFERER` constant (misspelled) was removed. Use `REFERRER` instead.\n\nSearch:\n```bash\ngrep -rn 'access:collections:addcollection\\|access:collections:deletecollection\\|widget_settings' classes/ elgg-plugin.php --include='*.php'\ngrep -rn '\\bREFERER\\b' classes/ views/ actions/ --include='*.php'\n```",
       "breaking_change": "4 events removed, REFERER constant removed (use REFERRER)",
       "priority": 90
@@ -182,7 +185,8 @@
     {
       "id": "020-faker-library",
       "name": "Update Faker library usage (fzaninotto → FakerPHP)",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\FakerLibrary",
       "llm_instructions": "The faker library was switched from `fzaninotto/faker` to `fakerphp/faker`.\n\nIf your plugin uses Faker for seeding/testing:\n```php\n// Before:\nuse Faker\\Generator;\n// Usually no code change needed — namespace stayed the same\n\n// But check for any fzaninotto-specific features\n```\n\nUpdate `composer.json` if it requires the old package:\n```bash\ngrep -rn 'fzaninotto' composer.json\n```",
       "breaking_change": "Faker library switched from fzaninotto/faker to fakerphp/faker",
       "priority": 200
