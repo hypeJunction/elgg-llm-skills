@@ -1,0 +1,16 @@
+{
+    "name": "hypejunction/hypenotes",
+    "description": "Notes plugin for Elgg",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HypeNotes\\": "classes/HypeNotes/"
+        }
+    },
+    "extra": {
+        "installer-name": "hypenotes"
+    }
+}

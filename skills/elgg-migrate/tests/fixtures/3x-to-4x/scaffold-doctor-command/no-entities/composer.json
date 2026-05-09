@@ -1,0 +1,16 @@
+{
+    "name": "hypejunction/hypesimple",
+    "description": "Simple plugin for Elgg",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HypeSimple\\": "classes/HypeSimple/"
+        }
+    },
+    "extra": {
+        "installer-name": "hypesimple"
+    }
+}
