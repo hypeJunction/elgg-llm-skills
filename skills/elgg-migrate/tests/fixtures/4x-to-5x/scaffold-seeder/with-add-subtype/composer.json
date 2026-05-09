@@ -1,0 +1,16 @@
+{
+    "name": "hypejunction/hypelegacy",
+    "description": "Legacy plugin with add_subtype",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HypeLegacy\\": "classes/HypeLegacy/"
+        }
+    },
+    "extra": {
+        "installer-name": "hypelegacy"
+    }
+}

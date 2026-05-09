@@ -1,0 +1,16 @@
+{
+    "name": "hypejunction/hypetracker",
+    "description": "Issue tracker for Elgg",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HypeTracker\\": "classes/HypeTracker/"
+        }
+    },
+    "extra": {
+        "installer-name": "hypetracker"
+    }
+}

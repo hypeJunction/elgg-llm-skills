@@ -43,6 +43,14 @@
       "priority": 40
     },
     {
+      "id": "boolean-plugin-settings",
+      "name": "Migrate yes/no plugin settings to boolean",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\BooleanPluginSettings",
+      "breaking_change": "Plugins using 'yes'/'no' strings for boolean settings must migrate stored values and comparison logic to PHP bool",
+      "priority": 45
+    },
+    {
       "id": "005-session-manager",
       "name": "Replace session functions with session_manager service",
       "automated": false,
@@ -168,6 +176,14 @@
       "automated": false,
       "llm_instructions": "The faker library was switched from `fzaninotto/faker` to `fakerphp/faker`.\n\nIf your plugin uses Faker for seeding/testing:\n```php\n// Before:\nuse Faker\\Generator;\n// Usually no code change needed — namespace stayed the same\n\n// But check for any fzaninotto-specific features\n```\n\nUpdate `composer.json` if it requires the old package:\n```bash\ngrep -rn 'fzaninotto' composer.json\n```",
       "breaking_change": "Faker library switched from fzaninotto/faker to fakerphp/faker",
+      "priority": 200
+    },
+    {
+      "id": "scaffold-seeder",
+      "name": "Scaffold Seeder subclass for plugins owning entity types/subtypes",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\ScaffoldSeeder",
+      "breaking_change": "None — new file created; plugins without a Seeder cannot be seeded via elgg-cli database:seed",
       "priority": 200
     },
     {
