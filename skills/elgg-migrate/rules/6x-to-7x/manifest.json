@@ -179,6 +179,30 @@
       "priority": 210
     },
     {
+      "id": "022-reset-system-cache",
+      "name": "Replace elgg_reset_system_cache() with _elgg_services()->systemCache->clear()",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\ResetSystemCache",
+      "breaking_change": "elgg_reset_system_cache() removed in 7.x",
+      "priority": 220
+    },
+    {
+      "id": "023-composer-stability",
+      "name": "Add minimum-stability:dev + prefer-stable:true + asset-packagist to composer.json",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\ComposerStabilitySettings",
+      "breaking_change": "Elgg 7.x requires specific composer.json stability settings",
+      "priority": 225
+    },
+    {
+      "id": "024-grid-css-extension-target",
+      "name": "Update elements/grid CSS view extension target",
+      "automated": false,
+      "llm_instructions": "On Elgg 7.x, `core.css.php` no longer includes `elements/grid` or `css/elements/grid` at the same position.\n\nSearch for plugins extending these views:\n```bash\ngrep -rn 'elements/grid\\|css/elements/grid' classes/ elgg-plugin.php views/ --include='*.php'\n```\n\nIf found, check whether the extension is still needed and update the target view to the Elgg 7.x equivalent (typically `elements/core` or remove if no longer applicable).",
+      "breaking_change": "elements/grid CSS view extension target changed in 7.x",
+      "priority": 230
+    },
+    {
       "id": "999-add-docblocks",
       "name": "Add PHPDoc blocks to functions, methods, and class properties",
       "automated": true,

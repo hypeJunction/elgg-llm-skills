@@ -56,7 +56,7 @@ SETTINGS_VALUES
             'displayname' => 'Admin',
             'email' => '${ELGG_ADMIN_EMAIL:-admin@example.com}',
             'username' => 'admin',
-            'password' => '${ELGG_ADMIN_PASSWORD:-admin12345}',
+            'password' => '${ELGG_ADMIN_PASSWORD:-Admin@12345678901}',
         ];
 
         \$installer = new \ElggInstaller();
