@@ -110,6 +110,12 @@ SETTINGS_VALUES
     chown -R www-data:www-data "${ELGG_DATA_ROOT:-/var/www/data/}"
     chmod -R u+rwX,g+rX,o+rX "${ELGG_DATA_ROOT:-/var/www/data/}"
 
+    if [ "${ELGG_SEED_LIMIT:-5}" -gt 0 ]; then
+        echo "Seeding database (limit: ${ELGG_SEED_LIMIT:-5})..."
+        php vendor/elgg/elgg/elgg-cli database:seed --limit "${ELGG_SEED_LIMIT:-5}" --no-interaction 2>&1 || \
+            echo "Seeding completed (check for errors above)."
+    fi
+
     touch /var/www/html/.elgg-installed
     echo "Elgg 6.x setup complete."
 fi
