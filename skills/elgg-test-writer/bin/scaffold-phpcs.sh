@@ -17,16 +17,18 @@
 #   2. Inserts a `RUN vendor/bin/phpcs --config-set installed_paths ...`
 #      line into docker/Dockerfile after the composer install step, so
 #      `phpcs --standard=Elgg` is registered at image build time.
+#   3. Generates phpcs.xml at the plugin root with the Elgg standard and
+#      all required exclude-patterns (vendor/, vendors/, tests/, etc.), so
+#      `vendor/bin/phpcbf` picks them up automatically without CLI flags.
 #
-# Both edits are skipped if the relevant content is already present —
-# the script reports each step as wrote/skipped.
+# All steps are idempotent — re-running is a no-op where content exists.
+# The script reports each step as wrote/skipped.
 #
 # After running, rebuild the docker image and run phpcbf:
 #   docker compose -f docker/docker-compose.yml build --no-cache elgg
 #   docker compose -f docker/docker-compose.yml up -d
 #   docker compose -f docker/docker-compose.yml exec elgg \
-#     vendor/bin/phpcbf --standard=Elgg mod/<plugin-id>/ \
-#     --ignore='*/vendor/*,*/tests/*,*/node_modules/*'
+#     vendor/bin/phpcbf mod/<plugin-id>/
 
 set -euo pipefail
 
@@ -126,7 +128,7 @@ phpcs scaffold complete. Next steps:
   docker compose -f docker/docker-compose.yml up -d
   docker compose -f docker/docker-compose.yml exec elgg \\
     vendor/bin/phpcbf --standard=Elgg mod/\$(jq -r '.name' composer.json | sed 's|.*/||')/ \\
-    --ignore='*/vendor/*,*/tests/*,*/node_modules/*'
+    --ignore='*/vendor/*,*/vendors/*,*/tests/*,*/node_modules/*'
 
   git add docker/Dockerfile docker/elgg-composer.json
   git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
