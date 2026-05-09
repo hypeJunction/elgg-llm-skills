@@ -158,11 +158,45 @@ final class PostMigrationVerifier
             $violations = array_merge($violations, $this->check3xStartPhpExists($pluginPath));
         }
 
+        // Smoke-test scaffold check applies to every target version that supports
+        // \Elgg\IntegrationTestCase (3.x onwards). Reported as a warning so it
+        // surfaces in output without breaking the gate for plugins that haven't
+        // been re-scaffolded yet — the retroactive sweep (elgg-migrate-b6vax)
+        // promotes this to required once every plugin has been swept.
+        $violations = array_merge($violations, $this->checkSmokeTestScaffold($pluginPath));
+
+        $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
+
         return new VerificationResult(
             targetVersion: $targetVersion,
             violations: $violations,
-            passed: count($violations) === 0,
+            passed: count($errors) === 0,
         );
+    }
+
+    /**
+     * Verify the plugin ships an auto-scaffolded SmokeTest.php at the canonical
+     * location. The scaffold is produced by
+     * skills/elgg-test-writer/bin/scaffold-smoke-tests.sh.
+     *
+     * @return array<Violation>
+     */
+    private function checkSmokeTestScaffold(string $pluginPath): array
+    {
+        $smoke = $pluginPath . '/tests/phpunit/integration/SmokeTest.php';
+        if (is_file($smoke)) {
+            return [];
+        }
+        return [
+            new Violation(
+                file: 'tests/phpunit/integration/SmokeTest.php',
+                line: 0,
+                severity: 'warning',
+                message: 'No baseline smoke test found. Run skills/elgg-test-writer/bin/scaffold-smoke-tests.sh from the plugin directory to generate one.',
+                code: '',
+                category: 'smoke-test-scaffold',
+            ),
+        ];
     }
 
     /**

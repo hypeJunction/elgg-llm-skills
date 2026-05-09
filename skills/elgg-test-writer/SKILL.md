@@ -140,6 +140,37 @@ docker compose -f docker/docker-compose.yml build --no-cache
 
 ---
 
+## Phase 0.5: Scaffold the baseline smoke test
+
+After the docker stack is in place but **before** writing any custom tests,
+generate the baseline smoke test:
+
+```bash
+$SKILL/bin/scaffold-smoke-tests.sh
+# or, from outside the plugin dir:
+$SKILL/bin/scaffold-smoke-tests.sh --plugin-dir=/abs/path/to/plugin
+```
+
+The script statically parses `elgg-plugin.php` (no Elgg bootstrap needed) and
+writes `tests/phpunit/integration/SmokeTest.php` covering:
+
+- plugin is registered (`elgg_get_plugin_from_id`)
+- plugin activates without throwing
+- every action declared in `elgg-plugin.php`'s `actions` array is registered at runtime
+- every (type, subtype) entry in `entities` resolves to a loadable class
+
+This baseline is **deterministic** — no LLM judgment, no plugin code execution.
+It catches the most common post-migration regressions: missing class bindings,
+typo'd action keys, plugins that fail activation due to constructor errors.
+
+The LLM-driven phases below add richer per-feature coverage (action 200/403
+paths, route reachability, view rendering, UI flows) on top of this file.
+
+The post-migration verifier in `skills/elgg-migrate/src/PostMigrationVerifier.php`
+emits a warning for plugins missing this scaffold.
+
+---
+
 ## Quick Reference
 
 | Elgg | Unit Base | Integration Base | Session API |
