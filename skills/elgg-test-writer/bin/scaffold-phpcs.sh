@@ -42,7 +42,7 @@ for arg in "$@"; do
     case "$arg" in
         --plugin-dir=*) plugin_dir="${arg#*=}" ;;
         -h|--help)
-            sed -n '3,28p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
+            sed -n '3,31p' "$SCRIPT_PATH" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *) die "unknown argument: $arg" ;;
@@ -119,6 +119,30 @@ else
     fi
 fi
 
+# Step 3: generate phpcs.xml at plugin root -----------------------------------
+#
+# */vendors/* (trailing s) is required alongside */vendor/* — some legacy
+# hypeJunction plugins ship 3rd-party libraries under vendors/ (e.g. WideImage
+# in hypefilestore/hypegallery). Without it phpcbf rewrites those files.
+
+phpcs_xml="$plugin_dir/phpcs.xml"
+if [ -f "$phpcs_xml" ]; then
+    echo "  skip (already present): phpcs.xml"
+else
+    cat > "$phpcs_xml" <<'XML'
+<?xml version="1.0"?>
+<ruleset name="Elgg plugin">
+    <rule ref="Elgg"/>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/vendors/*</exclude-pattern>
+    <exclude-pattern>*/tests/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/docker/*</exclude-pattern>
+</ruleset>
+XML
+    echo "  wrote: phpcs.xml"
+fi
+
 cat <<NEXT
 
 phpcs scaffold complete. Next steps:
@@ -127,10 +151,9 @@ phpcs scaffold complete. Next steps:
   docker compose -f docker/docker-compose.yml build --no-cache elgg
   docker compose -f docker/docker-compose.yml up -d
   docker compose -f docker/docker-compose.yml exec elgg \\
-    vendor/bin/phpcbf --standard=Elgg mod/\$(jq -r '.name' composer.json | sed 's|.*/||')/ \\
-    --ignore='*/vendor/*,*/vendors/*,*/tests/*,*/node_modules/*'
+    vendor/bin/phpcbf mod/\$(jq -r '.name' composer.json | sed 's|.*/||')/
 
-  git add docker/Dockerfile docker/elgg-composer.json
+  git add docker/Dockerfile docker/elgg-composer.json phpcs.xml
   git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
   git push
 
