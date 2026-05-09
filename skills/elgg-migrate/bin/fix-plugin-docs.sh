@@ -123,8 +123,8 @@ if [[ -f "$COMPOSER" ]]; then
 import json, re
 data = json.load(open('$COMPOSER'))
 req = data.get('require', {}).get('elgg/elgg', '')
-m = re.search(r'(\d+)[\.\d]*', req)
-print(m.group(0).rstrip('.') if m else '')
+m = re.search(r'(\d+)', req)
+print((m.group(1) + '.x') if m else '')
 " 2>/dev/null || true)"
 
   repo_slug="$(python3 -c "
