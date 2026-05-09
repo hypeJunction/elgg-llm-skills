@@ -491,6 +491,135 @@ elgg_load_css('theme.custom');
 Verify the fix: check that `elgg.css` from simplecache is > 1 KB after a
 cache flush.
 
+### Composer VCS repos: dependency versioning pitfalls
+
+When you add all canonical plugins as VCS repos requiring `dev-migrate/elgg-N.x`,
+several classes of dependency conflicts appear at `composer update` time.
+
+**Inter-plugin version constraints.** Plugins that depend on other plugins
+use semver ranges (`~1.0`, `>=3.2`). A `dev-X` branch doesn't satisfy those
+ranges by default. Fix with inline aliases in the ROOT `composer.json`:
+
+```json
+"require": {
+  "hypejunction/hypelists":    "dev-migrate/elgg-3.x as 3.5.6",
+  "hypejunction/forms_api":    "dev-migrate/elgg-3.x as 1.2.1",
+  "hypejunction/images":       "dev-migrate/elgg-3.x as 1.1.4",
+  "hypejunction/menus_dropdown": "dev-migrate/elgg-3.x as 2.1.0"
+}
+```
+
+The alias tells Composer "treat this branch as version X" so downstream
+constraints resolve correctly. Use the latest tagged version on that branch
+(run `git tag --sort=-version:refname | head -1` in the plugin repo).
+
+To find ALL inter-plugin constraints that need aliases, scan every plugin's
+`composer.json` on the migration branch:
+
+```bash
+for p in plugins/*/; do
+  git -C "$p" show migrate/elgg-3.x:composer.json 2>/dev/null
+done | python3 -c "
+import sys, json
+for line in sys.stdin:  # pipe all composer.json content
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    for pkg, ver in d.get('require', {}).items():
+        if pkg.startswith('hypejunction/'):
+            print(d['name'], '->', pkg, ver)
+"
+```
+
+**Plugin `fzaninotto/faker` version mismatch.** Elgg 3.x requires `fzaninotto/faker ^1.9`.
+If a plugin's `migrate/elgg-3.x` branch still has `fzaninotto/faker 1.3.*` (a leftover from
+the pre-3.x era), `composer update` fails with an unsolvable conflict. Fix the plugin's
+branch directly:
+
+```bash
+# In the plugin repo on migrate/elgg-3.x
+sed -i 's/"fzaninotto\/faker": "1\.3\.\*"/"fzaninotto\/faker": "^1.9"/' composer.json
+git add composer.json && git commit -m "fix(deps): bump fzaninotto/faker to ^1.9 for Elgg 3.x"
+git push origin migrate/elgg-3.x
+```
+
+**`composer/installers` v1 vs Composer 2.3+ (Plugin API mismatch).** Elgg 3.x
+has a hard dependency chain: `elgg/elgg 3.3` → `elgg/login_as ~2.1` →
+`composer/installers ^1.0.8`. There is no newer version of `elgg/login_as` with
+an updated constraint. `composer/installers` v1 requires Plugin API `^1.0`, but
+Composer 2.3+ ships Plugin API 2.x — causing the plugin to be silently skipped.
+When skipped, all `elgg-plugin` type packages land in `vendor/` instead of `mod/`.
+
+Composer does NOT have an npm-style `overrides` key that would force a specific
+version of a transitive dependency, and the `replace` key would prevent any
+`composer/installers` from being installed at all.
+
+**Fix: pin Composer 2.2 in the Dockerfile.** Composer 2.2.x is an actively
+maintained LTS branch that supports both PHP 7.x and Plugin API 1.x. Switch the
+image copy from `composer:2` (which resolves to latest 2.x) to `composer:2.2`:
+
+```dockerfile
+# Before
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# After (Elgg 3.x projects — Plugin API 1.x required for composer/installers v1)
+COPY --from=composer:2.2 /usr/bin/composer /usr/bin/composer
+```
+
+**For local development with system Composer 2.3+:** Composer will still resolve
+packages correctly but `composer/installers` will be skipped. Two options:
+1. Use `docker exec <app> composer update` to run composer inside the container
+   (which uses Composer 2.2 baked into the image)
+2. Run `composer self-update --2.2` locally while working on Elgg 3.x projects,
+   then `composer self-update --rollback` when done
+
+**Update `composer/installers` constraint in plugin branches.** Plugins whose
+`migrate/elgg-3.x` branch has `"composer/installers": "~1.0"` will block v2
+from being used when the site eventually upgrades to a Composer 2.3+ compatible
+Elgg version. Proactively update all migration branches:
+
+```bash
+for p in plugins/*/; do
+  git -C "$p" checkout migrate/elgg-3.x 2>/dev/null || continue
+  cj="$p/composer.json"
+  if grep -q '"composer/installers": "~1\.0"' "$cj"; then
+    sed -i 's/"composer/installers": "~1\.0"/"composer\/installers": "^1.0 || ^2.0"/' "$cj"
+    git -C "$p" add composer.json
+    git -C "$p" commit -m "fix(deps): support composer/installers ^2.0"
+    git -C "$p" push origin migrate/elgg-3.x
+  fi
+done
+```
+
+**HTTPS vs SSH for VCS repos.** Use HTTPS URLs (`https://github.com/...`) for
+VCS repos, not SSH (`git@github.com:`). Docker build containers don't have SSH
+keys. HTTPS works for public repos without a token; add a `GITHUB_TOKEN` build
+arg for rate-limit headroom:
+
+```dockerfile
+ARG GITHUB_TOKEN
+RUN if [ -n "${GITHUB_TOKEN}" ]; then \
+    composer config -g github-oauth.github.com "${GITHUB_TOKEN}"; fi
+```
+
+```bash
+docker compose build --build-arg GITHUB_TOKEN=$(gh auth token)
+```
+
+**Installer-name casing mismatches.** Some plugins have a lowercase `installer-name`
+in their `extra` section (e.g., `hypemaps` → `installer-name: "hypemaps"`) but
+the site's `.plugin-order.txt` and database use the original camelCase ID
+(e.g., `hypeMaps`). Fix with `installer-paths` in the ROOT `composer.json`:
+
+```json
+"extra": {
+  "installer-paths": {
+    "mod/hypeMaps": ["hypejunction/hypemaps"]
+  }
+}
+```
+
 ## Harden PHP dependencies
 
 Once the site is on the latest Elgg version, upgrade PHP dependencies one
