@@ -1,0 +1,8 @@
+{
+  "id": "031-debug-surface-cleanup",
+  "name": "Strip debug residue: elgg_dump, commented var_dump/print_r, Logger constants",
+  "automated": true,
+  "class": "ElggMigrate\\Rules\\V3ToV4\\DebugSurfaceCleanup",
+  "breaking_change": "Debug residue (elgg_dump, commented var_dump) left in migrated code is a security/cleanliness issue",
+  "priority": 291
+}
