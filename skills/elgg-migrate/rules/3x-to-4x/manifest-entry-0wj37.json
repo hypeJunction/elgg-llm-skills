@@ -1,0 +1,9 @@
+{
+  "id": "032-action-controller-analyzer",
+  "name": "Identify action files that are candidates for Controller class extraction",
+  "automated": false,
+  "class": "ElggMigrate\\Rules\\V3ToV4\\ActionControllerAnalyzer",
+  "llm_instructions": "The analyzer has identified action files with significant procedural logic (>30 LOC, multiple branches, or loops). Refactor each candidate into a Controller class implementing __invoke(\\Elgg\\Request $request). Steps:\n1. Create classes/<PluginNamespace>/Actions/<ActionName>.php extending or implementing the controller pattern\n2. Move validation logic to the top, business logic to the middle, response (forward()/error()) at the bottom\n3. Register the controller class in elgg-plugin.php: 'actions' => ['name' => ['controller' => \\Plugin\\Actions\\Name::class]]\n4. Delete or empty the original action file\nReference: profile_manager BackupController pattern for the __invoke signature.",
+  "breaking_change": "Procedural action files are still supported in Elgg 4/5/6 but Controller classes are the modern pattern and required for testability",
+  "priority": 250
+}
