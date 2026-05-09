@@ -9,6 +9,10 @@ test-results/
 .env
 skills/*/infra/*/.env
 
+# Per-user plugin-docs cleanup config (author names, emails, domains — not committed).
+# Generate with: skills/elgg-migrate/bin/setup-plugin-docs-config.sh
+skills/elgg-migrate/config/*.local.json
+
 # PHP engine lives inside the elgg-migrate skill (and is mirrored into
 # every sibling skill by bin/gen-elgg-infra.sh). Ignore the transient
 # bits that composer/phpunit drop in each copy.

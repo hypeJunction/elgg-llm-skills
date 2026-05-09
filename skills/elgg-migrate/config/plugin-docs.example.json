@@ -1,0 +1,21 @@
+{
+  "_doc": "Template for plugin-docs cleanup config. Copy to plugin-docs.local.json (gitignored) and fill in your values, or run: skills/elgg-migrate/bin/setup-plugin-docs-config.sh",
+  "author": {
+    "names": ["Jane Doe", "Jane"],
+    "emails": ["jane@example.com", "jane@mysite.com"]
+  },
+  "domains": {
+    "old": "mypluginsite.com",
+    "new_url_template": "https://github.com/{github_org}/{repo_slug}"
+  },
+  "github_org": "my-github-org",
+  "donation_patterns": [
+    "paypal\\.me",
+    "paypal.*cgi-bin",
+    "patreon\\.com",
+    "ko-fi\\.com",
+    "buymeacoffee",
+    "Support the development",
+    "Buy me a"
+  ]
+}
