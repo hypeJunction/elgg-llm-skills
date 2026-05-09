@@ -203,10 +203,65 @@ that are reliable:
 
 ## Set up the workspace
 
-The workflow assumes symlinks from the project's `mod/` directory into a
-separate plugins workspace — changes in the workspace are instantly
-reflected in the project and you can work on each plugin as its own git
-repo. See the "symlink workflow" memory for the full rationale.
+### Plugin sourcing: composer VCS repos (preferred)
+
+The cleanest and most reproducible way to manage third-party plugins in a
+site upgrade is **composer VCS repositories** — not symlinks, rsync copies,
+git worktrees, or submodules. Each plugin is declared as a VCS repo in
+`composer.json`; `composer install` fetches the right branch and
+`composer/installers` drops it into `mod/` automatically.
+
+```json
+"repositories": [
+  { "type": "vcs", "url": "https://github.com/<owner>/<plugin>" }
+],
+"require": {
+  "<vendor>/<plugin>": "dev-migrate/elgg-3.x as 3.x-dev"
+}
+```
+
+**Branch naming convention.** Every plugin that spans multiple Elgg major
+versions must have `migrate/elgg-N.x` branches, one per supported version:
+
+| Branch | Code state |
+|--------|-----------|
+| `migrate/elgg-3.x` | Elgg 3.x-compatible (PHP-DI 5.x, `start.php` allowed) |
+| `migrate/elgg-4.x` | Elgg 4.x-compatible (PHP-DI 6.x, Bootstrap class) |
+| `migrate/elgg-5.x` | Elgg 5.x-compatible (Event API, Bootstrap) |
+| ... | ... |
+
+**`master` branch contamination warning.** When the 3→4 migration is done
+on `master` (no feature branch), `master` ends up with 4.x-only API calls
+even while the site is still on 3.x. Don't branch `migrate/elgg-3.x` from
+`master` HEAD — find the last commit before the first `fix(4.x):` /
+`migrate(4.x):` commit message and branch from there:
+
+```bash
+# Find the last 3.x-compatible commit
+git log --oneline master | grep -B1 "4\.x" | head -1
+
+# Create the branch from that commit
+git branch migrate/elgg-3.x <commit-hash>
+git push origin migrate/elgg-3.x
+```
+
+For a fleet of plugins, automate the check:
+```bash
+for plugin in plugins/*/; do
+  cd "$plugin"
+  first4x=$(git log --oneline master | grep "4\.x" | tail -1 | awk '{print $1}')
+  if [ -n "$first4x" ]; then
+    parent=$(git log --format="%H" "${first4x}^" -1)
+    echo "$(basename $plugin): branch from $parent"
+  fi
+  cd -
+done
+```
+
+### Symlink workspace (alternative)
+
+For local-only workflows where composer VCS repos are not practical, use
+symlinks from `mod/` into a separate plugins workspace:
 
 ```bash
 mkdir -p ~/plugins-workspace
@@ -217,13 +272,49 @@ rm -rf <plugin>
 ln -s ~/plugins-workspace/<plugin> <plugin>
 ```
 
-Create a migration branch in both the project and each plugin workspace
+### Create migration branches
+
+Create a migration branch in the project repo for each version step
 (name is the TARGET version, matching `elgg-migrate`'s convention):
 
 ```bash
 git -C <project> checkout -b migrate/elgg-{N}.x
-git -C ~/plugins-workspace/<plugin> checkout -b migrate/elgg-{N}.x
 ```
+
+For each plugin in the workspace, also ensure the target branch exists:
+
+```bash
+git -C ~/plugins-workspace/<plugin> checkout -b migrate/elgg-{N}.x
+# or for composer VCS approach: branch already exists on GitHub
+```
+
+### Docker bind-mount override for the site app container
+
+When the site's `Dockerfile` uses `COPY . .` (baking `mod/` into the
+image) and `docker-compose.yml` also bind-mounts `./mod` to `/opt/plugins`,
+the baked-in copy wins by default — the entrypoint's `symlink_plugins` only
+creates symlinks for missing plugins. Any code fix you make on the host
+is silently ignored at runtime.
+
+Fix the `symlink_plugins` function so bind-mounted plugins always win:
+
+```bash
+# In docker-entrypoint.sh — replace "skip if exists" with "force symlink"
+for entry in /opt/plugins/*; do
+    plugin_name=$(basename "$entry")
+    [[ "$plugin_name" == .* ]] && continue
+    if [ -d "$entry" ]; then
+        target="/var/www/html/mod/$plugin_name"
+        rm -rf "$target" 2>/dev/null || true   # remove baked-in copy
+        ln -sf "$entry" "$target"
+        count=$((count + 1))
+    fi
+done
+```
+
+After changing this, rebuild the image (`docker compose build --no-cache app`)
+so the updated entrypoint is baked in. The bind mount then wins at every
+subsequent `docker compose up`.
 
 **Record the current plugin activation order.** Save it to
 `mod/.plugin-order.txt` (one plugin id per line, in priority order). The
@@ -322,6 +413,83 @@ the failing gate. Don't mask failures by commenting tests out.
 
 When everything for this step is green, loop back and run the next version
 step. Iron Law 1 forbids advancing to N+2 until N+1 is fully done.
+
+---
+
+## Known compatibility gotchas by version transition
+
+These recur across codebases. Check for them early — they cause site-wide
+500s that block all other diagnostic work.
+
+### 3.x site running plugins with 4.x code
+
+If `mod/` plugins were updated from a 4.x-migrated branch (or a `master`
+branch that has 4.x commits merged in), the site will 500 immediately on
+boot even though `composer.json` still requires Elgg 3.x.
+
+**Root cause:** PHP-DI version mismatch. Elgg 3.x ships PHP-DI 5.x
+(`DI\object()`); Elgg 4.x ships PHP-DI 6.x (`DI\create()`). Calling
+`DI\create()` on a 3.x install throws `Call to undefined function`.
+
+**Fix:** In each plugin's `elgg-services.php`, replace:
+```php
+// 4.x (PHP-DI 6.x)
+'key' => \DI\create(SomeClass::class)->constructor(\DI\get('dep')),
+
+// 3.x (PHP-DI 5.x)
+'key' => \DI\object(SomeClass::class)->constructor(\DI\get('dep')),
+```
+
+**How to detect all affected files quickly:**
+```bash
+grep -rl "DI\\\\create" <project>/mod/
+```
+
+### Global function calls inside PHP namespaces
+
+Any Elgg helper function called from within a `namespace Foo\Bar { ... }`
+block requires the global-namespace `\` prefix, or PHP resolves it as
+`Foo\Bar\function_name()` and throws `Call to undefined function`.
+
+```php
+// Wrong inside namespace hypeJunction\DBExplorer
+$locale = get_current_language();        // → hypeJunction\DBExplorer\get_current_language() — FATAL
+
+// Correct
+$locale = \get_current_language();
+```
+
+### Elgg 3.x language API
+
+| Function | Correct version |
+|----------|----------------|
+| `get_current_language()` | Elgg 2.x and 3.x (deprecated in 3.x, removed in 4.x) |
+| `elgg_get_language()` | Elgg 4.x+ only — does NOT exist in 3.x |
+
+When migrating a plugin that calls `get_current_language()` inside a
+namespace, fix to `\get_current_language()` for 3.x. When later migrating
+to 4.x, replace with `elgg_get_language()`.
+
+### CSS that breaks css-crush v2.4
+
+Certain CSS constructs (complex selectors, vendor prefixes on variables)
+cause css-crush v2.4 to silently emit an empty stylesheet when CSS views are
+extended via `elgg_extend_view('css/elgg', ...)`. The site loads but has no
+styles.
+
+**Fix:** Serve those stylesheets as external files, not through the
+simplecache pipeline:
+```php
+// Instead of:
+elgg_extend_view('css/elgg', 'css/theme/custom.css', 999);
+
+// Use:
+elgg_register_css('theme.custom', '/mod/my_theme/views/default/css/theme/custom.css');
+elgg_load_css('theme.custom');
+```
+
+Verify the fix: check that `elgg.css` from simplecache is > 1 KB after a
+cache flush.
 
 ## Harden PHP dependencies
 
