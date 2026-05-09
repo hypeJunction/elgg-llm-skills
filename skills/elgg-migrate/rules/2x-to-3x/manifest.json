@@ -293,6 +293,14 @@
       "priority": 310
     },
     {
+      "id": "033-psr3-logging",
+      "name": "Modernize legacy logging calls to PSR-3 via elgg()->logger",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\Psr3Logging",
+      "breaking_change": "elgg()->logger PSR-3 service introduced in 3.0; legacy elgg_log()/error_log() patterns rewritten to elgg()->logger->{level}() — semantically equivalent, structured logging-friendly",
+      "priority": 400
+    },
+    {
       "id": "032-css-simplecache-compat",
       "name": "Verify CSS views are compatible with css-crush simplecache compilation",
       "automated": false,
