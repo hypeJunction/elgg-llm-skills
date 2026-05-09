@@ -707,6 +707,19 @@ code itself — future migrations and future developers rely on it. Cover:
 Update `CHANGELOG.md` with a human-readable summary of the version bump.
 Commit: `git commit -m "docs: add plugin architecture summary for Elgg {TARGET}.x"`.
 
+#### Update README and plugin docs
+
+After documenting the architecture, update the public-facing docs to the hypeJunction standard:
+
+1. **Audit:** `bin/audit-plugin-docs.sh <plugin-path>` — review all flagged issues (badge version, donation CTAs, hypejunction.com refs, missing description).
+2. **Auto-fix:** `bin/fix-plugin-docs.sh <plugin-path> --apply` — rewrites badge, strips CTAs, replaces hypejunction.com URLs.
+3. **Rewrite README.md** from `templates/README.md.tpl` — fill in NAME, ELGG_VERSION (from `elgg/elgg` constraint), REPO_SLUG, a fresh 1-2 sentence tagline, FEATURES, LICENSE. Drop all legacy stacked badges and donation/sponsor blocks.
+4. **Sync metadata:** update `composer.json` `"description"` and (if present) `manifest.xml` `<description>` / `elgg-plugin.php` `'description'` to the same tagline.
+5. **GitHub:** `gh repo edit hypeJunction/<repo> --description "<tagline>"` — uses the actual remote URL from `git remote get-url origin`.
+6. Commit: `git commit -m "docs: standardize README and plugin docs"`.
+
+The audit script exits non-zero on any remaining issue — run it last as a gate before closing the beads sub-issue.
+
 ### Phase 3: Finalize
 
 Review the branch history for a coherent story (each commit should stand on
