@@ -12484,6 +12484,266 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-09T13:03:45.970Z"
+    },
+    {
+      "id": "bug-780",
+      "timestamp": "2026-05-09T13:36:21.039Z",
+      "error_message": "Incorrect value in code",
+      "file": "skills/elgg-migrate/infra/elgg7/docker-compose.yml",
+      "root_cause": "Had \"admin12345\"",
+      "fix": "Changed to \"Admin@12345678901\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T13:36:21.039Z"
+    },
+    {
+      "id": "bug-781",
+      "timestamp": "2026-05-09T13:37:01.768Z",
+      "error_message": "Incorrect value in code",
+      "file": "skills/elgg-migrate/infra/elgg7/elgg-install.sh",
+      "root_cause": "Had '${ELGG_ADMIN_PASSWORD:-admin12345}'",
+      "fix": "Changed to '${ELGG_ADMIN_PASSWORD:-Admin@12345678901}'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "sh"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T13:37:01.768Z"
+    },
+    {
+      "id": "bug-782",
+      "timestamp": "2026-05-09T13:40:51.387Z",
+      "error_message": "Significant refactor of ",
+      "file": "skills/elgg-migrate/rules/4x-to-5x/manifest.json",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 8→17 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T13:40:51.387Z"
+    },
+    {
+      "id": "bug-783",
+      "timestamp": "2026-05-09T14:05:20.699Z",
+      "error_message": "Wrong reference: var should be 820px",
+      "file": "../hypejunction/bodyology/plugins/hypescraper/views/default/framework/scraper/stylesheet.css",
+      "root_cause": "Used \"var\" instead of \"820px\"",
+      "fix": "Changed var → 820px",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "css"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T14:05:20.699Z"
+    },
+    {
+      "id": "bug-784",
+      "timestamp": "2026-05-09T14:15:27.091Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/plugins/hypefaker/composer.json",
+      "root_cause": "Had \"ext-intl\"",
+      "fix": "Changed to \"ext-curl\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T14:15:27.091Z"
+    },
+    {
+      "id": "bug-785",
+      "timestamp": "2026-05-09T14:30:19.233Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/glossary/views/default/resources/glossary.php",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 6→3 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-09T14:30:19.233Z"
+    },
+    {
+      "id": "bug-786",
+      "timestamp": "2026-05-10T07:11:50.243Z",
+      "error_message": "Incorrect value in code",
+      "file": "skills/elgg-migrate/bin/fix-plugin-docs.sh",
+      "root_cause": "Had '%s'",
+      "fix": "Changed to '%b'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "sh"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T07:11:50.243Z"
+    },
+    {
+      "id": "bug-787",
+      "timestamp": "2026-05-10T07:43:01.372Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/composer.json",
+      "root_cause": "Had \"8.1\"",
+      "fix": "Changed to \"7.4\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 4,
+      "last_seen": "2026-05-10T07:43:57.589Z"
+    },
+    {
+      "id": "bug-788",
+      "timestamp": "2026-05-10T09:00:37.145Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/plugins/hypenotifications/composer.json",
+      "root_cause": "Had \"~1.0\"",
+      "fix": "Changed to \"^6.0\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T09:00:37.145Z"
+    },
+    {
+      "id": "bug-789",
+      "timestamp": "2026-05-10T09:14:17.137Z",
+      "error_message": "Incorrect value in code",
+      "file": "../../../../tmp/http-parser-clone/composer.json",
+      "root_cause": "Had \">=5.5\"",
+      "fix": "Changed to \">=7.4\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T09:14:17.137Z"
+    },
+    {
+      "id": "bug-790",
+      "timestamp": "2026-05-10T09:27:26.850Z",
+      "error_message": "Wrong reference: Guzzle6 should be Guzzle7",
+      "file": "../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/SparkPostEmailTransport.php",
+      "root_cause": "Used \"Guzzle6\" instead of \"Guzzle7\"",
+      "fix": "Changed Guzzle6 → Guzzle7",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T09:27:26.850Z"
+    },
+    {
+      "id": "bug-791",
+      "timestamp": "2026-05-10T09:27:30.081Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/plugins/hypenotifications/composer.json",
+      "root_cause": "Had \"^6.3\"",
+      "fix": "Changed to \"^7.0\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T09:27:30.081Z"
+    },
+    {
+      "id": "bug-792",
+      "timestamp": "2026-05-10T10:13:06.971Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/bodyology-forum/Dockerfile",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 9→26 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "unknown"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T10:13:06.971Z"
+    },
+    {
+      "id": "bug-793",
+      "timestamp": "2026-05-10T11:41:41.130Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/page/elements/foot.php",
+      "root_cause": "10 lines replaced/restructured",
+      "fix": "Rewrote 16→8 lines (10 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T11:41:41.130Z"
+    },
+    {
+      "id": "bug-794",
+      "timestamp": "2026-05-10T12:00:00.000Z",
+      "error_message": "Too few arguments to function hypeJunction\\Scraper\\AddBookmarkRiverPreview::__invoke(), 1 passed and exactly 4 expected",
+      "file": "hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/AddBookmarkRiverPreview.php",
+      "root_cause": "Elgg 4.x passes a single \\Elgg\\Hook object to hook handlers; migrate/elgg-4.x branch had 3 handlers (AddBookmarkRiverPreview, AddBookmarkProfilePreview, FilteroEmbedHtml) still using the 3.x 4-argument signature ($hook, $type, $return, $params)",
+      "fix": "Changed all 3 handlers to use Hook $hook signature, accessed $hook->getValue() for return value, replaced elgg_instanceof() with instanceof, lowercased plugin id callsites",
+      "tags": ["elgg-4x", "hook-signature", "hypeScraper", "migration"],
+      "related_bugs": ["bug-793"],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T12:00:00.000Z"
+    },
+    {
+      "id": "bug-795",
+      "timestamp": "2026-05-10T12:30:00.000Z",
+      "error_message": "array_keys(): Argument #1 ($array) must be of type array, Elgg\\Menu\\PreparedMenu given",
+      "file": "hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/default.php",
+      "root_cause": "Elgg 4.x passes a PreparedMenu object (iterable, not array) to menu views. menus_api's navigation/menu/default.php called array_keys($menu) expecting a plain array",
+      "fix": "Rewrote view to check for PreparedMenu instanceof, iterate with foreach($menu as $section) where $section is MenuSection, use $section->getID() and $section->all()",
+      "tags": ["elgg-4x", "menus-api", "PreparedMenu", "MenuSection", "migration"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T12:30:00.000Z"
+    },
+    {
+      "id": "bug-796",
+      "timestamp": "2026-05-10T13:00:00.000Z",
+      "error_message": "Call to undefined function elgg_get_loaded_js()",
+      "file": "hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/page/elements/foot.php",
+      "root_cause": "elgg_get_loaded_js() was removed in Elgg 4.x. bodyology_theme foot.php used it for both 'head' and 'footer' JS loading",
+      "fix": "Replaced elgg_get_loaded_js('footer') with elgg_get_loaded_external_resources('js', 'footer') and used $resource->url. Removed the 'head' JS loop (now handled by Elgg core in head.php)",
+      "tags": ["elgg-4x", "bodyology_theme", "foot.php", "removed-function", "migration"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T13:00:00.000Z"
     }
   ]
 }

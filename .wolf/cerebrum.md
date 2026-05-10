@@ -378,6 +378,12 @@ The `docker-compose.yml` node service image must match the version locked in `pa
 - [2026-05-09] **Release procedure for `images` plugin**: `images` master branch has unrelated history from the 2.x era. Use `git merge-tree --write-tree --allow-unrelated-histories master migrate/elgg-7.x` to get the fully resolved merged tree including both lineages, then create the merge commit via `commit-tree`.
 
 
+- [2026-05-10] **Elgg 4.x menu views receive `PreparedMenu` not array** — `navigation/menu/default.php` and similar views receive an `Elgg\Menu\PreparedMenu` object as `$vars['menu']`. Calling `array_keys($menu)` causes a fatal. Use `foreach ($menu as $section)` where `$section instanceof MenuSection`, then `$section->getID()` and `$section->all()`. Always check `if (!$menu instanceof PreparedMenu) { return; }` first.
+
+- [2026-05-10] **`elgg_get_loaded_js()` removed in Elgg 4.x** — replace with `elgg_get_loaded_external_resources('js', $location)` which returns objects with a `->url` property. The 'head'/'footer' location distinction is preserved. Any theme or plugin overriding `page/elements/foot.php` must be updated.
+
+- [2026-05-10] **Elgg 4.x hook handler signature is a SINGLE object** — `register_hook_handler()` callbacks must accept one arg `\Elgg\Hook $hook`; use `$hook->getValue()`, `$hook->getParam('key')`, `$hook->getParams()`. The old 4-argument `($hook_name, $type, $value, $params)` causes fatal "Too few arguments" on first invocation. Scan ALL plugins' `classes/` directories for `__invoke($hook, $type,` before activating.
+
 ## Do-Not-Repeat (2026-05-09)
 
 - [2026-05-09] **`bd` walks UP from cwd to find `.beads/`, not down**: when scripting bulk `bd create` from a directory outside the elgg-migrate project root (e.g. `cd ~/Data/hypejunction/bodyology/plugins`), every call fails with `Error: no beads database found`. Fix: set `export BEADS_DIR=/home/ismayilkhayredinov/Data/elgg-migrate/.beads` once at the top of the script, OR don't `cd` away. Burned ~60 silent fails today before checking output.
