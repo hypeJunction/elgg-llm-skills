@@ -12716,8 +12716,15 @@
       "file": "hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/AddBookmarkRiverPreview.php",
       "root_cause": "Elgg 4.x passes a single \\Elgg\\Hook object to hook handlers; migrate/elgg-4.x branch had 3 handlers (AddBookmarkRiverPreview, AddBookmarkProfilePreview, FilteroEmbedHtml) still using the 3.x 4-argument signature ($hook, $type, $return, $params)",
       "fix": "Changed all 3 handlers to use Hook $hook signature, accessed $hook->getValue() for return value, replaced elgg_instanceof() with instanceof, lowercased plugin id callsites",
-      "tags": ["elgg-4x", "hook-signature", "hypeScraper", "migration"],
-      "related_bugs": ["bug-793"],
+      "tags": [
+        "elgg-4x",
+        "hook-signature",
+        "hypeScraper",
+        "migration"
+      ],
+      "related_bugs": [
+        "bug-793"
+      ],
       "occurrences": 1,
       "last_seen": "2026-05-10T12:00:00.000Z"
     },
@@ -12728,7 +12735,13 @@
       "file": "hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/default.php",
       "root_cause": "Elgg 4.x passes a PreparedMenu object (iterable, not array) to menu views. menus_api's navigation/menu/default.php called array_keys($menu) expecting a plain array",
       "fix": "Rewrote view to check for PreparedMenu instanceof, iterate with foreach($menu as $section) where $section is MenuSection, use $section->getID() and $section->all()",
-      "tags": ["elgg-4x", "menus-api", "PreparedMenu", "MenuSection", "migration"],
+      "tags": [
+        "elgg-4x",
+        "menus-api",
+        "PreparedMenu",
+        "MenuSection",
+        "migration"
+      ],
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-10T12:30:00.000Z"
@@ -12740,10 +12753,32 @@
       "file": "hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/page/elements/foot.php",
       "root_cause": "elgg_get_loaded_js() was removed in Elgg 4.x. bodyology_theme foot.php used it for both 'head' and 'footer' JS loading",
       "fix": "Replaced elgg_get_loaded_js('footer') with elgg_get_loaded_external_resources('js', 'footer') and used $resource->url. Removed the 'head' JS loop (now handled by Elgg core in head.php)",
-      "tags": ["elgg-4x", "bodyology_theme", "foot.php", "removed-function", "migration"],
+      "tags": [
+        "elgg-4x",
+        "bodyology_theme",
+        "foot.php",
+        "removed-function",
+        "migration"
+      ],
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-10T13:00:00.000Z"
+    },
+    {
+      "id": "bug-797",
+      "timestamp": "2026-05-10T13:10:27.501Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/composer.json",
+      "root_cause": "Had \"7.4\"",
+      "fix": "Changed to \"8.2\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T13:10:27.501Z"
     }
   ]
 }

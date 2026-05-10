@@ -384,6 +384,12 @@ The `docker-compose.yml` node service image must match the version locked in `pa
 
 - [2026-05-10] **Elgg 4.x hook handler signature is a SINGLE object** — `register_hook_handler()` callbacks must accept one arg `\Elgg\Hook $hook`; use `$hook->getValue()`, `$hook->getParam('key')`, `$hook->getParams()`. The old 4-argument `($hook_name, $type, $value, $params)` causes fatal "Too few arguments" on first invocation. Scan ALL plugins' `classes/` directories for `__invoke($hook, $type,` before activating.
 
+- [2026-05-10] **Elgg 5.x: hooks and events merged — old function names deprecated, not removed** — `elgg_register_plugin_hook_handler()`, `elgg_trigger_plugin_hook()`, `elgg_unregister_plugin_hook_handler()` are kept as deprecated wrappers in 5.x (removed in 6.x). Existing custom plugin code works without changes but generates deprecation notices. The type hint changed: `\Elgg\Hook` → `\Elgg\Event` in handler signatures. Scan plugin branches for `\Elgg\Hook` type hints before activating.
+
+- [2026-05-10] **Elgg 5.x requires PHP 8.2** — update `config.platform.php` from `"7.4"` to `"8.2"` in composer.json and `FROM php:8.1-apache` → `FROM php:8.2-apache` in Dockerfile when doing the 4.x→5.x site upgrade step.
+
+- [2026-05-10] **`elgg_instanceof()` was fully removed in Elgg 4.x, not just deprecated** — it generates a "Call to undefined function" fatal if error_reporting is set to show errors. Safe to grep-replace across all custom plugins with `instanceof` before touching Elgg version. Replacement map: `elgg_instanceof($x)` → `$x instanceof \ElggEntity`; `elgg_instanceof($x, 'group')` → `$x instanceof \ElggGroup`; `elgg_instanceof($x, 'object', 'sub')` → `$x instanceof \ElggObject && $x->getSubtype() === 'sub'`.
+
 ## Do-Not-Repeat (2026-05-09)
 
 - [2026-05-09] **`bd` walks UP from cwd to find `.beads/`, not down**: when scripting bulk `bd create` from a directory outside the elgg-migrate project root (e.g. `cd ~/Data/hypejunction/bodyology/plugins`), every call fails with `Error: no beads database found`. Fix: set `export BEADS_DIR=/home/ismayilkhayredinov/Data/elgg-migrate/.beads` once at the top of the script, OR don't `cd` away. Burned ~60 silent fails today before checking output.
