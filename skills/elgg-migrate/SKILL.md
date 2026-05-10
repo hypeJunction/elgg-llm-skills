@@ -844,6 +844,11 @@ After documenting the architecture, update the public-facing docs to the hypeJun
 1. **Audit:** `bin/audit-plugin-docs.sh <plugin-path>` — review all flagged issues (badge version, donation CTAs, hypejunction.com refs, missing description).
 2. **Auto-fix:** `bin/fix-plugin-docs.sh <plugin-path> --apply` — rewrites badge, strips CTAs, replaces hypejunction.com URLs.
 3. **Rewrite README.md** from `templates/README.md.tpl` — fill in NAME, ELGG_VERSION (from `elgg/elgg` constraint), REPO_SLUG, a fresh 1-2 sentence tagline, FEATURES, LICENSE. Drop all legacy stacked badges and donation/sponsor blocks.
+3b. **Update compatibility table** — after rewriting README.md, update the `## Compatibility` section:
+    - Read the `elgg/elgg` constraint from `composer.json` to derive the target Elgg major version (e.g. `~7.0.0` → `7.x`).
+    - If the README has no `## Compatibility` section, append one with a starter row: `| current | 7.x |`.
+    - If the README already has `## Compatibility`, prepend a new row for the current target version (`| current | <derived-version> |`) above existing rows.
+    - Table header must always be: `| Plugin version | Elgg version |`
 4. **Sync metadata:** update `composer.json` `"description"` and (if present) `manifest.xml` `<description>` / `elgg-plugin.php` `'description'` to the same tagline.
 5. **GitHub:** `gh repo edit hypeJunction/<repo> --description "<tagline>"` — uses the actual remote URL from `git remote get-url origin`.
 6. Commit: `git commit -m "docs: standardize README and plugin docs"`.
@@ -868,7 +873,19 @@ a one-line tagline, features list, and installation instructions.
 ### Template
 
 `templates/README.md.tpl` — canonical README template. Placeholders:
-`{{NAME}}`, `{{ELGG_VERSION}}`, `{{REPO_SLUG}}`, `{{TAGLINE}}`, `{{FEATURES}}`, `{{LICENSE}}`.
+`{{NAME}}`, `{{ELGG_VERSION}}`, `{{REPO_SLUG}}`, `{{TAGLINE}}`, `{{FEATURES}}`, `{{COMPATIBILITY_TABLE}}`, `{{LICENSE}}`.
+
+The `## Compatibility` section lists which plugin version targets which Elgg major version. On each migration step, prepend a new row with `current` and the derived Elgg version (e.g. `7.x`). Older rows remain for historical reference. Example:
+
+```markdown
+## Compatibility
+
+| Plugin version | Elgg version |
+|---|---|
+| current | 7.x |
+| 3.x | 6.x |
+| 2.x | 5.x |
+```
 
 ### Scripts
 
@@ -877,6 +894,7 @@ Both scripts are path-agnostic and take a plugin directory as the only required 
 **`bin/audit-plugin-docs.sh <plugin-path>`** — read-only reporter. Checks:
 - README.md present (case-insensitive)
 - Elgg badge present, exactly one, correct version (derived from `elgg/elgg` constraint in composer.json)
+- `## Compatibility` section present in README.md
 - `composer.json` description non-empty, `elgg/elgg` in `require`
 - `manifest.xml` `<description>` non-empty (if manifest exists)
 - `hypejunction.com` references (excluding vendor/, node_modules/, .git/)
@@ -893,8 +911,9 @@ bin/audit-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"
 - Replaces `hypejunction.com` URLs → `https://github.com/hypeJunction/<repo-slug>`
 - Strips donation/sponsor CTAs
 - Collapses duplicate/stale Elgg badges to the single correct one
+- Appends a starter `## Compatibility` section if one is missing (uses derived Elgg version)
 
-Does **not** generate the tagline or features — those require human input.
+Does **not** generate the tagline, features, or full compatibility history — those require human input.
 
 ```bash
 bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"          # preview

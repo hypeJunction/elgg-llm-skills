@@ -20,6 +20,12 @@ composer require hypejunction/{{REPO_SLUG}}
 
 Download the zip, extract into your Elgg `mod/` directory, and activate in the admin panel.
 
+## Compatibility
+
+| Plugin version | Elgg version |
+|---|---|
+{{COMPATIBILITY_TABLE}}
+
 ## License
 
 {{LICENSE}}

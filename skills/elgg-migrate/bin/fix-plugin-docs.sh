@@ -202,5 +202,27 @@ if [[ -f "$README" && -n "${elgg_constraint:-}" ]]; then
   fi
 fi
 
+# ---- 6. Append compatibility section if missing ------------------------------
+if [[ -f "$README" ]]; then
+  echo ""
+  echo "--- Adding compatibility section if missing ---"
+  if grep -q '^## Compatibility' "$README" 2>/dev/null; then
+    echo "  ## Compatibility section already present"
+  else
+    if [[ -n "${elgg_constraint:-}" ]]; then
+      compat_section="\n## Compatibility\n\n| Plugin version | Elgg version |\n|---|---|\n| current | ${elgg_constraint} |"
+      if $APPLY; then
+        printf '%b' "$compat_section" >> "$README"
+        echo "  APPLIED: appended ## Compatibility section to $README"
+      else
+        echo "  Would append ## Compatibility section with row: current | ${elgg_constraint}"
+        echo "  (dry-run — pass --apply to write)"
+      fi
+    else
+      echo "  Cannot derive elgg_constraint — skipping compatibility section"
+    fi
+  fi
+fi
+
 echo ""
 echo "Done. Re-run audit-plugin-docs.sh to verify."

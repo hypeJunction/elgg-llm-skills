@@ -110,6 +110,12 @@ print(m.group(1) if m else '')
       fail "composer.json has no elgg/elgg constraint — cannot derive badge version"
     fi
   fi
+  # ---- 3b. Compatibility section present ------------------------------------
+  if grep -q '^## Compatibility' "$README" 2>/dev/null; then
+    ok "## Compatibility section present"
+  else
+    fail "## Compatibility section missing from README"
+  fi
 fi
 
 # ---- 4. composer.json checks -------------------------------------------------
