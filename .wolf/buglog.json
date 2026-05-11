@@ -12779,6 +12779,461 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-10T13:10:27.501Z"
+    },
+    {
+      "id": "bug-798",
+      "timestamp": "2026-05-10T17:48:29.898Z",
+      "error_message": "Wrong return value",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php",
+      "root_cause": "Was returning: preg_replace_callback('/<a.*?href=\"(.*?)\"><img.*?a",
+      "fix": "Now returns: = $event->getValue();",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-10T17:48:29.898Z"
+    },
+    {
+      "id": "bug-799",
+      "timestamp": "2026-05-10T17:50:02.525Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/composer.json",
+      "root_cause": "Had \"dev-migrate/elgg-5.x as 1.2.1\"",
+      "fix": "Changed to \"dev-migrate/elgg-6.x as 1.2.1\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 4,
+      "last_seen": "2026-05-10T17:50:06.354Z"
+    },
+    {
+      "id": "bug-800",
+      "timestamp": "2026-05-11T07:44:04.601Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php",
+      "root_cause": "Had 'crb'",
+      "fix": "Changed to 'js'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T07:46:13.166Z"
+    },
+    {
+      "id": "bug-801",
+      "timestamp": "2026-05-11T07:46:02.358Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/mrclay_combiner/start.php",
+      "root_cause": "28 lines replaced/restructured",
+      "fix": "Rewrote 42→7 lines (28 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T07:46:02.358Z"
+    },
+    {
+      "id": "bug-802",
+      "timestamp": "2026-05-11T07:46:28.734Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/forms/videolist/edit.php",
+      "root_cause": "Had 'elgg.videolist'",
+      "fix": "Changed to 'js'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T07:46:28.734Z"
+    },
+    {
+      "id": "bug-803",
+      "timestamp": "2026-05-11T07:46:32.210Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/js/videolist/videolist.php",
+      "root_cause": "Had 'elgg.videolist.json2'",
+      "fix": "Changed to 'js'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T07:46:32.210Z"
+    },
+    {
+      "id": "bug-804",
+      "timestamp": "2026-05-11T08:04:32.423Z",
+      "error_message": "Incorrect value in code",
+      "file": "../../../../tmp/hypeseo-6x/composer.json",
+      "root_cause": "Had \"^5.0\"",
+      "fix": "Changed to \"^6.0\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T08:04:55.324Z"
+    },
+    {
+      "id": "bug-805",
+      "timestamp": "2026-05-11T08:05:15.841Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/bodyology_library/start.php",
+      "root_cause": "Had 'library'",
+      "fix": "Changed to 'css'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T08:07:18.944Z"
+    },
+    {
+      "id": "bug-806",
+      "timestamp": "2026-05-11T08:07:27.842Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/tour/start.php",
+      "root_cause": "6 lines replaced/restructured",
+      "fix": "Rewrote 9→11 lines (6 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:07:27.842Z"
+    },
+    {
+      "id": "bug-807",
+      "timestamp": "2026-05-11T08:07:59.718Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/code_review/classes/code_review.php",
+      "root_cause": "Had 'code_review'",
+      "fix": "Changed to 'js'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:07:59.718Z"
+    },
+    {
+      "id": "bug-808",
+      "timestamp": "2026-05-11T08:08:02.937Z",
+      "error_message": "Wrong reference: elgg_require_js should be elgg_import_esm",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/widget_manager/classes/ColdTrick/WidgetManager/DefaultWidgets.php",
+      "root_cause": "Used \"elgg_require_js\" instead of \"elgg_import_esm\"",
+      "fix": "Changed elgg_require_js → elgg_import_esm",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:08:02.937Z"
+    },
+    {
+      "id": "bug-809",
+      "timestamp": "2026-05-11T08:12:11.211Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/plugins/hypediscovery/views/oembed/framework/discovery/public.php",
+      "root_cause": "Had 'oembed.css'",
+      "fix": "Changed to 'css'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-11T08:13:20.588Z"
+    },
+    {
+      "id": "bug-810",
+      "timestamp": "2026-05-11T08:14:20.159Z",
+      "error_message": "Incorrect value in code",
+      "file": "../../../../tmp/images_ui-6x/views/default/file/specialcontent/image/default.php",
+      "root_cause": "Had 'lightbox'",
+      "fix": "Changed to 'elgg/lightbox'",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:14:20.159Z"
+    },
+    {
+      "id": "bug-811",
+      "timestamp": "2026-05-11T08:27:19.415Z",
+      "error_message": "Incorrect value in code",
+      "file": "../../../../tmp/hypeinbox-6x/composer.json",
+      "root_cause": "Had \"^5.0\"",
+      "fix": "Changed to \"^6.0\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T08:27:19.415Z"
+    },
+    {
+      "id": "bug-812",
+      "timestamp": "2026-05-11T09:30:49.236Z",
+      "error_message": "Wrong reference: hypeprototyperui should be prototyper_profile",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt",
+      "root_cause": "Used \"hypeprototyperui\" instead of \"prototyper_profile\"",
+      "fix": "Changed hypeprototyperui → prototyper_profile",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "txt"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T09:30:49.236Z"
+    },
+    {
+      "id": "bug-813",
+      "timestamp": "2026-05-11T09:30:59.643Z",
+      "error_message": "Incorrect value in code",
+      "file": "../hypejunction/bodyology/bodyology-forum/composer.json",
+      "root_cause": "Had \"mod/hypeMaps\"",
+      "fix": "Changed to \"mod/hypemaps\"",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "json"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T09:30:59.643Z"
+    },
+    {
+      "id": "bug-814",
+      "timestamp": "2026-05-11T09:51:25.536Z",
+      "error_message": "Wrong reference: object should be create",
+      "file": "../../../../tmp/hypeinteractions-6x/elgg-services.php",
+      "root_cause": "Used \"object\" instead of \"create\"",
+      "fix": "Changed object → create",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T09:51:25.536Z"
+    },
+    {
+      "id": "bug-815",
+      "timestamp": "2026-05-11T09:54:02.632Z",
+      "error_message": "Wrong reference: hypefolders should be needs",
+      "file": "../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt",
+      "root_cause": "Used \"hypefolders\" instead of \"needs\"",
+      "fix": "Changed hypefolders → needs",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "txt"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T09:54:02.632Z"
+    },
+    {
+      "id": "bug-816",
+      "timestamp": "2026-05-11T09:55:27.887Z",
+      "error_message": "Wrong return value",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/InteractionsService.php",
+      "root_cause": "Was returning: $this->hooks->trigger('get_stats', 'interactions',",
+      "fix": "Now returns: elgg_trigger_event_results('get_stats', 'interacti",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T09:55:27.887Z"
+    },
+    {
+      "id": "bug-817",
+      "timestamp": "2026-05-11T10:37:36.005Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/CanCommentOnComment.php",
+      "root_cause": "12 lines replaced/restructured",
+      "fix": "Rewrote 16→7 lines (12 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:37:36.005Z"
+    },
+    {
+      "id": "bug-818",
+      "timestamp": "2026-05-11T10:37:38.805Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/CanEditLikeAnnotation.php",
+      "root_cause": "13 lines replaced/restructured",
+      "fix": "Rewrote 17→8 lines (13 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:37:38.805Z"
+    },
+    {
+      "id": "bug-819",
+      "timestamp": "2026-05-11T10:37:40.652Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/RiverMenu.php",
+      "root_cause": "11 lines replaced/restructured",
+      "fix": "Rewrote 15→7 lines (11 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:37:40.652Z"
+    },
+    {
+      "id": "bug-820",
+      "timestamp": "2026-05-11T10:37:45.434Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/ReplaceCommentsBlock.php",
+      "root_cause": "13 lines replaced/restructured",
+      "fix": "Rewrote 17→8 lines (13 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:37:45.434Z"
+    },
+    {
+      "id": "bug-821",
+      "timestamp": "2026-05-11T10:38:52.558Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Router.php",
+      "root_cause": "30 lines replaced/restructured",
+      "fix": "Rewrote 60→42 lines (30 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:38:52.558Z"
+    },
+    {
+      "id": "bug-822",
+      "timestamp": "2026-05-11T10:39:21.599Z",
+      "error_message": "Significant refactor of ",
+      "file": "../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Seeder.php",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 6→14 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:39:21.599Z"
+    },
+    {
+      "id": "bug-823",
+      "timestamp": "2026-05-11T00:00:00.000Z",
+      "error_message": "Fatal error: Trait \"Elgg\\Di\\ServiceFacade\" not found in InteractionsService.php",
+      "file": "hypeJunction/Elgg3-hypeInteractions/classes/hypeJunction/Interactions/InteractionsService.php",
+      "root_cause": "Elgg 6.x removed Elgg\\Di\\ServiceFacade trait; InteractionsService used it. Also injected PluginHooksService (removed in 6.x) via constructor. Fatal during bootCore because class is autoloaded by DI container.",
+      "fix": "Removed ServiceFacade trait usage, added manual instance() method, changed constructor to no-arg, replaced $this->hooks->trigger() with elgg_trigger_event_results().",
+      "tags": [
+        "elgg-6x",
+        "hypeinteractions",
+        "ServiceFacade",
+        "PluginHooksService"
+      ],
+      "related_bugs": [
+        "bug-824"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T00:00:00.000Z"
+    },
+    {
+      "id": "bug-824",
+      "timestamp": "2026-05-11T00:00:00.000Z",
+      "error_message": "Call to undefined function elgg_register_plugin_hook_handler() + Elgg\\Hook class not found in handler classes",
+      "file": "hypeJunction/Elgg3-hypeInteractions/classes/hypeJunction/Interactions/Bootstrap.php + 9 handler classes",
+      "root_cause": "Elgg 6.x removed entire plugin hook API: elgg_register_plugin_hook_handler, Elgg\\Hook class, elgg_trigger_plugin_hook. Bootstrap.php and 9 handler classes still used these.",
+      "fix": "Bootstrap: replaced all elgg_register_plugin_hook_handler/unregister with elgg_register/unregister_event_handler. Handlers: Hook $hook → \\Elgg\\Event $event, elgg_trigger_plugin_hook → elgg_trigger_event_results, renamed $event local vars to $notification_event where collision. Router static methods converted from old-style (hook,type,url,params) to (\\Elgg\\Event $event).",
+      "tags": [
+        "elgg-6x",
+        "hypeinteractions",
+        "Elgg\\Hook",
+        "elgg_register_plugin_hook_handler",
+        "elgg_trigger_plugin_hook"
+      ],
+      "related_bugs": [
+        "bug-823"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T00:00:00.000Z"
+    },
+    {
+      "id": "bug-825",
+      "timestamp": "2026-05-11T10:56:50.502Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 6→14 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-11T10:56:50.502Z"
     }
   ]
 }

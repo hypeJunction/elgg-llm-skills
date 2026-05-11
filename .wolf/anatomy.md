@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-09T13:11:36.452Z
-> Files: 2633 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-11T10:56:54.310Z
+> Files: 2745 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -12,15 +12,79 @@
 - `check_archive.sh` (~178 tok)
 - `check_plugin_ci.sh` — Probe a plugin's CI workflow state for the elgg-migrate-5ymu epic. (~461 tok)
 - `debug_test.php` (~277 tok)
+- `fix_ci.py` — run (~1607 tok)
+- `fix_mismatched_tags.py` — run (~866 tok)
 - `fix-event-docblocks.py` — ... */ docblocks immediately preceding a method whose first (~926 tok)
 - `install-warp.sh` (~135 tok)
 - `process-phpcs.sh` — Run phpcs, extract function-docblock issues, generate the tab-separated (~219 tok)
 - `split-chain-assign.py` — Split chained assignments like `$a = $b = 0;` into two lines. (~362 tok)
+- `tag_and_update.py` — run, get_tip_tags, has_matching_major_tag (~1497 tok)
+- `tag_plugins.py` — run, get_tags (~1163 tok)
+- `update_plugin_metadata.py` — run, gh_api, get_gh_repo, get_readme_tagline (~1770 tok)
 
 ## ../../../../tmp/actions_feature-5x/
 
 - `composer.json` — PHP package manifest (~168 tok)
 - `elgg-plugin.php` (~102 tok)
+
+## ../../../../tmp/forms_api_7x/views/default/elements/forms/
+
+- `field.css` — Styles: 2 rules, 1 vars (~69 tok)
+
+## ../../../../tmp/http-parser-clone/
+
+- `composer.json` — PHP package manifest (~176 tok)
+
+## ../../../../tmp/hypediscovery-6x/views/oembed/framework/discovery/
+
+- `public.php` (~131 tok)
+
+## ../../../../tmp/hypediscovery-6x/views/oembed/resources/
+
+- `permalink.php` (~122 tok)
+
+## ../../../../tmp/hypefolders-6x/classes/hypeJunction/Folders/
+
+- `MainFolder.php` — {@inheritdoc} (~2844 tok)
+
+## ../../../../tmp/hypegallery-6x/classes/hypeJunction/Gallery/
+
+- `Seeder.php` — Seeds gallery album and album image entities for development and testing. (~570 tok)
+
+## ../../../../tmp/hypeinbox-6x/
+
+- `composer.json` — PHP package manifest (~216 tok)
+
+## ../../../../tmp/hypeinteractions-6x/
+
+- `elgg-services.php` (~28 tok)
+
+## ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/
+
+- `Bootstrap.php` — {@inheritdoc} (~749 tok)
+- `CanCommentOnComment.php` — CanCommentOnComment: __invoke (~112 tok)
+- `CanEditLikeAnnotation.php` — CanEditLikeAnnotation: __invoke (~147 tok)
+- `FormatCommentNotification.php` — FormatCommentNotification: __invoke (~231 tok)
+- `GetCommentSubscribers.php` — GetCommentSubscribers: __invoke (~981 tok)
+- `InteractionsMenu.php` — InteractionsMenu: __invoke (~843 tok)
+- `InteractionsService.php` — Returns service instance from Elgg DI container (~1810 tok)
+- `ReplaceCommentsBlock.php` — ReplaceCommentsBlock: __invoke (~116 tok)
+- `RiverMenu.php` — RiverMenu: __invoke (~63 tok)
+- `Router.php` — Router: urlHandler, iconUrlHandler (~267 tok)
+- `Seeder.php` — Seeds fake comment entities for development and testing. (~434 tok)
+- `SocialMenu.php` — SocialMenu: __invoke (~431 tok)
+
+## ../../../../tmp/hypeseo-6x/
+
+- `composer.json` — PHP package manifest (~184 tok)
+
+## ../../../../tmp/hypewall-6x/classes/hypeJunction/Wall/
+
+- `Seeder.php` — Seeder: seed, unseed, getCountOptions (~366 tok)
+
+## ../../../../tmp/images_ui-6x/views/default/file/specialcontent/image/
+
+- `default.php` — Display an image (~168 tok)
 
 ## ../../.claude/
 
@@ -56,9 +120,58 @@
 ## ../hypejunction/bodyology/bodyology-forum/
 
 - `composer.json` — PHP package manifest (~2723 tok)
+- `docker-compose.override.yml` — Docker Compose: 1 services (~38 tok)
 - `docker-compose.yml` — Docker Compose services (~288 tok)
-- `docker-entrypoint.sh` — Declares l (~2311 tok)
-- `Dockerfile` — Docker container definition (~652 tok)
+- `docker-entrypoint.sh` — Declares l (~2514 tok)
+- `Dockerfile` — Docker container definition (~928 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/bin/
+
+- `fix-hook-signatures.py` — Transform 4-arg Elgg hook callbacks to \Elgg\Event $event signature for Elgg 6.x. (~834 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/e2e/tests/
+
+- `directory.spec.ts` — Declares bodyText (~380 tok)
+- `gallery.spec.ts` — Declares response (~268 tok)
+- `navigation.spec.ts` (~409 tok)
+- `notifications.spec.ts` — Declares bodyText (~263 tok)
+- `smoke.spec.ts` — Smoke tests — verify core pages render without fatal errors. (~592 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/
+
+- `.plugin-order.txt` — Plugin activation order for Bodyology Forum (Elgg 6.x) (~432 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/bodyology_library/
+
+- `start.php` — Initialize the plugin (~467 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/
+
+- `start.php` — Responsive Theme for Elgg (~10106 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/page/elements/
+
+- `foot.php` — onYouTubeIframeAPIReady: PlayVideoById, openModal, closeModal + 3 more (~1200 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/theme/
+
+- `init.js` (~118 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/code_review/classes/
+
+- `code_review.php` — Main plugin class. (~4188 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/elgg_stars/
+
+- `start.php` — Load libraries (~611 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/feedback/
+
+- `start.php` — Elgg Feedback plugin (~1611 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/glossary/views/default/resources/
+
+- `glossary.php` — Resource dispatcher for /glossary route (~415 tok)
 
 ## ../hypejunction/bodyology/bodyology-forum/mod/hypeDBExplorer/
 
@@ -83,6 +196,54 @@
 ## ../hypejunction/bodyology/bodyology-forum/mod/hypeNotifications/
 
 - `elgg-services.php` (~177 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/hypePrototyperUI/
+
+- `start.php` — Prototyper UI (~481 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/hypePrototyperUI/views/default/forms/prototyper/
+
+- `edit.php` (~700 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/menus_entity/
+
+- `start.php` — Dropdown Menu (~712 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/mrclay_combiner/
+
+- `start.php` — init: merge_js, merge_css, module_is_blacklisted + 3 more (~453 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/news/views/default/resources/
+
+- `news.php` — Dispatcher for /news/* route — loads lib/news.php (not loaded by init, only by old page handler) (~344 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/stripe/
+
+- `start.php` — Handle Stripe webhooks (~950 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/tour/
+
+- `start.php` — Plugin for managing and displaying feature tours (~783 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/user_settings/views/default/resources/
+
+- `settings.php` — Dispatcher for /settings/{segments} catch-all route registered by user_settings plugin. (~346 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/videolist/
+
+- `start.php` — Elgg Video Plugin (~2808 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/forms/videolist/
+
+- `edit.php` — Videolist edit form body (~415 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/js/videolist/
+
+- `videolist.php` — load json2 to support older browsers (~452 tok)
+
+## ../hypejunction/bodyology/bodyology-forum/mod/widget_manager/classes/ColdTrick/WidgetManager/
+
+- `DefaultWidgets.php` — DefaultWidgets (~323 tok)
 
 ## ../hypejunction/bodyology/plugins/
 
@@ -206,6 +367,7 @@
 
 ## ../hypejunction/bodyology/plugins/elgg_lightbox/views/default/elgg/
 
+- `lightbox.css` — Styles: 57 rules, 8 vars (~954 tok)
 - `lightbox.js` — Lightbox module (~934 tok)
 
 ## ../hypejunction/bodyology/plugins/elgg_lightbox/views/default/js/elgg/
@@ -254,6 +416,7 @@
 
 ## ../hypejunction/bodyology/plugins/elgg_tokeninput/views/default/components/
 
+- `tokeninput.css` — Styles: 3 rules, 7 vars (~1184 tok)
 - `tokeninput.js` — Default configuration (~853 tok)
 
 ## ../hypejunction/bodyology/plugins/elgg_tokeninput/views/default/input/
@@ -432,6 +595,7 @@
 
 ## ../hypejunction/bodyology/plugins/forms_validation/views/default/elements/forms/
 
+- `validation.css` — Styles: 4 rules, 1 vars (~118 tok)
 - `validation.js` — Declares typeMessages (~722 tok)
 - `validation.php` (~50 tok)
 
@@ -615,6 +779,10 @@
 
 - `AttachmentsTest.php` — Integration tests for hypeAttachments on Elgg 5.x. (~2766 tok)
 
+## ../hypejunction/bodyology/plugins/hypeattachments/views/default/css/input/
+
+- `attachments.css` — Styles: 8 rules, 3 vars (~222 tok)
+
 ## ../hypejunction/bodyology/plugins/hypeattachments/views/default/forms/attachments/
 
 - `upload.js` (~154 tok)
@@ -675,6 +843,7 @@
 ## ../hypejunction/bodyology/plugins/hypeautocomplete/views/default/autocomplete/
 
 - `select.js` (~1020 tok)
+- `stylesheet.css` — Styles: 69 rules, 17 vars (~6364 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeautocomplete/views/default/elgg/components/
 
@@ -783,6 +952,10 @@
 
 - `db_explorer.php` (~178 tok)
 
+## ../hypejunction/bodyology/plugins/hypedbexplorer/views/default/css/framework/db_explorer/
+
+- `stylesheet.css` — Styles: 118 rules, 7 vars (~4277 tok)
+
 ## ../hypejunction/bodyology/plugins/hypedbexplorer/views/default/framework/db_explorer/
 
 - `bulk.php` (~155 tok)
@@ -876,10 +1049,19 @@
 
 - `HooksTest.php` — Lock in hook handler registration & behavior. (~683 tok)
 
+## ../hypejunction/bodyology/plugins/hypediscovery/views/default/
+
+- `discovery.css` — Styles: 5 rules, 1 vars (~113 tok)
+- `oembed.css` — Styles: 10 rules, 5 vars (~436 tok)
+
 ## ../hypejunction/bodyology/plugins/hypediscovery/views/default/forms/discovery/
 
 - `edit.js` (~269 tok)
 - `share.php` (~290 tok)
+
+## ../hypejunction/bodyology/plugins/hypediscovery/views/oembed/framework/discovery/
+
+- `public.php` (~131 tok)
 
 ## ../hypejunction/bodyology/plugins/hypediscussions/
 
@@ -887,7 +1069,7 @@
 - `ARCHITECTURE.md` — hypediscussions — Architecture (~1593 tok)
 - `CHANGELOG.md` — [5.0.0] — Elgg 5.x migration (2026-05-08) (~2245 tok)
 - `composer.json` — PHP package manifest (~244 tok)
-- `elgg-plugin.php` (~948 tok)
+- `elgg-plugin.php` (~983 tok)
 - `package.json` — Node.js package manifest (~212 tok)
 - `README.md` — Project documentation (~133 tok)
 
@@ -895,6 +1077,7 @@
 
 - `Bootstrap.php` — Bootstrap: load, init, ready (~536 tok)
 - `RelatedDiscussionsCounter.php` — RelatedDiscussionsCounter class. (~436 tok)
+- `Seeder.php` — Seeder: seed, unseed (~286 tok)
 - `Views.php` — Views class. (~355 tok)
 
 ## ../hypejunction/bodyology/plugins/hypediscussions/docker/
@@ -936,7 +1119,7 @@
 ## ../hypejunction/bodyology/plugins/hypedownloads/
 
 - `composer.json` — PHP package manifest (~249 tok)
-- `elgg-plugin.php` (~523 tok)
+- `elgg-plugin.php` (~562 tok)
 - `manifest.xml` (~278 tok)
 - `package.json` — Node.js package manifest (~173 tok)
 - `readme.md` (~34 tok)
@@ -947,6 +1130,7 @@
 - `Download.php` — {@inheritdoc} (~617 tok)
 - `EntityMenu.php` — EntityMenu: __invoke (~114 tok)
 - `Release.php` — Release: initializeAttributes, getDisplayName, getPackage, canDownload (~274 tok)
+- `Seeder.php` — Seeder: seed, unseed (~281 tok)
 - `SetDownloadUrl.php` — SetDownloadUrl: __invoke (~127 tok)
 - `SetupContainerLogic.php` — SetupContainerLogic: __invoke (~91 tok)
 - `SetupDownloadForm.php` — SetupDownloadForm: __invoke (~174 tok)
@@ -970,7 +1154,7 @@
 ## ../hypejunction/bodyology/plugins/hypedownloads/views/default/input/downloads/
 
 - `release.php` (~382 tok)
-- `releases.css` — Styles: 8 rules (~201 tok)
+- `releases.css` — Styles: 8 rules, 1 vars (~226 tok)
 - `releases.js` (~105 tok)
 - `releases.php` (~247 tok)
 
@@ -980,7 +1164,7 @@
 - `ARCHITECTURE.md` — hypedropzone — Architecture (Elgg 5.x) (~1261 tok)
 - `CHANGELOG.md` — 8.0.0 (2026-05-06) (~1225 tok)
 - `composer.json` — PHP package manifest (~323 tok)
-- `elgg-plugin.php` (~267 tok)
+- `elgg-plugin.php` (~306 tok)
 - `package.json` — Node.js package manifest (~202 tok)
 
 ## ../hypejunction/bodyology/plugins/hypedropzone/classes/hypeJunction/
@@ -992,6 +1176,7 @@
 - `ChunkAssembleAction.php` — Action handler that reassembles previously uploaded chunks into a final file. (~983 tok)
 - `ChunkUploadAction.php` — Action handler that stores an individual upload chunk to disk. (~531 tok)
 - `FileChunk.php` — ElggFile subclass representing one chunk in a chunked upload. (~91 tok)
+- `Seeder.php` — Seeder for hypedropzone (~205 tok)
 - `UploadAction.php` — Action handler for single-shot (non-chunked) Dropzone uploads. (~152 tok)
 
 ## ../hypejunction/bodyology/plugins/hypedropzone/docker/
@@ -1028,7 +1213,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypedropzone/views/default/dropzone/
 
-- `dropzone.css` — Styles: 37 rules (~1507 tok)
+- `dropzone.css` — Styles: 37 rules, 11 vars (~1755 tok)
 - `dropzone.js` — Initialize dropzone on DOM ready (~1955 tok)
 
 ## ../hypejunction/bodyology/plugins/hypedropzone/views/default/input/
@@ -1047,7 +1232,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/
 
-- `Bootstrap.php` — Plugin bootstrap for hypeEmbed. (~302 tok)
+- `Bootstrap.php` — Plugin bootstrap for hypeEmbed. (~324 tok)
 - `EmbedCode.php` — Represents an embed code object entity. (~85 tok)
 - `EmbedMenu.php` — Builds the embed toolbar menu items. (~552 tok)
 - `EntityEmbedMenu.php` — Builds the embed menu items for a specific entity. (~523 tok)
@@ -1058,6 +1243,7 @@
 - `LongtextMenu.php` — Adds the embed menu item to the longtext toolbar menu. (~480 tok)
 - `PostCollection.php` — PostCollection: getId, getDisplayName, getCollectionType, getType + 6 more (~671 tok)
 - `Router.php` — Handles public page route registration for walled garden. (~119 tok)
+- `Seeder.php` — Seeds embed code entities for development and testing. (~406 tok)
 - `Uploads.php` — Event handlers for embed file icon management. (~508 tok)
 - `Views.php` — Created by PhpStorm. (~200 tok)
 
@@ -1082,7 +1268,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeembed/views/default/embed/
 
-- `stylesheet.css` — Styles: 29 rules (~666 tok)
+- `stylesheet.css` — Styles: 29 rules, 15 vars (~944 tok)
 - `toolbar.js` (~322 tok)
 - `toolbar.php` — Embed toolbar rendered below longtext inputs (~207 tok)
 
@@ -1127,7 +1313,7 @@
 - `.gitignore` — Git ignore rules (~83 tok)
 - `ARCHITECTURE.md` — hypefaker — Architecture (Elgg 5.x) (~1076 tok)
 - `CHANGELOG.md` — Unreleased (~767 tok)
-- `composer.json` — PHP package manifest (~298 tok)
+- `composer.json` — PHP package manifest (~304 tok)
 - `elgg-plugin.php` (~239 tok)
 - `start.php` — hypefaker_init: hypefaker_register_seeds (~668 tok)
 
@@ -1272,17 +1458,18 @@
 - `CHANGELOG.md` — 3.0.0 (2026-04-28) (~463 tok)
 - `composer.json` — PHP package manifest (~225 tok)
 - `elgg-plugin.php` (~785 tok)
-- `start.php` — hypeFolders (~521 tok)
+- `start.php` — hypeFolders (~548 tok)
 
 ## ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/
 
-- `Bootstrap.php` — Plugin bootstrap (~634 tok)
+- `Bootstrap.php` — Plugin bootstrap (~656 tok)
 - `Folder.php` — Folder entity — a child container for resources, tied to a MainFolder. (~294 tok)
 - `FoldersService.php` — FoldersService: getContentTypes (~351 tok)
 - `MainFolder.php` — Top-level folder owned by a user or group; aggregates child Folder/Resource entries. (~2535 tok)
 - `Menus.php` — Menu registration handlers for the hypeFolders plugin. (~1996 tok)
 - `Permissions.php` — Container/folder permission handlers for hypeFolders. (~436 tok)
 - `Router.php` — URL routing for hypeFolders pages and entity URL handler. (~910 tok)
+- `Seeder.php` — Seeds folder entities for development and testing. (~311 tok)
 
 ## ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/Upgrades/
 
@@ -1323,9 +1510,14 @@
 
 - `_debug.spec.ts` — Declares r1 (~131 tok)
 
+## ../hypejunction/bodyology/plugins/hypefolders/views/default/
+
+- `bundles.css` — Styles: 19 rules, 9 vars (~747 tok)
+
 ## ../hypejunction/bodyology/plugins/hypefolders/views/default/folders/
 
 - `search_results.php` (~943 tok)
+- `stylesheet.css` — Styles: 47 rules, 18 vars (~1614 tok)
 
 ## ../hypejunction/bodyology/plugins/hypefolders/views/default/folders/resources/
 
@@ -1375,8 +1567,10 @@
 
 ## ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/
 
+- `Bootstrap.php` — Bootstrap class. (~231 tok)
 - `hjAlbum.php` — hjAlbum class. (~578 tok)
 - `hjAlbumImage.php` — hjAlbumImage class. (~887 tok)
+- `Seeder.php` — Seeds gallery album and album image entities for development and testing. (~503 tok)
 
 ## ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/Upgrades/
 
@@ -1429,7 +1623,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypegallery/views/default/css/framework/gallery/
 
-- `stylesheet.css` — Styles: 94 rules (~7932 tok)
+- `stylesheet.css` — Styles: 99 rules, 8 vars (~7060 tok)
 
 ## ../hypejunction/bodyology/plugins/hypegallery/views/default/forms/edit/object/
 
@@ -1516,6 +1710,10 @@
 - `PluginActivationTest.php` — Smoke test: verifies the plugin is registered and that activate.php could (~339 tok)
 - `ViewsTest.php` — ViewsTest: up, down, getPluginID, testLocationInputViewRenders + 5 more (~802 tok)
 
+## ../hypejunction/bodyology/plugins/hypegeo/views/default/css/framework/geo/
+
+- `stylesheet.css` — Styles: 3 rules, 4 vars (~179 tok)
+
 ## ../hypejunction/bodyology/plugins/hypegeo/views/default/forms/geo/
 
 - `postal_address.php` — A standard postal address form (~840 tok)
@@ -1582,6 +1780,10 @@
 
 - `GroupConfigTest.php` — GroupConfig normalizes options with sensible defaults and stores them (~503 tok)
 
+## ../hypejunction/bodyology/plugins/hypegroups/views/default/groups/
+
+- `extras.css` — Styles: 7 rules, 1 vars (~229 tok)
+
 ## ../hypejunction/bodyology/plugins/hypegroups/views/default/resources/groups/
 
 - `add.php` (~383 tok)
@@ -1634,7 +1836,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypehero/views/default/page/elements/
 
-- `hero.css` — Styles: 39 rules (~1183 tok)
+- `hero.css` — Styles: 39 rules, 22 vars (~1620 tok)
 - `hero.js` (~52 tok)
 - `hero.php` (~608 tok)
 
@@ -1644,6 +1846,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeicons/
 
+- `.gitignore` — Git ignore rules (~60 tok)
 - `ARCHITECTURE.md` — hypeIcons — Architecture (Elgg 5.x) (~1615 tok)
 - `CHANGELOG.md` — 3.0.0 (Elgg 5.x) (~291 tok)
 - `composer.json` — PHP package manifest (~236 tok)
@@ -1680,6 +1883,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeicons/views/default/input/
 
+- `cropper.css` — Styles: 3 rules, 2 vars (~106 tok)
 - `cropper.js` (~456 tok)
 - `cropper.php` — Displays an image with cropper (~522 tok)
 
@@ -1709,16 +1913,17 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/
 
-- `Bootstrap.php` — Bootstrap class. (~942 tok)
+- `Bootstrap.php` — Bootstrap class. (~963 tok)
 - `Config.php` — Config class. (~1738 tok)
 - `Group.php` — Minimal GUID-set utility replacing the removed hypejunction/acl_builder_api (~300 tok)
-- `HookHandlers.php` — Plugin hooks service (~1433 tok)
+- `HookHandlers.php` — Plugin hooks service (~1315 tok)
 - `Menus.php` — Menus class. (~3398 tok)
 - `Message.php` — Message class. (~3478 tok)
 - `Plugin.php` — Inbox service provider (~450 tok)
 - `Policy.php` — Policy class. (~1671 tok)
 - `Ruleset.php` — Ruleset class. (~912 tok)
 - `SearchRecipients.php` — Autocomplete tags (~520 tok)
+- `Seeder.php` — Seeds fake private messages between random users for development and testing. (~419 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/Models/
 
@@ -1763,7 +1968,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinbox/views/default/framework/
 
-- `inbox.css` — inbox-popup { (~478 tok)
+- `inbox.css` — Styles: 44 rules, 14 vars (~1203 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeinbox/views/default/framework/inbox/
 
@@ -1819,7 +2024,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/
 
-- `Bootstrap.php` — Plugin bootstrap: registers events, routes, and services (~744 tok)
+- `Bootstrap.php` — {@inheritdoc} (~771 tok)
 - `CanCommentOnComment.php` — Event handler that controls whether users can comment on a comment (~183 tok)
 - `CanEditLikeAnnotation.php` — Event handler that controls edit permissions for like annotations (~205 tok)
 - `Comment.php` — Extends ElggComment with interaction-specific behavior (~1091 tok)
@@ -1836,6 +2041,7 @@
 - `RiverObject.php` — Represents a commentable/likable wrapper around a river item (~307 tok)
 - `Router.php` — Handles URL and icon routing for interaction entities (~406 tok)
 - `SaveCommentAction.php` — Saves a new or updated comment entity (~845 tok)
+- `Seeder.php` — Seeds fake comment entities for development and testing. (~397 tok)
 - `SocialMenu.php` — Event handler that builds the social actions menu for river items (~484 tok)
 - `SubscribeToCommentNotifications.php` — Subscribes the actor and container owner to comment thread notifications (~250 tok)
 - `SyncRiverObjectAccess.php` — Keeps river object access in sync with its container entity (~330 tok)
@@ -1863,7 +2069,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinteractions/views/default/elements/components/
 
-- `comments.css` — Styles: 1 rules (~72 tok)
+- `comments.css` — Styles: 1 rules, 1 vars (~93 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeinteractions/views/default/js/page/components/
 
@@ -1871,7 +2077,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinteractions/views/default/page/components/
 
-- `interactions.css` — Styles: 14 rules (~703 tok)
+- `interactions.css` — Styles: 14 rules, 2 vars (~758 tok)
 - `interactions.php` (~567 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeinvite/
@@ -1880,8 +2086,13 @@
 - `ARCHITECTURE.md` — hypeInvite — Plugin Architecture (Elgg 5.x) (~1482 tok)
 - `CHANGELOG.md` — 5.0.0 — Elgg 5.x migration (~1273 tok)
 - `composer.json` — PHP package manifest (~193 tok)
-- `elgg-plugin.php` (~715 tok)
+- `elgg-plugin.php` (~476 tok)
 - `README.md` — Project documentation (~537 tok)
+
+## ../hypejunction/bodyology/plugins/hypeinvite/classes/hypeJunction/Invite/
+
+- `Bootstrap.php` — Plugin bootstrap. (~157 tok)
+- `Seeder.php` — Seeds fake user invite objects for development and testing. (~344 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeinvite/tests/
 
@@ -2061,6 +2272,10 @@
 
 - `admin-settings.spec.ts` — Admin plugin settings page smoke test. (~324 tok)
 
+## ../hypejunction/bodyology/plugins/hypemaps/views/default/css/framework/maps/
+
+- `stylesheet.css` — Styles: 14 rules, 2 vars (~506 tok)
+
 ## ../hypejunction/bodyology/plugins/hypemaps/views/default/output/maps/
 
 - `pin.php` — Output the pin image (~209 tok)
@@ -2131,6 +2346,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypemapsopen/views/default/page/components/
 
+- `map.css` — Styles: 12 rules, 6 vars (~390 tok)
 - `map.php` — Display a map (~583 tok)
 
 ## ../hypejunction/bodyology/plugins/hypemarkup/
@@ -2160,7 +2376,7 @@
 
 - `ARCHITECTURE.md` — hypeNotifications plugin architecture (Elgg 5.x) (~2311 tok)
 - `CHANGELOG.md` — 6.0.0 (2026-05-09) (~2708 tok)
-- `composer.json` — PHP package manifest (~347 tok)
+- `composer.json` — PHP package manifest (~245 tok)
 - `elgg-plugin.php` (~905 tok)
 - `elgg-services.php` (~177 tok)
 - `package.json` — Node.js package manifest (~198 tok)
@@ -2176,18 +2392,18 @@
 - `DigestNotification.php` — DigestNotification: save, __get, setRecipient, getRecipient + 12 more (~1098 tok)
 - `DigestService.php` — DigestService: getTable, getNextDeliveryTime (~843 tok)
 - `DigestTable.php` — DigestTable: rowToNotification, get, getAll, getRecipients + 3 more (~999 tok)
-- `EmailTransport.php` — EmailTransport: build (~630 tok)
+- `EmailTransport.php` — EmailTransport: build (~660 tok)
 - `EmailWhitelist.php` — EmailWhitelist: isWhitelisted, normalize, getWhiteListedEmails, getWhiteListedDomains (~529 tok)
 - `FormatEmailNotification.php` — Format email notification (~203 tok)
 - `MailgunEmailTransport.php` — MailgunEmailTransport class. (~530 tok)
-- `MigrateNotifier.php` — Version of the upgrade (~846 tok)
+- `MigrateNotifier.php` — Version of the upgrade (~1041 tok)
 - `Notification.php` — Notification: save, __get, setRecipient, getRecipient + 23 more (~3176 tok)
 - `PrepareEmail.php` — PrepareEmail class. (~278 tok)
 - `ScheduleDigest.php` — Respects user digest preferences when sending notifications (~615 tok)
 - `SendGridEmailTransport.php` — SendGridEmailTransport class. (~582 tok)
 - `SetClientConfig.php` — Set client-side data (~111 tok)
 - `SiteNotificationsTable.php` — SiteNotificationsTable: rowToNotification, get, getAll, count + 9 more (~2842 tok)
-- `SparkPostEmailTransport.php` — SparkPostEmailTransport class. (~661 tok)
+- `SparkPostEmailTransport.php` — SparkPostEmailTransport: send (~645 tok)
 - `SyncEntityDelete.php` — Remove rows from notification table when actor, recipient or object is deleted (~235 tok)
 - `SyncEntityUpdate.php` — Update access levels (~220 tok)
 - `ValidateEmail.php` — Validate whitelisted email (~143 tok)
@@ -2235,8 +2451,13 @@
 ## ../hypejunction/bodyology/plugins/hypenotifications/views/default/notifications/
 
 - `digest.php` (~266 tok)
+- `notifications.css` — Styles: 21 rules, 10 vars (~670 tok)
 - `popup.js` — Update notifications badge with unread count (~487 tok)
 - `popup.php` (~154 tok)
+
+## ../hypejunction/bodyology/plugins/hypenotifications/views/default/notifications/wrapper/
+
+- `html.php` (~218 tok)
 
 ## ../hypejunction/bodyology/plugins/hypenotifications/views/default/notifications/wrapper/html/template/
 
@@ -2275,8 +2496,13 @@
 
 ## ../hypejunction/bodyology/plugins/hypepayments/views/default/input/payments/
 
+- `method.css` — Styles: 9 rules, 2 vars (~438 tok)
 - `method.js` (~222 tok)
 - `method.php` (~1007 tok)
+
+## ../hypejunction/bodyology/plugins/hypepayments/views/default/payments/
+
+- `stylesheet.css` — Styles: 18 rules, 7 vars (~552 tok)
 
 ## ../hypejunction/bodyology/plugins/hypepayments/views/default/resources/payments/
 
@@ -2301,7 +2527,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypepaywall/views/default/
 
-- `paywall.css` — Styles: 3 rules (~86 tok)
+- `paywall.css` — Styles: 3 rules, 1 vars (~108 tok)
 
 ## ../hypejunction/bodyology/plugins/hypepaywall/views/default/paywall/pay/
 
@@ -2356,6 +2582,10 @@
 ## ../hypejunction/bodyology/plugins/hypeplaces/tests/playwright/
 
 - `playwright.config.ts` (~88 tok)
+
+## ../hypejunction/bodyology/plugins/hypeplaces/views/default/css/framework/places/
+
+- `stylesheet.css` — Styles: 93 rules, 7 vars (~5257 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeplaces/views/default/forms/places/
 
@@ -2437,6 +2667,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypepost/views/default/input/
 
+- `range.css` — Styles: 13 rules, 8 vars (~716 tok)
 - `range.js` (~166 tok)
 - `range.php` (~310 tok)
 
@@ -2453,7 +2684,7 @@
 
 - `module.js` (~66 tok)
 - `module.php` (~176 tok)
-- `styles.css` — Styles: 36 rules (~1771 tok)
+- `styles.css` — Styles: 36 rules, 14 vars (~2134 tok)
 
 ## ../hypejunction/bodyology/plugins/hypepost/views/default/post/template/default/
 
@@ -2509,6 +2740,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypepostadmin/views/default/admin/post/admin/
 
+- `app.css` — Styles: 7 rules, 2 vars (~254 tok)
 - `app.js` — Declares vm (~163 tok)
 
 ## ../hypejunction/bodyology/plugins/hypepostadmin/views/default/admin/post/admin/components/
@@ -2574,7 +2806,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeprofile/views/default/forms/
 
-- `register.css` — Styles: 1 rules (~72 tok)
+- `register.css` — Styles: 1 rules, 4 vars (~176 tok)
 - `register.php` (~422 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeprofile/views/default/forms/validation/
@@ -2588,7 +2820,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeprofile/views/default/profile/
 
-- `extras.css` — Styles: 5 rules (~135 tok)
+- `extras.css` — Styles: 5 rules, 3 vars (~188 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeprofile/views/default/resources/account/preregister/
 
@@ -2678,6 +2910,10 @@
 - `deps.txt` — hypeprototyper's autoloader dereferences hypeJunction\Plugin which (~99 tok)
 - `smoke.spec.ts` — E2E smoke for hypeprototyper. (~612 tok)
 
+## ../hypejunction/bodyology/plugins/hypeprototyper/views/default/css/framework/prototyper/
+
+- `stylesheet.css` — Styles: 96 rules, 17 vars (~3636 tok)
+
 ## ../hypejunction/bodyology/plugins/hypeprototyper/views/default/js/framework/
 
 - `prototyper_cropper.js` — cropper.min.js is loaded as an external file (UMD jQuery plugin) (~419 tok)
@@ -2750,7 +2986,7 @@
 
 - `ARCHITECTURE.md` — hypeScraper — Architecture (Elgg 5.x) (~1379 tok)
 - `CHANGELOG.md` — [7.0.0] (2026-05-09) — Elgg 7.x Migration (~3353 tok)
-- `composer.json` — PHP package manifest (~198 tok)
+- `composer.json` — PHP package manifest (~158 tok)
 - `elgg-plugin.php` (~201 tok)
 - `elgg-services.php` (~222 tok)
 - `manifest.xml` (~236 tok)
@@ -2764,15 +3000,15 @@
 
 ## ../hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/
 
-- `AddBookmarkProfilePreview.php` — AddBookmarkProfilePreview: __invoke (~134 tok)
-- `AddBookmarkRiverPreview.php` — AddBookmarkRiverPreview: __invoke (~246 tok)
+- `AddBookmarkProfilePreview.php` — AddBookmarkProfilePreview: __invoke (~132 tok)
+- `AddBookmarkRiverPreview.php` — AddBookmarkRiverPreview: __invoke (~244 tok)
 - `AddFormField.php` — AddFormField: __invoke (~94 tok)
 - `Bootstrap.php` — Get plugin root (~714 tok)
 - `CardMenu.php` — CardMenu: __invoke (~239 tok)
 - `EmbedAction.php` — EmbedAction class. (~150 tok)
 - `EmbedMenu.php` — EmbedMenu: __invoke (~95 tok)
 - `EmbedRiverAttachment.php` — EmbedRiverAttachment: __invoke (~237 tok)
-- `FilteroEmbedHtml.php` — FilteroEmbedHtml: __invoke (~297 tok)
+- `FilteroEmbedHtml.php` — FilteroEmbedHtml: __invoke (~235 tok)
 - `PageMenu.php` — PageMenu class. (~290 tok)
 - `PrepareEmbedCard.php` — PrepareEmbedCard: __invoke (~121 tok)
 - `PrepareHtmlOutput.php` — PrepareHtmlOutput: __invoke (~270 tok)
@@ -2820,7 +3056,7 @@
 ## ../hypejunction/bodyology/plugins/hypescraper/views/default/framework/scraper/
 
 - `player.js` (~153 tok)
-- `stylesheet.css` — Styles: 24 rules (~597 tok)
+- `stylesheet.css` — Styles: 24 rules, 22 vars (~1043 tok)
 
 ## ../hypejunction/bodyology/plugins/hypescraper/views/default/output/
 
@@ -2879,6 +3115,10 @@
 
 - `PluginRegistrationTest.php` — PluginRegistrationTest: up, down, getPluginID, testPluginIsActive + 3 more (~363 tok)
 - `RewriteServiceCRUDTest.php` — RewriteServiceCRUDTest: up, get, invalidate, put + 10 more (~1284 tok)
+
+## ../hypejunction/bodyology/plugins/hypeseo/views/default/
+
+- `seo.css` — Styles: 6 rules, 8 vars (~305 tok)
 
 ## ../hypejunction/bodyology/plugins/hypeseo/views/default/admin/seo/
 
@@ -3079,9 +3319,15 @@
 
 ## ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/
 
-- `modules.css` — Styles: 4 rules (~72 tok)
-- `navigation.css` — Styles: 18 rules (~534 tok)
+- `buttons.css` — Styles: 1 rules (~37 tok)
+- `components.css` — Styles: 17 rules (~531 tok)
+- `misc.css` — Stylesheet (~33 tok)
+- `modules.css` — Styles: 4 rules (~115 tok)
+- `navigation.css` — Styles: 19 rules, 16 vars (~808 tok)
+- `plugins.css` — Styles: 4 rules (~103 tok)
+- `topbar.css` — Styles: 8 rules (~338 tok)
 - `typography.css.php` — Typography CSS template — emits font selectors from configured props. (~158 tok)
+- `walled_garden.css` — Styles: 11 rules (~331 tok)
 - `widgets.css` — Styles: 7 rules (~163 tok)
 
 ## ../hypejunction/bodyology/plugins/hypetime/
@@ -3308,7 +3554,7 @@
 
 - `container.js` — Bind events to DOM elements (~1713 tok)
 - `container.php` (~459 tok)
-- `stylesheet.css` — Styles: 39 rules (~911 tok)
+- `stylesheet.css` — Styles: 39 rules, 24 vars (~1354 tok)
 
 ## ../hypejunction/bodyology/plugins/hypewall/views/default/output/wall/
 
@@ -3450,7 +3696,7 @@
 - `ARCHITECTURE.md` — Seeding (~49 tok)
 - `CHANGELOG.md` — 7.0.0 (2026-05-09) — Elgg 7.x migration (~753 tok)
 - `composer.json` — PHP package manifest (~183 tok)
-- `elgg-plugin.php` (~131 tok)
+- `elgg-plugin.php` (~106 tok)
 - `README.md` — Project documentation (~214 tok)
 
 ## ../hypejunction/bodyology/plugins/menus_api/.github/workflows/
@@ -3499,10 +3745,11 @@
 
 ## ../hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/
 
-- `default.php` — Default menu (~520 tok)
+- `default.php` (~270 tok)
 
 ## ../hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/elements/
 
+- `item.css` — Styles: 1 rules, 7 vars (~216 tok)
 - `item.php` — A single element of a menu. (~506 tok)
 
 ## ../hypejunction/bodyology/plugins/menus_dropdown/
@@ -3548,6 +3795,7 @@
 
 ## ../hypejunction/bodyology/plugins/menus_dropdown/views/default/elements/navigation/
 
+- `dropdown.css` — Styles: 4 rules, 2 vars (~149 tok)
 - `dropdown.js` (~262 tok)
 
 ## ../hypejunction/bodyology/plugins/menus_entity/
@@ -3555,8 +3803,9 @@
 - `.gitignore` — Git ignore rules (~68 tok)
 - `ARCHITECTURE.md` — Seeding (~49 tok)
 - `CHANGELOG.md` — 7.0.0 (2026-05-09) (~841 tok)
-- `composer.json` — PHP package manifest (~237 tok)
+- `composer.json` — PHP package manifest (~228 tok)
 - `elgg-plugin.php` (~131 tok)
+- `start.php` — Dropdown Menu (~712 tok)
 
 ## ../hypejunction/bodyology/plugins/menus_entity/classes/hypeJunction/MenusEntity/
 
@@ -3955,6 +4204,7 @@
 
 ## ../hypejunction/bodyology/plugins/site_search/views/default/search/
 
+- `entity.css` — Styles: 5 rules, 3 vars (~187 tok)
 - `entity.php` (~1472 tok)
 
 ## ../hypejunction/bodyology/plugins/ui_grid/
@@ -4040,6 +4290,7 @@
 
 ## ../hypejunction/bodyology/plugins/ui_responsive_tabs/views/default/elements/navigation/
 
+- `tabs.css` — Styles: 15 rules, 7 vars (~882 tok)
 - `tabs.js` (~80 tok)
 
 ## ../hypejunction/bodyology/plugins/ui_tabs/
@@ -4142,6 +4393,10 @@
 - `NotificationSettingsTest.php` — Tests for notification settings persistence. (~966 tok)
 - `PluginRegistrationTest.php` — Smoke-tests that plugin-level registrations from elgg-plugin.php are (~812 tok)
 - `RouterTest.php` — Tests for route hook handlers in \UserSettings\Router. (~1570 tok)
+
+## ../hypejunction/bodyology/plugins/user_settings/views/default/elements/tables/
+
+- `notifications.css` — Styles: 9 rules, 6 vars (~356 tok)
 
 ## ../hypejunction/bodyology/plugins/user_settings/views/default/notifications/subscriptions/
 
@@ -4614,7 +4869,6 @@
 
 - `composer.json` — PHP package manifest (~162 tok)
 - `phpunit.xml` (~151 tok)
-- `SKILL.md` — elgg-migrate (~11159 tok)
 
 ## skills/elgg-migrate/.phpunit.cache/
 
@@ -4623,10 +4877,8 @@
 ## skills/elgg-migrate/bin/
 
 - `apply-gpl-license.sh` — apply-gpl-license.sh <plugin-path> (~5426 tok)
-- `audit-plugin-docs.sh` — audit-plugin-docs.sh <plugin-path> (~1831 tok)
 - `elgg-migrate-run` — elgg-migrate-run — per-plugin isolated migration orchestrator. (~5942 tok)
 - `elgg-migrate-verify` — elgg-migrate-verify — run acceptance gate checks against a running plugin Docker stack. (~2045 tok)
-- `fix-plugin-docs.sh` — fix-plugin-docs.sh <plugin-path> [--apply] (~1782 tok)
 - `migrate-plugin.sh` (~710 tok)
 - `migrate.php` — Run automated migration rules on a plugin directory. (~2600 tok)
 - `setup-plugin-docs-config.sh` — setup-plugin-docs-config.sh (~839 tok)
@@ -4679,10 +4931,10 @@
 
 ## skills/elgg-migrate/infra/elgg7/
 
-- `docker-compose.yml` — Docker Compose services (~520 tok)
+- `docker-compose.yml` — Docker Compose services (~522 tok)
 - `Dockerfile` — Docker container definition (~436 tok)
 - `elgg-composer.json` (~212 tok)
-- `elgg-install.sh` (~1713 tok)
+- `elgg-install.sh` (~1715 tok)
 - `index.php` (~24 tok)
 
 ## skills/elgg-migrate/infra/migrate/
@@ -4696,7 +4948,7 @@
 - `bodyology-plugin-order.txt` (~399 tok)
 - `breaking-changes.md` — Version-specific breaking changes and architecture patterns (~2665 tok)
 - `coding-standards.md` — Elgg Coding Standards (~2414 tok)
-- `common-mistakes.md` — Common mistakes and their fixes (~8012 tok)
+- `common-mistakes.md` — Common mistakes and their fixes (~8269 tok)
 - `dependabot-alerts.md` — GitHub Dependabot Alerts (pre-flight check) (~1712 tok)
 - `dependency-audit.md` — Dependency Audit (CVE Scanning) (~1535 tok)
 - `elgg-plugin-php-generation.md` — elgg-plugin.php generation (3.x → 4.x) (~1248 tok)
@@ -4730,7 +4982,7 @@
 
 ## skills/elgg-migrate/rules/4x-to-5x/
 
-- `manifest.json` — hint: myHandler, myHandler (~6930 tok)
+- `manifest.json` — hint: myHandler, myHandler (~7173 tok)
 
 ## skills/elgg-migrate/rules/5x-to-6x/
 
@@ -4738,7 +4990,7 @@
 
 ## skills/elgg-migrate/rules/6x-to-7x/
 
-- `manifest.json` — MyEntity: initializeAttributes (~5527 tok)
+- `manifest.json` — MyEntity: initializeAttributes (~5927 tok)
 
 ## skills/elgg-migrate/src/
 
@@ -4823,11 +5075,21 @@
 ## skills/elgg-migrate/src/Rules/V4ToV5/
 
 - `BooleanPluginSettings.php` — Detects yes/no string-valued plugin settings and scaffolds a SystemUpgrade. (~9026 tok)
+- `FakerLibrary.php` — Replaces the fzaninotto/faker Composer dependency with fakerphp/faker. (~994 tok)
+- `JqueryUiSplit.php` — Flags usages of the monolithic 'jquery-ui' AMD module that was split into (~1615 tok)
+- `MovedClasses.php` — Renames/remaps classes that moved namespaces in Elgg 5.0. (~1784 tok)
+- `RemovedConstants.php` — Renames the misspelled REFERER constant to REFERRER in Elgg 5.0. (~1150 tok)
+- `RemovedFunctions.php` — Handles procedural helper functions removed in Elgg 5.0 that have (~1585 tok)
 - `ScaffoldSeeder.php` — Scaffolds an \Elgg\Database\Seeds\Seed subclass for plugins that own entity types/subtypes. (~6544 tok)
+- `UpdateManifestVersion.php` — Updates composer.json to target Elgg 5.x, PHP >=8.1, and adds ext-intl. (~1112 tok)
+
+## skills/elgg-migrate/src/Rules/V6ToV7/
+
+- `ComposerStabilitySettings.php` — Ensures composer.json has the stability settings required by Elgg 7.x. (~1775 tok)
+- `ResetSystemCache.php` — Replaces elgg_reset_system_cache() with _elgg_services()->systemCache->clear(). (~1306 tok)
 
 ## skills/elgg-migrate/templates/
 
-- `README.md.tpl` — {{NAME}} (~106 tok)
 
 ## skills/elgg-migrate/tests/
 
@@ -5208,6 +5470,11 @@
 
 - `sample.php` — Sample: tally, handle (~227 tok)
 
+## skills/elgg-migrate/tmp/
+
+- `dev-features-manifest.json` (~199 tok)
+- `fleet-merge-7x.py` — run, gh_api, get_gh_repo (~1446 tok)
+
 ## skills/elgg-migrate/vendor/
 
 - `autoload.php` — autoload.php @generated by Composer (~200 tok)
@@ -5425,6 +5692,7 @@
 
 ## tmp/
 
+- `fix-composer-fields.py` — run, get_latest_tag, get_github_repo (~1385 tok)
 - `run-all-tests.sh` — run-all-tests.sh — run PHPUnit for all no-deps plugins sequentially (~1012 tok)
 - `sweep-ci-scaffold.sh` — Sweep .github/workflows/{tests,lint}.yml across remaining bodyology plugins, (~910 tok)
 

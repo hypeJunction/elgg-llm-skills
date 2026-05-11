@@ -2,6 +2,14 @@
 
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
+| 11:00 | fleet CI fix elgg-migrate-06lx0: removed version field (69 plugins), fixed .gitignore concat (5 plugins), added ci noop job to tests.yml (65 plugins), hypeembed README already correct; 69 plugins committed+pushed | bodyology/plugins/*/composer.json, .gitignore, .github/workflows/tests.yml | closed | ~1200 |
+| 10:40 | fleet tag elgg-migrate-qdftx: created 19 git tags matching composer.json versions, updated version field in 2 plugins (actions_feature@1.0.0, hypefolders@3.0), 48 already OK, 0 skipped | bodyology/plugins/*/composer.json | closed | ~800 |
+| 12:30 | fleet merge elgg-migrate-fz3ud: merged migrate/elgg-7.x into master, renamed to main, pushed, set GitHub default branch for all 69 plugins; 55 auto (script), 14 resolved manually (content conflicts: theirs/7.x; permission issues: merge-tree approach) | bodyology/plugins/*/main | closed | ~6000 |
+| session | elgg-migrate-20712: updated GitHub repo metadata (description, homepage, topics) for all 69 plugins via gh api; aligned descriptions across composer.json/manifest.xml/elgg-plugin.php for 7 plugins that had divergence (hypeajax, hypedbexplorer, menus_dropdown, modal_info, ui_grid, ui_responsive_tabs, ui_tabs, user_settings); 0 errors | bodyology/plugins/*/composer.json,manifest.xml,elgg-plugin.php | closed | ~2000 |
+| 09:12 | added compatibility table to README template + audit/fix scripts | skills/elgg-migrate/templates/README.md.tpl, skills/elgg-migrate/SKILL.md, skills/elgg-migrate/bin/audit-plugin-docs.sh, skills/elgg-migrate/bin/fix-plugin-docs.sh | done | ~2500 |
+| 12:13 | ran fix-composer-fields.py: fixed 61 plugins on migrate/elgg-7.x (installer-name lowercase, GPL-2.0-or-later, homepage, authors, version); 4 plugins no changes; 4 plugins skipped (no migrate/elgg-7.x branch); closed elgg-migrate-cpfer | tmp/fix-composer-fields.py, bodyology/plugins/*/composer.json | done | ~1500 |
+| 09:20 | elgg-migrate-zyaij: audited + fixed all 70 plugin READMEs (badge versions, compatibility sections, new READMEs for 10 plugins) — 69+13=82 commits across plugin repos | ~/Data/hypejunction/bodyology/plugins/*/README.md | closed | ~8000 |
+| 15:28 | Created Seeder subclasses for hypeinbox (object/messages), hypeinteractions (object/comment), hypeinvite (object/user_invite); registered via Bootstrap::init() for hypeinbox+hypeinteractions and via elgg-plugin.php events key for hypeinvite (no Bootstrap class on 6.x/7.x); committed+pushed to migrate/elgg-5.x, 6.x, 7.x on all three plugins | hypeinbox/Inbox/Seeder.php, hypeinteractions/Interactions/Seeder.php, hypeinvite/Invite/Seeder.php | all pushed successfully | ~4000 |
 | 11:00 | Implemented AST rule uewoo: DebugSurfaceCleanup — removes standalone elgg_dump(), strips commented var_dump/print_r/error_log lines, replaces Logger::LEVEL with PSR-3 string literals, warns on echo/print of superglobals; 12 tests green, priority 291 | skills/elgg-migrate/src/Rules/V3ToV4/DebugSurfaceCleanup.php, tests/Rules/V3ToV4/DebugSurfaceCleanupTest.php, rules/3x-to-4x/manifest-entry-uewoo.json | all tests pass, committed e9f7922 | ~3000 |
 | 14:00 | Implemented AST rule ego75: ElggCallIgnoreAccess — detects/transforms elgg_set_ignore_access(true/false) and elgg_show_disabled_entities pairs into elgg_call() closures with use-clause capture; 17 tests green, registered in 3x-to-4x manifest at priority 202 | skills/elgg-migrate/src/Rules/V3ToV4/ElggCallIgnoreAccess.php, tests/Rules/V3ToV4/ElggCallIgnoreAccessTest.php, rules/3x-to-4x/manifest.json | all tests pass, committed | ~4500 |
 | 11:34 | Closed lopy.27–34 (plugin docs cleanup): hypegit, hypegroups, hypehero, hypeicons, hypeinbox, hypeinteractions, hypeinvite, hypelists — README badges (5.x), taglines, composer descriptions, manifest.xml descriptions, GH repo descriptions all aligned | 8 plugin repos | all 8 issues closed, all pushed | ~4000 |
@@ -7903,3 +7911,343 @@
 | 15:07 | Session end: 372 writes across 129 files (RenderTwigTemplate.php, stylesheet.css, elgg-plugin.php, composer.json, toolbar.js) | 257 reads | ~28398 tok |
 | 15:11 | Edited ../hypejunction/bodyology/bodyology-forum/docker-entrypoint.sh | 5→9 lines | ~72 |
 | 15:12 | Session end: 373 writes across 130 files (RenderTwigTemplate.php, stylesheet.css, elgg-plugin.php, composer.json, toolbar.js) | 258 reads | ~28475 tok |
+| 15:13 | Session end: 373 writes across 130 files (RenderTwigTemplate.php, stylesheet.css, elgg-plugin.php, composer.json, toolbar.js) | 258 reads | ~28475 tok |
+
+## Session: 2026-05-09 15:14
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:19 | Edited ../hypejunction/bodyology/bodyology-forum/docker-entrypoint.sh | modified symlink_plugins() | ~446 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypediscussions/classes/hypeJunction/Discussions/Seeder.php | — | ~286 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypedownloads/classes/hypeJunction/Downloads/Seeder.php | — | ~281 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypedropzone/classes/hypeJunction/Dropzone/Seeder.php | — | ~205 |
+| 15:23 | Edited ../hypejunction/bodyology/plugins/hypediscussions/elgg-plugin.php | expanded (+7 lines) | ~75 |
+| 15:23 | Edited ../hypejunction/bodyology/plugins/hypedownloads/elgg-plugin.php | expanded (+10 lines) | ~66 |
+| 15:23 | Edited ../hypejunction/bodyology/plugins/hypedropzone/elgg-plugin.php | expanded (+10 lines) | ~79 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php | — | ~367 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/Seeder.php | — | ~311 |
+| 15:23 | Created ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/Seeder.php | — | ~419 |
+| 15:24 | Created ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/Seeder.php | — | ~503 |
+| 15:24 | Created ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Seeder.php | — | ~397 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Bootstrap.php | modified init() | ~52 |
+| 15:24 | Created ../hypejunction/bodyology/plugins/hypeinvite/classes/hypeJunction/Invite/Seeder.php | — | ~344 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/Bootstrap.php | modified init() | ~52 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/Bootstrap.php | modified init() | ~37 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/Bootstrap.php | 6→8 lines | ~64 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php | 3→5 lines | ~59 |
+| 10:30 | Added ARCHITECTURE.md seeding exemption docs to 6 plugins × 3 branches (18 commits pushed) | hypeautocomplete, hypecapabilities, hypegit, hypegroups, hypehero, hypemarkup — migrate/elgg-{5,6,7}.x | all 18 branches OK, hypegit 6.x/7.x needed --set-upstream | ~800 |
+| 15:24 | Edited ../hypejunction/bodyology/plugins/hypeinvite/classes/hypeJunction/Invite/Bootstrap.php | modified init() | ~116 |
+| 15:24 | Created Seeder subclasses for hypediscussions, hypedownloads, hypedropzone | Seeder.php + elgg-plugin.php registration on migrate/elgg-{5,6,7}.x | all 9 commits pushed cleanly | ~600 |
+| 15:25 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Bootstrap.php | modified init() | ~52 |
+| 15:25 | Created ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/Seeder.php | — | ~311 |
+| 15:25 | Edited ../hypejunction/bodyology/plugins/hypefolders/start.php | modified elgg_register_event_handler() | ~69 |
+| 15:25 | Edited ../hypejunction/bodyology/plugins/hypeinvite/elgg-plugin.php | expanded (+8 lines) | ~161 |
+| 15:26 | Edited ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/Bootstrap.php | modified init() | ~29 |
+| 15:26 | Edited ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/Bootstrap.php | 6→8 lines | ~64 |
+| 15:26 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php | 3→5 lines | ~60 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/Bootstrap.php | 6→8 lines | ~64 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php | 3→5 lines | ~60 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypeinvite/elgg-plugin.php | expanded (+8 lines) | ~87 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Bootstrap.php | modified init() | ~52 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypefolders/classes/hypeJunction/Folders/Bootstrap.php | modified init() | ~56 |
+| 15:27 | Edited ../hypejunction/bodyology/plugins/hypegallery/classes/hypeJunction/Gallery/Bootstrap.php | modified init() | ~29 |
+| 15:28 | Created Elgg\Database\Seeds\Seed subclasses for hypeembed, hypefolders, hypegallery; registered via seeds,database event in Bootstrap::init(); committed + pushed to migrate/elgg-{5,6,7}.x | classes/hypeJunction/{Embed,Folders,Gallery}/Seeder.php (×3 plugins × 3 branches) | success | ~8k |
+
+## Session: 2026-05-09 15:32
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:36 | Edited skills/elgg-migrate/infra/elgg7/docker-compose.yml | "admin12345" → "Admin@12345678901" | ~14 |
+| 15:37 | Edited skills/elgg-migrate/infra/elgg7/elgg-install.sh | inline fix | ~19 |
+| 15:40 | Created skills/elgg-migrate/src/Rules/V4ToV5/RemovedFunctions.php | — | ~1585 |
+| 15:40 | Created skills/elgg-migrate/src/Rules/V6ToV7/ResetSystemCache.php | — | ~1306 |
+| 15:40 | Created skills/elgg-migrate/src/Rules/V6ToV7/ComposerStabilitySettings.php | — | ~1775 |
+| 15:40 | Created skills/elgg-migrate/src/Rules/V4ToV5/JqueryUiSplit.php | — | ~1615 |
+| 15:40 | Edited skills/elgg-migrate/rules/6x-to-7x/manifest.json | expanded (+24 lines) | ~412 |
+| 15:40 | Edited skills/elgg-migrate/rules/4x-to-5x/manifest.json | expanded (+9 lines) | ~736 |
+| 15:41 | Created src/Rules/V4ToV5/RemovedFunctions.php — AST rename current_page_url→elgg_get_current_url, get_default_access→elgg_get_default_access | RemovedFunctions.php | complete | ~3200 |
+| 15:41 | Updated rules/4x-to-5x/manifest.json — 007-removed-functions-5x now automated=true + class; added 007b-jquery-ui-split | manifest.json | complete | ~400 |
+| 15:45 | Created skills/elgg-migrate/src/Rules/V4ToV5/UpdateManifestVersion.php | — | ~1112 |
+| 15:46 | Created skills/elgg-migrate/src/Rules/V4ToV5/FakerLibrary.php | — | ~994 |
+| 15:46 | Created skills/elgg-migrate/src/Rules/V4ToV5/MovedClasses.php | — | ~1784 |
+| 15:46 | Created skills/elgg-migrate/tmp/dev-features-manifest.json | — | ~181 |
+| 15:46 | Created skills/elgg-migrate/src/Rules/V4ToV5/RemovedConstants.php | — | ~1150 |
+| 15:47 | Edited skills/elgg-migrate/rules/4x-to-5x/manifest.json | 8→9 lines | ~147 |
+| 15:47 | Edited skills/elgg-migrate/rules/4x-to-5x/manifest.json | 4→5 lines | ~59 |
+| 15:47 | Edited skills/elgg-migrate/rules/4x-to-5x/manifest.json | 4→5 lines | ~55 |
+| 15:47 | Edited skills/elgg-migrate/rules/4x-to-5x/manifest.json | 4→5 lines | ~60 |
+| 15:47 | Created skills/elgg-migrate/tmp/dev-features-manifest.json | — | ~199 |
+| 15:52 | Created ../hypejunction/bodyology/plugins/elgg_lightbox/views/default/elgg/lightbox.css | — | ~954 |
+| 15:52 | Created ../hypejunction/bodyology/plugins/forms_validation/views/default/elements/forms/validation.css | — | ~118 |
+| 15:52 | Created ../hypejunction/bodyology/plugins/elgg_tokeninput/views/default/components/tokeninput.css | — | ~1184 |
+
+## Session: 2026-05-09 15:53
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:54 | Created ../hypejunction/bodyology/plugins/hypefolders/views/default/folders/stylesheet.css | — | ~1257 |
+| 15:54 | Created ../hypejunction/bodyology/plugins/hypeinbox/views/default/framework/inbox.css | — | ~1203 |
+| 15:54 | Created ../../../../tmp/forms_api_7x/views/default/elements/forms/field.css | — | ~69 |
+| 15:54 | Created ../hypejunction/bodyology/plugins/hypemaps/views/default/css/framework/maps/stylesheet.css | — | ~506 |
+| 15:55 | Created ../hypejunction/bodyology/plugins/hypeplaces/views/default/css/framework/places/stylesheet.css | — | ~5257 |
+| 15:55 | Created ../hypejunction/bodyology/plugins/hypeprototyper/views/default/css/framework/prototyper/stylesheet.css | — | ~2818 |
+| 15:56 | Created ../hypejunction/bodyology/plugins/hypediscovery/views/default/discovery.css | — | ~113 |
+| 15:56 | Created ../hypejunction/bodyology/plugins/hypediscovery/views/default/oembed.css | — | ~436 |
+
+## Session: 2026-05-09 15:56
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 15:58 | Created ../hypejunction/bodyology/plugins/hypegallery/views/default/css/framework/gallery/stylesheet.css | — | ~7060 |
+| 15:59 | SCSS→native CSS migration for hypediscovery and hypegallery | views/default/discovery.css, views/default/oembed.css, views/default/css/framework/gallery/stylesheet.css | committed + pushed to migrate/elgg-7.x | ~8000 |
+| 16:00 | Created ../hypejunction/bodyology/plugins/ui_responsive_tabs/views/default/elements/navigation/tabs.css | — | ~882 |
+| 16:04 | Created ../hypejunction/bodyology/plugins/hypeprofile/views/default/forms/register.css | — | ~176 |
+| 16:04 | Created ../hypejunction/bodyology/plugins/hypeprofile/views/default/profile/extras.css | — | ~188 |
+| 16:04 | Created ../hypejunction/bodyology/plugins/hypemapsopen/views/default/page/components/map.css | — | ~390 |
+| 16:04 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/navigation.css | — | ~808 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypepayments/views/default/payments/stylesheet.css | — | ~552 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypegroups/views/default/groups/extras.css | — | ~229 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypescraper/views/default/framework/scraper/stylesheet.css | — | ~1061 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypefolders/views/default/bundles.css | — | ~747 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/components.css | — | ~531 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypepayments/views/default/input/payments/method.css | — | ~438 |
+| 16:05 | Edited ../hypejunction/bodyology/bodyology-forum/mod/menus_entity/start.php | elgg_string_to_array() → string_to_tag_array() | ~58 |
+| 16:05 | Edited ../hypejunction/bodyology/plugins/hypescraper/views/default/framework/scraper/stylesheet.css | inline fix | ~8 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypeembed/views/default/embed/stylesheet.css | — | ~944 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/modules.css | — | ~115 |
+| 16:05 | Edited ../hypejunction/bodyology/plugins/hypescraper/views/default/framework/scraper/stylesheet.css | 3→2 lines | ~21 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/buttons.css | — | ~37 |
+| 16:05 | Edited ../hypejunction/bodyology/plugins/menus_entity/start.php | elgg_string_to_array() → string_to_tag_array() | ~58 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/misc.css | — | ~33 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypefolders/views/default/folders/stylesheet.css | — | ~1614 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypepost/views/default/post/styles.css | — | ~2134 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/plugins.css | — | ~103 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypeseo/views/default/seo.css | — | ~305 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypeicons/views/default/input/cropper.css | — | ~106 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypewall/views/default/framework/wall/stylesheet.css | — | ~1354 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/topbar.css | — | ~338 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypepost/views/default/input/range.css | — | ~716 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypetheme/views/default/theme/elements/walled_garden.css | — | ~331 |
+| 16:05 | Created ../hypejunction/bodyology/plugins/hypepaywall/views/default/paywall.css | — | ~108 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/user_settings/views/default/elements/tables/notifications.css | — | ~356 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypepostadmin/views/default/admin/post/admin/app.css | — | ~254 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/site_search/views/default/search/entity.css | — | ~187 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypeprototyper/views/default/css/framework/prototyper/stylesheet.css | — | ~3636 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypedropzone/views/default/dropzone/dropzone.css | — | ~1755 |
+| 16:06 | Added CSS custom properties to hypetheme plugin; centralized 17 tokens in navigation.css :root block; updated 8 of 11 CSS files; committed+pushed to migrate/elgg-7.x on hypetheme | views/default/theme/elements/*.css | pushed successfully | ~2500 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypedbexplorer/views/default/css/framework/db_explorer/stylesheet.css | — | ~4277 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypedownloads/views/default/input/downloads/releases.css | — | ~226 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/hypenotifications/views/default/notifications/notifications.css | — | ~670 |
+| 16:06 | Created ../hypejunction/bodyology/plugins/menus_dropdown/views/default/elements/navigation/dropdown.css | — | ~149 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/hypeinteractions/views/default/elements/components/comments.css | — | ~93 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/elements/item.css | — | ~216 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/hypeautocomplete/views/default/autocomplete/stylesheet.css | — | ~6364 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/hypeinteractions/views/default/page/components/interactions.css | — | ~758 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/hypegeo/views/default/css/framework/geo/stylesheet.css | — | ~179 |
+| 16:07 | Added CSS custom properties to 5 plugins on migrate/elgg-7.x: hypeembed (15 tokens), hypepaywall (1 token), hypepostadmin (2 tokens), hypenotifications (9 tokens in notifications.css; email template.css left untouched); hypeajax skipped (only transparent keyword, no design tokens needed); all committed+pushed | hypeembed/stylesheet.css, hypepaywall/paywall.css, hypepostadmin/app.css, hypenotifications/notifications.css | all pushed successfully | ~3500 |
+| 16:07 | CSS custom properties added to hypegroups, hypedbexplorer, hypeinteractions; hypetime and hypevue skipped (no hardcoded design values) | views/**/*.css | pushed to migrate/elgg-7.x | ~3000 |
+| 14:30 | CSS custom property tokens added to 5/6 plugins (hypepayments, hypeseo, hypedropzone, menus_dropdown, hypegeo); hypeshortcode skipped (only resets) | views/**/*.css | committed + pushed per plugin | ~8000 |
+| 14:30 | CSS custom property tokens added to 5/6 plugins (hypepayments, hypeseo, hypedropzone, menus_dropdown, hypegeo); hypeshortcode skipped (only resets) | views/**/*.css | committed + pushed per plugin | ~8000 |
+| 16:07 | Created ../hypejunction/bodyology/plugins/hypehero/views/default/page/elements/hero.css | — | ~1620 |
+| 16:08 | Created ../hypejunction/bodyology/plugins/hypeattachments/views/default/css/input/attachments.css | — | ~222 |
+| 16:13 | Edited ../hypejunction/bodyology/plugins/hypeicons/.gitignore | 2→3 lines | ~15 |
+| 16:15 | Edited ../hypejunction/bodyology/plugins/hypefaker/composer.json | 2→3 lines | ~16 |
+| 16:15 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | 4→5 lines | ~13 |
+| 16:16 | Edited skills/elgg-migrate/references/common-mistakes.md | modified signature() | ~468 |
+| 16:18 | Session end: 49 writes across 35 files (stylesheet.css, tabs.css, register.css, extras.css, map.css) | 63 reads | ~50553 tok |
+| 16:30 | Edited ../hypejunction/bodyology/bodyology-forum/mod/glossary/views/default/resources/glossary.php | 6→3 lines | ~17 |
+| 16:33 | Edited ../hypejunction/bodyology/bodyology-forum/mod/news/views/default/resources/news.php | added 1 import(s) | ~52 |
+| 16:35 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/smoke.spec.ts | 3→2 lines | ~12 |
+
+## Session: 2026-05-09 16:38
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 17:02 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/navigation.spec.ts | 37→37 lines | ~374 |
+| 17:02 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/gallery.spec.ts | reduced (-6 lines) | ~243 |
+| 17:02 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/directory.spec.ts | 34→32 lines | ~352 |
+| 17:03 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/notifications.spec.ts | 18→19 lines | ~236 |
+| 17:08 | Created ../hypejunction/bodyology/bodyology-forum/mod/user_settings/views/default/resources/settings.php | — | ~346 |
+| 17:09 | Edited ../hypejunction/bodyology/bodyology-forum/e2e/tests/navigation.spec.ts | 8→8 lines | ~86 |
+| 17:17 | Edited ../hypejunction/bodyology/bodyology-forum/Dockerfile | 26→26 lines | ~152 |
+
+## Session: 2026-05-10 09:05
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 09:10 | Edited skills/elgg-migrate/templates/README.md.tpl | expanded (+6 lines) | ~30 |
+| 09:10 | Edited skills/elgg-migrate/SKILL.md | 2→7 lines | ~258 |
+| 09:10 | Edited skills/elgg-migrate/SKILL.md | expanded (+12 lines) | ~154 |
+| 09:10 | Edited skills/elgg-migrate/SKILL.md | 7→8 lines | ~159 |
+| 09:10 | Edited skills/elgg-migrate/SKILL.md | 7→8 lines | ~139 |
+| 09:10 | Edited skills/elgg-migrate/bin/audit-plugin-docs.sh | expanded (+6 lines) | ~90 |
+| 09:11 | Edited skills/elgg-migrate/bin/fix-plugin-docs.sh | expanded (+22 lines) | ~251 |
+| 09:11 | Edited skills/elgg-migrate/bin/fix-plugin-docs.sh | 3→3 lines | ~53 |
+| 09:13 | Session end: 8 writes across 4 files (README.md.tpl, SKILL.md, audit-plugin-docs.sh, fix-plugin-docs.sh) | 5 reads | ~14282 tok |
+| 09:16 | Session end: 8 writes across 4 files (README.md.tpl, SKILL.md, audit-plugin-docs.sh, fix-plugin-docs.sh) | 6 reads | ~16924 tok |
+| 09:43 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 3→3 lines | ~17 |
+| 09:43 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 1→2 lines | ~35 |
+| 09:43 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 4→8 lines | ~65 |
+| 09:43 | Edited ../hypejunction/bodyology/plugins/menus_entity/composer.json | inline fix | ~19 |
+| 09:43 | Edited ../hypejunction/bodyology/plugins/hypescraper/composer.json | 2→2 lines | ~15 |
+
+## Session: 2026-05-10 10:27
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:27 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | — | ~0 |
+| 10:27 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | removed 5 lines | ~3 |
+| 11:00 | Edited ../hypejunction/bodyology/plugins/hypenotifications/views/default/notifications/wrapper/html.php | reduced (-9 lines) | ~216 |
+| 11:00 | Edited ../hypejunction/bodyology/plugins/hypenotifications/composer.json | inline fix | ~9 |
+| 11:14 | Edited ../../../../tmp/http-parser-clone/composer.json | 3→3 lines | ~23 |
+| 11:27 | Edited ../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/SparkPostEmailTransport.php | 2→2 lines | ~20 |
+| 11:27 | Edited ../hypejunction/bodyology/plugins/hypenotifications/composer.json | 2→2 lines | ~20 |
+| 11:41 | Edited ../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/EmailTransport.php | added 1 condition(s) | ~62 |
+| 11:41 | Edited ../hypejunction/bodyology/plugins/hypenotifications/composer.json | 4→1 lines | ~10 |
+| 12:11 | Created tmp/fix-composer-fields.py | — | ~1385 |
+| 12:11 | Session end: 10 writes across 5 files (composer.json, html.php, SparkPostEmailTransport.php, EmailTransport.php, fix-composer-fields.py) | 8 reads | ~1769 tok |
+| 12:11 | Created skills/elgg-migrate/tmp/fleet-merge-7x.py | — | ~1446 |
+| 12:13 | Edited ../hypejunction/bodyology/bodyology-forum/Dockerfile | expanded (+17 lines) | ~411 |
+| 12:13 | Session end: 12 writes across 7 files (composer.json, html.php, SparkPostEmailTransport.php, EmailTransport.php, fix-composer-fields.py) | 9 reads | ~3655 tok |
+| 12:25 | Edited ../hypejunction/bodyology/plugins/menus_api/elgg-plugin.php | 7→5 lines | ~30 |
+| 12:34 | Created ../../../../tmp/tag_plugins.py | — | ~1163 |
+| 12:34 | Session end: 14 writes across 9 files (composer.json, html.php, SparkPostEmailTransport.php, EmailTransport.php, fix-composer-fields.py) | 10 reads | ~4850 tok |
+| 12:34 | Created ../../../../tmp/update_plugin_metadata.py | — | ~1770 |
+| 12:36 | Session end: 15 writes across 10 files (composer.json, html.php, SparkPostEmailTransport.php, EmailTransport.php, fix-composer-fields.py) | 10 reads | ~6620 tok |
+| 12:37 | Session end: 15 writes across 10 files (composer.json, html.php, SparkPostEmailTransport.php, EmailTransport.php, fix-composer-fields.py) | 10 reads | ~6620 tok |
+| 12:37 | Edited ../hypejunction/bodyology/bodyology-forum/Dockerfile | 8→9 lines | ~84 |
+| 12:50 | Edited ../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/MigrateNotifier.php | modified getVersion() | ~17 |
+| 13:02 | Edited ../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/MigrateNotifier.php | modified shouldBeSkipped() | ~276 |
+| 13:02 | Edited ../hypejunction/bodyology/plugins/hypenotifications/classes/hypeJunction/Notifications/MigrateNotifier.php | inline fix | ~15 |
+
+## Session: 2026-05-10 13:08
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 13:09 | Edited ../hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/AddBookmarkRiverPreview.php | modified __invoke() | ~244 |
+| 13:09 | Edited ../hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/AddBookmarkProfilePreview.php | modified __invoke() | ~132 |
+| 13:10 | Edited ../hypejunction/bodyology/plugins/hypescraper/classes/hypeJunction/Scraper/FilteroEmbedHtml.php | modified __invoke() | ~235 |
+| 13:34 | Created ../hypejunction/bodyology/plugins/menus_api/views/default/navigation/menu/default.php | — | ~270 |
+| 13:41 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/page/elements/foot.php | modified foreach() | ~76 |
+| 13:56 | Session end: 5 writes across 5 files (AddBookmarkRiverPreview.php, AddBookmarkProfilePreview.php, FilteroEmbedHtml.php, default.php, foot.php) | 5 reads | ~1027 tok |
+| 15:10 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 49→49 lines | ~846 |
+| 15:10 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 7.4 → 8.2 | ~7 |
+| 15:10 | Edited ../hypejunction/bodyology/bodyology-forum/Dockerfile | 8.1 → 8.2 | ~6 |
+| 15:29 | Session end: 8 writes across 7 files (AddBookmarkRiverPreview.php, AddBookmarkProfilePreview.php, FilteroEmbedHtml.php, default.php, foot.php) | 16 reads | ~1886 tok |
+| 19:46 | Session end: 8 writes across 7 files (AddBookmarkRiverPreview.php, AddBookmarkProfilePreview.php, FilteroEmbedHtml.php, default.php, foot.php) | 16 reads | ~1886 tok |
+| 19:46 | Created ../../../../tmp/tag_and_update.py | — | ~1497 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~93 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~49 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~49 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~48 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~44 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~37 |
+| 19:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~35 |
+| 19:49 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~271 |
+| 19:49 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | modified elgg_register_event_handler() | ~53 |
+| 19:50 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 5. → 6. | ~19 |
+| 19:50 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 5. → 6. | ~19 |
+| 19:50 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 5. → 6. | ~18 |
+| 19:50 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 5. → 6. | ~21 |
+
+## Session: 2026-05-10 19:51
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 19:56 | Created ../hypejunction/bodyology/bodyology-forum/bin/fix-hook-signatures.py | — | ~834 |
+| 19:58 | Created ../../../../tmp/fix_mismatched_tags.py | — | ~866 |
+| 19:59 | Created ../hypejunction/bodyology/plugins/hypeinbox/classes/hypeJunction/Inbox/HookHandlers.php | — | ~1315 |
+| 09:42 | Session end: 3 writes across 3 files (fix-hook-signatures.py, fix_mismatched_tags.py, HookHandlers.php) | 3 reads | ~3109 tok |
+| 09:43 | Created ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/views/default/theme/init.js | — | ~118 |
+| 09:43 | Created ../../../../tmp/fix_ci.py | — | ~1607 |
+| 09:43 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 4→2 lines | ~57 |
+| 09:43 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 4→3 lines | ~109 |
+| 09:44 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 2→2 lines | ~48 |
+| 09:45 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 2→3 lines | ~70 |
+| 09:46 | Edited ../hypejunction/bodyology/bodyology-forum/mod/mrclay_combiner/start.php | removed 42 lines | ~32 |
+| 09:46 | Edited ../hypejunction/bodyology/bodyology-forum/mod/stripe/start.php | 3→3 lines | ~45 |
+| 09:46 | Edited ../hypejunction/bodyology/bodyology-forum/mod/videolist/start.php | elgg_register_js() → elgg_register_external_file() | ~110 |
+| 09:46 | Edited ../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/forms/videolist/edit.php | "elgg.videolist" → "js" | ~13 |
+| 09:46 | Edited ../hypejunction/bodyology/bodyology-forum/mod/videolist/views/default/js/videolist/videolist.php | "elgg.videolist.json2" → "js" | ~15 |
+| 09:47 | Edited ../hypejunction/bodyology/bodyology-forum/mod/elgg_stars/start.php | 6→2 lines | ~46 |
+| 09:48 | Edited ../hypejunction/bodyology/bodyology-forum/mod/feedback/start.php | elgg_load_js() → elgg_import_esm() | ~213 |
+
+## Session: 2026-05-11 09:55
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+
+## Session: 2026-05-11 10:03
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 10:04 | Edited ../../../../tmp/hypeseo-6x/composer.json | 5.0 → 6.0 | ~6 |
+| 10:04 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | inline fix | ~18 |
+| 10:05 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_library/start.php | "library" → "css" | ~29 |
+| 10:07 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 11→11 lines | ~253 |
+| 10:07 | Edited ../hypejunction/bodyology/bodyology-forum/mod/bodyology_theme/start.php | 2→2 lines | ~43 |
+| 10:07 | Edited ../hypejunction/bodyology/bodyology-forum/mod/tour/start.php | modified if() | ~197 |
+| 10:07 | Edited ../hypejunction/bodyology/bodyology-forum/mod/hypePrototyperUI/start.php | — | ~0 |
+| 10:07 | Edited ../hypejunction/bodyology/bodyology-forum/mod/code_review/classes/code_review.php | "code_review" → "js" | ~41 |
+| 10:08 | Edited ../hypejunction/bodyology/bodyology-forum/mod/widget_manager/classes/ColdTrick/WidgetManager/DefaultWidgets.php | inline fix | ~13 |
+| 10:08 | Edited ../hypejunction/bodyology/bodyology-forum/mod/hypePrototyperUI/views/default/forms/prototyper/edit.php | 5→1 lines | ~12 |
+| 10:12 | Edited ../hypejunction/bodyology/plugins/hypediscovery/views/oembed/framework/discovery/public.php | "oembed.css" → "css" | ~12 |
+| 10:13 | Edited ../../../../tmp/hypediscovery-6x/views/oembed/framework/discovery/public.php | "oembed.css" → "css" | ~12 |
+| 10:14 | Edited ../../../../tmp/images_ui-6x/views/default/file/specialcontent/image/default.php | 2→2 lines | ~21 |
+| 10:18 | Edited ../../../../tmp/hypediscovery-6x/views/oembed/resources/permalink.php | 6→4 lines | ~54 |
+| 10:30 | Docker builds failing: composer needs GITHUB_TOKEN passed via same-shell subst: `TOKEN=$(gh auth token) && docker build "--build-arg=GITHUB_TOKEN=${TOKEN}"` | Dockerfile | SSH fallback |
+| 10:32 | menus_dropdown alias must be "as 6.0.0" not "as 2.1.0" for menus_entity which requires ~6.0 | bodyology-forum/composer.json | resolved conflict |
+| 10:35 | hypeseo migrate/elgg-6.x had wrong elgg ^5.0; fixed to ^6.0 | hypeseo/composer.json | pushed |
+| 10:40 | elgg_register_css → elgg_register_external_file('css', ...), elgg_load_css → elgg_load_external_file('css', ...) in 6.x | multiple plugins | ongoing |
+| 10:27 | Edited ../../../../tmp/hypeinbox-6x/composer.json | 5.0 → 6.0 | ~6 |
+| 10:28 | Edited ../hypejunction/bodyology/bodyology-forum/mod/videolist/start.php | modified elgg_register_event_handler() | ~67 |
+
+## Session: 2026-05-11 10:30
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:15 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | 3. → 6. | ~15 |
+| 11:15 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | 89→88 lines | ~305 |
+| 11:20 | Created ../hypejunction/bodyology/bodyology-forum/docker-compose.override.yml | — | ~38 |
+
+## Session: 2026-05-11 11:23
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 11:24 | Edited ../../../../tmp/hypegallery-6x/classes/hypeJunction/Gallery/Seeder.php | modified getType() | ~81 |
+| 11:24 | Edited ../../../../tmp/hypefolders-6x/classes/hypeJunction/Folders/MainFolder.php | modified save() | ~52 |
+| 11:30 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | 3→2 lines | ~9 |
+| 11:30 | Edited ../hypejunction/bodyology/bodyology-forum/composer.json | 3→3 lines | ~27 |
+| 11:31 | Edited ../hypejunction/bodyology/bodyology-forum/Dockerfile | 15→15 lines | ~253 |
+| 11:49 | Edited ../hypejunction/bodyology/bodyology-forum/docker-entrypoint.sh | modified if() | ~87 |
+| 11:51 | Edited ../../../../tmp/hypewall-6x/classes/hypeJunction/Wall/Seeder.php | modified getType() | ~18 |
+| 11:51 | Edited ../../../../tmp/hypeinteractions-6x/elgg-services.php | object() → create() | ~32 |
+| 11:54 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | 2→2 lines | ~27 |
+| 11:55 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/InteractionsService.php | modified instance() | ~78 |
+| 11:55 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/InteractionsService.php | inline fix | ~26 |
+| 11:55 | Edited ../../../../tmp/hypeinteractions-6x/elgg-services.php | 2→1 lines | ~23 |
+
+## Session: 2026-05-11 11:58
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:00 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Bootstrap.php | 34→34 lines | ~458 |
+| 12:00 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Bootstrap.php | elgg_unregister_plugin_hook_handler() → elgg_unregister_event_handler() | ~53 |
+| 12:00 | Session end: 2 writes across 1 files (Bootstrap.php) | 1 reads | ~547 tok |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/CanCommentOnComment.php | modified __invoke() | ~37 |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/CanEditLikeAnnotation.php | modified __invoke() | ~48 |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/RiverMenu.php | modified __invoke() | ~31 |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/ReplaceCommentsBlock.php | getEntityParam() → getParam() | ~45 |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/FormatCommentNotification.php | modified __invoke() | ~114 |
+| 12:37 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/GetCommentSubscribers.php | modified __invoke() | ~122 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/GetCommentSubscribers.php | modified if() | ~187 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/GetCommentSubscribers.php | 2→1 lines | ~18 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/SocialMenu.php | modified __invoke() | ~419 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/InteractionsMenu.php | modified __invoke() | ~140 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/InteractionsMenu.php | elgg_trigger_plugin_hook() → elgg_trigger_event_results() | ~38 |
+| 12:38 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Router.php | modified urlHandler() | ~249 |
+| 12:39 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Seeder.php | modified getType() | ~65 |
+| 12:39 | Edited ../../../../tmp/hypeinteractions-6x/classes/hypeJunction/Interactions/Seeder.php | modified unseed() | ~9 |
+| 12:39 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | removed 1 lines | ~5 |
+| 12:56 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php | modified getType() | ~67 |
+| 12:56 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php | modified unseed() | ~9 |
