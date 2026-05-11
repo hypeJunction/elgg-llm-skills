@@ -8251,3 +8251,4 @@
 | 12:39 | Edited ../hypejunction/bodyology/bodyology-forum/mod/.plugin-order.txt | removed 1 lines | ~5 |
 | 12:56 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php | modified getType() | ~67 |
 | 12:56 | Edited ../hypejunction/bodyology/plugins/hypeembed/classes/hypeJunction/Embed/Seeder.php | modified unseed() | ~9 |
+| 13:00 | Elgg 5→6 site migration: fixed hypeinteractions (ServiceFacade removed, Hook→Event handlers, Seeder abstract methods), hypeembed Seeder abstract methods, hypeinvite start.php removed; all 3 skill gates PASS (site renders "Welcome : Bodyology Forum", CSS=165KB, no fatals); 8 legacy plugins still fail (videolist, mrclay_combiner, bodyology_widgets, bodyology_feedback, data_views, anypage, stripe, videolist_extras - tracked in elgg-migrate-7v7w1) | hypeJunction/Elgg3-hypeInteractions migrate/elgg-6.x, Elgg3-hypeEmbed, Elgg3-hypeInvite | done | ~8000 |
