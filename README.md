@@ -20,10 +20,16 @@ This repo ships as a set of self-contained **skills** plus a few shared shell sc
 
 ```
 elgg-migrate/
-  bin/                              # Shared scripts (plugin discovery, infra generation/validation)
-    discover-plugins.sh
-    gen-elgg-infra.sh
-    validate-elgg-infra.sh
+  bin/                              # Shared scripts
+    discover-plugins.sh             # Resolve plugin sources from env/XDG config
+    gen-elgg-infra.sh               # Generate per-version Docker infra from templates
+    validate-elgg-infra.sh          # Verify generated stacks build and Elgg installs
+    fix-branch-linearity.sh         # Cherry-pick critical 6.x fixes onto 7.x for one plugin
+    apply-fleet-fixes.py            # Automated fleet-wide branch repair
+    post-fix-corrections.py         # Undo over-corrections, sync main→7.x across fleet
+    run-fleet-verification.sh       # Scan fleet for linearity, missing branches, test gaps
+    verify-plugin-branches.py       # Per-plugin branch health check (linearity, tags, tests)
+    tag-fleet-releases.py           # Tag migrate/elgg-N.x tips with N.0.0, update READMEs
   skills/
     elgg-migrate/                   # PHP migration engine (the workhorse)
       bin/migrate.php               # CLI entry point
@@ -147,6 +153,23 @@ Each skill bundles a complete Docker stack per Elgg major version under `skills/
 # Verify the generated stacks build and Elgg installs cleanly
 ./bin/validate-elgg-infra.sh
 ```
+
+## Fleet Management
+
+When upgrading a large plugin portfolio, `bin/` provides scripts for operating across many repos at once.
+
+```bash
+# Scan the fleet for branch health (linearity, missing branches, tag coverage, test gaps)
+./bin/run-fleet-verification.sh
+
+# Forward-port critical 6.x bug fixes onto 7.x for a single plugin (non-destructive cherry-pick)
+./bin/fix-branch-linearity.sh --yes --push ~/plugins/my-plugin
+
+# Tag each migrate/elgg-N.x branch tip with N.0.0, update README compat tables, bump composer.json
+python3 bin/tag-fleet-releases.py
+```
+
+Plugins are discovered via `bin/discover-plugins.sh`, which reads paths from env vars / XDG config — no hardcoded local paths are needed in the scripts.
 
 ## Task Tracking with Beads
 
