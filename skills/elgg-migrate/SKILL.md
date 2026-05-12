@@ -77,6 +77,9 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 8. **SECURITY SWEEP AFTER EVERY MIGRATION** — Run `--security` after applying rules. Fix critical findings before committing. Security debt from legacy code gets inherited — catch it at the version boundary.
 9. **DOCUMENT AFTER MIGRATION** — After each version step, generate a plugin architecture summary documenting the current structure, registered hooks/events, entities, routes, and any migration notes for future reference.
 10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `docs/coding-standards.md` for version-specific rules.
+11. **COMPOSER CONSTRAINTS ARE NON-NEGOTIABLE** — Set `elgg/elgg` and `php` per the version table in "Composer Requirements Per Migration Branch" below. Wrong constraints are silent bugs that only surface when someone tries to install the plugin.
+12. **EVERY MIGRATE BRANCH NEEDS DOCKER INFRA** — Copy the template from `<skill-infra>/infra/elgg{N}/` to `docker/` on every migrate branch. Without Docker infra, the branch cannot be tested.
+13. **EACH BRANCH MUST BE BASED ON THE PREVIOUS** — `migrate/elgg-N.x` must be based on `migrate/elgg-(N-1).x`. Create it with `git checkout migrate/elgg-(N-1).x && git checkout -b migrate/elgg-N.x` or merge it in before starting migration work.
 
 ---
 
@@ -182,6 +185,25 @@ docker compose -f docker/elgg{N}/docker-compose.yml build --no-cache
 
 ---
 
+## Composer Requirements Per Migration Branch
+
+When generating or updating `composer.json` on a migrate branch, these are the
+REQUIRED constraints. Do not deviate.
+
+| Branch | `elgg/elgg` | `php` | Docker PHP |
+|--------|-------------|-------|-----------|
+| `migrate/elgg-3.x` | `^3.0` | `>=7.2` | 7.4 |
+| `migrate/elgg-4.x` | `^4.0` | `>=7.4` | 7.4 |
+| `migrate/elgg-5.x` | `~5.1.0` | `>=8.1` | 8.2 |
+| `migrate/elgg-6.x` | `~6.1.0` | `>=8.2` | 8.2 |
+| `migrate/elgg-7.x` | `~7.0.0` | `>=8.3` | 8.3 |
+
+Also required: `"composer/installers": "^2.0"`.
+
+After setting these, run `verify-plugin-branches.py` to confirm.
+
+---
+
 ## Quick Reference
 
 | Step | Command |
@@ -241,6 +263,7 @@ is the load-bearing part.
 | `Seed` subclass present (or absence documented in ARCHITECTURE.md) | Plugins that own entity types/subtypes/relationships must seed them; tests reuse the same helpers, and a fleet without seeders has empty listings in dev/QA |
 | Commit message format: `migrate({TARGET}.x): <summary>` | Consistent prefixes make `git log --grep` usable across the fleet |
 | Issue closed with `--reason` | Future-you reading the beads history needs the "what changed" summary |
+| `verify-plugin-branches.py` passes on the branch | Catches composer/PHP version drift, missing Docker infra, missing tests, README version mismatch, and branch linearity in one command. Run: `python3 <skill-root>/../../bin/verify-plugin-branches.py <plugin-dir>` |
 
 When dispatching migration to a subagent, the prompt MUST include these gates
 and the subagent MUST report PASS/FAIL/SKIP-WITH-REASON on each. A migration
@@ -374,6 +397,28 @@ before Phase 2: addressed by the migration (Elgg major bump, plugin dep bump,
 abandoned-dep removal), or carried forward with a documented reason. Read
 `references/dependabot-alerts.md` for triage rules and the post-migration diff
 workflow.
+
+### Branch linearity check
+
+Before creating `migrate/elgg-N.x`, verify that `migrate/elgg-(N-1).x` exists
+and is an ancestor of the new branch. Non-linear branch history makes
+cross-branch diffs unreadable and can silently drop prior migration commits.
+
+```bash
+# Verify the previous branch exists and is an ancestor of the current HEAD
+git log --oneline migrate/elgg-5.x..migrate/elgg-6.x  # commits on 6.x not in 5.x
+git merge-base --is-ancestor migrate/elgg-5.x migrate/elgg-6.x  # true = linear
+```
+
+If the previous branch exists but is NOT an ancestor (non-linear), merge it
+before continuing:
+
+```bash
+git merge migrate/elgg-5.x
+```
+
+If the previous branch does not exist at all, stop and complete that version
+step first — Iron Law 1 forbids skipping.
 
 ### Coding style baseline
 

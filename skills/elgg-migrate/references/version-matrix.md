@@ -26,6 +26,22 @@
 | 3.x | `manifest.xml` + `start.php` (deprecated) | Copy to `mod/` or Composer |
 | 4.x+ | `elgg-plugin.php` + `composer.json` | Composer (`composer require`) or `mod/` |
 
+## Canonical composer.json Constraints Per Migration Branch
+
+These are the **required** values for `elgg/elgg` and `php` in `composer.json`
+on each migrate branch. Use the exact constraints below — do not round up or
+use `^` where `~` is listed.
+
+| Branch | `elgg/elgg` | `php` | Docker PHP | `composer/installers` |
+|--------|-------------|-------|-----------|----------------------|
+| `migrate/elgg-3.x` | `^3.0` | `>=7.2` | 7.4 | `~1.0` |
+| `migrate/elgg-4.x` | `^4.0` | `>=7.4` | 7.4 | `^2.0` |
+| `migrate/elgg-5.x` | `~5.1.0` | `>=8.1` | 8.2 | `^2.0` |
+| `migrate/elgg-6.x` | `~6.1.0` | `>=8.2` | 8.2 | `^2.0` |
+| `migrate/elgg-7.x` | `~7.0.0` | `>=8.3` | 8.3 | `^2.0` |
+
+Run `python3 bin/verify-plugin-branches.py <plugin-dir>` after updating to confirm.
+
 ## Docker Base Images
 
 | Elgg | PHP Image | MySQL Image |
