@@ -25,6 +25,42 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+
+def get_plugins_dir():
+    d = os.environ.get('ELGG_PLUGINS_DIR')
+    if d:
+        return Path(d).expanduser()
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        result = subprocess.run(
+            [os.path.join(script_dir, 'discover-plugins.sh'), '--list'],
+            capture_output=True, text=True, check=True
+        )
+        lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+        if lines:
+            # discover-plugins.sh --list prints plugin IDs, not the dir;
+            # run without --list to get the PLUGINS_DIR from written .env
+            # Fall back: try to read PLUGINS_DIR from the .env it writes
+            pass
+        # Try running without --list to capture written .env PLUGINS_DIR
+        result2 = subprocess.run(
+            [os.path.join(script_dir, 'discover-plugins.sh')],
+            capture_output=True, text=True
+        )
+        for line in result2.stdout.splitlines():
+            stripped = line.strip()
+            if 'PLUGINS_DIR=' in stripped:
+                d = stripped.split('PLUGINS_DIR=', 1)[1].strip()
+                if d and os.path.isdir(d):
+                    return Path(d)
+    except Exception:
+        pass
+    raise RuntimeError(
+        "ELGG_PLUGINS_DIR not set and discover-plugins.sh returned nothing.\n"
+        "Set ELGG_PLUGINS_DIR=/path/to/your/plugins or run:\n"
+        "  bin/discover-plugins.sh --root /path/to/plugins --save-config"
+    )
+
 # ── canonical values per branch ───────────────────────────────────────────────
 CANONICAL_ELGG = {
     "migrate/elgg-3.x": "^3.0",
@@ -349,17 +385,34 @@ def apply_fixes_for_plugin(plugin_dir, branch_issues, infra_base):
 def main():
     # Parse args
     ndjson_path = "/tmp/fleet-verification-results.ndjson"
-    plugins_dir = Path.home() / "Data/hypejunction/bodyology/plugins"
-    infra_base = Path.home() / "Data/elgg-migrate/skills/elgg-migrate/infra"
+    plugins_dir_arg = None
+    infra_base_arg = None
 
     args = sys.argv[1:]
     for i, a in enumerate(args):
         if a == "--ndjson" and i + 1 < len(args):
             ndjson_path = args[i + 1]
         elif a == "--plugins-dir" and i + 1 < len(args):
-            plugins_dir = Path(args[i + 1]).expanduser()
+            plugins_dir_arg = Path(args[i + 1]).expanduser()
         elif a == "--infra-dir" and i + 1 < len(args):
-            infra_base = Path(args[i + 1]).expanduser()
+            infra_base_arg = Path(args[i + 1]).expanduser()
+
+    # Resolve plugins_dir: CLI arg > env/discover-plugins.sh
+    if plugins_dir_arg is not None:
+        plugins_dir = plugins_dir_arg
+    else:
+        try:
+            plugins_dir = get_plugins_dir()
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Resolve infra_base: CLI arg > relative to this script's location
+    if infra_base_arg is not None:
+        infra_base = infra_base_arg
+    else:
+        script_dir = Path(os.path.abspath(__file__)).parent
+        infra_base = script_dir.parent / "skills" / "elgg-migrate" / "infra"
 
     if DRY_RUN:
         print("=== DRY RUN MODE — no files will be modified ===\n")

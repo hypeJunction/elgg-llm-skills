@@ -41,7 +41,8 @@
 #   1   Error (bad args, missing branches, dirty workdir, cherry-pick conflict)
 #
 # EXAMPLE
-#   bin/fix-branch-linearity.sh --yes --push ~/Data/hypejunction/bodyology/plugins/hypegallery
+#   bin/fix-branch-linearity.sh --yes --push "$ELGG_PLUGINS_DIR/hypegallery"
+#   bin/fix-branch-linearity.sh --yes --push ~/plugins/my-plugin
 
 set -euo pipefail
 

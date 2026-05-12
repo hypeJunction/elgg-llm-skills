@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-post-fix-corrections.py [--plugins-dir ~/Data/hypejunction/bodyology/plugins] [--dry-run]
+post-fix-corrections.py [--plugins-dir /path/to/plugins] [--dry-run]
 
 Two post-fleet-fix corrections:
 
@@ -10,11 +10,42 @@ Two post-fleet-fix corrections:
 
 2. main branch stale: wherever FleetFixer committed to migrate/elgg-7.x but
    main hasn't been updated, fast-forward (merge) main → 7.x and push.
+
+Plugins directory is resolved from (in order):
+  1. --plugins-dir <path> CLI flag
+  2. $ELGG_PLUGINS_DIR environment variable
+  3. bin/discover-plugins.sh output
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+def get_plugins_dir():
+    d = os.environ.get('ELGG_PLUGINS_DIR')
+    if d:
+        return Path(d).expanduser()
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        result = subprocess.run(
+            [os.path.join(script_dir, 'discover-plugins.sh')],
+            capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if 'PLUGINS_DIR=' in stripped:
+                d = stripped.split('PLUGINS_DIR=', 1)[1].strip()
+                if d and os.path.isdir(d):
+                    return Path(d)
+    except Exception:
+        pass
+    raise RuntimeError(
+        "ELGG_PLUGINS_DIR not set and discover-plugins.sh returned nothing.\n"
+        "Set ELGG_PLUGINS_DIR=/path/to/your/plugins or run:\n"
+        "  bin/discover-plugins.sh --root /path/to/plugins --save-config"
+    )
 
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -53,11 +84,20 @@ def checkout(branch, cwd):
 
 
 def main():
-    plugins_dir = Path.home() / "Data/hypejunction/bodyology/plugins"
+    plugins_dir_arg = None
     args = sys.argv[1:]
     for i, a in enumerate(args):
         if a == "--plugins-dir" and i + 1 < len(args):
-            plugins_dir = Path(args[i + 1]).expanduser()
+            plugins_dir_arg = Path(args[i + 1]).expanduser()
+
+    if plugins_dir_arg is not None:
+        plugins_dir = plugins_dir_arg
+    else:
+        try:
+            plugins_dir = get_plugins_dir()
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
 
     if DRY_RUN:
         print("=== DRY RUN ===\n")

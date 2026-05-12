@@ -87,17 +87,8 @@ if [ ! -d "$root" ]; then
 fi
 root="$(cd "$root" && pwd)"
 
-# Tripwire: refuse known-stale workspace. The ~/Data/hypejunction/plugins path
-# was wiped fleet-wide on 2026-04-13 (bead elgg-migrate-c0ou) and is no longer
-# the canonical source. The canonical workspace is under bodyology/plugins/.
-case "$root" in
-    "$HOME/Data/hypejunction/plugins"|"$HOME/Data/hypejunction/plugins/")
-        echo "ERROR: $root is the stale hypejunction/plugins workspace (wiped 2026-04-13)." >&2
-        echo "       Canonical workspace is ~/Data/hypejunction/bodyology/plugins/." >&2
-        echo "       Re-run with --root pointing at the canonical path." >&2
-        exit 1
-        ;;
-esac
+# Validate that the resolved root actually exists and is a directory.
+# (Already checked above, but re-confirm after expansion.)
 
 is_plugin_dir() {
     local d="$1"

@@ -122,8 +122,9 @@ scoped to the single plugin under test:
 ```
 
 This applies to `migrate`, `elgg`, and `node` services uniformly. The only
-exception is `docker-compose.bodyology.yml`, which legitimately mounts a
-whole-site runtime checkout and is NOT used for migrations.
+exception is a site-level compose file (e.g., used by `elgg-site-upgrade`)
+that legitimately mounts a whole-site runtime checkout and is NOT used for
+single-plugin migrations.
 
 **Why this rule exists** — 2026-04-13 fleet wipe: the `node` service mounted
 `${PLUGINS_DIR}:/plugins` read-write, and a destructive command inside the

@@ -1131,4 +1131,4 @@ docker compose -f docker/docker-compose.yml exec elgg \
 git add docker/ && git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
 ```
 
-See bodyology workspace `ui_tabs@4621ee1` for a worked example.
+See `ui_tabs@4621ee1` (hypeJunction) as a worked example of this pattern.

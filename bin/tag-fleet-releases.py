@@ -29,10 +29,35 @@ import subprocess
 import shutil
 from pathlib import Path
 
-PLUGINS_DIR = Path(os.environ.get(
-    "PLUGINS_DIR",
-    os.path.expanduser("~/Data/hypejunction/bodyology/plugins")
-))
+
+def _resolve_plugins_dir():
+    """Resolve plugin workspace: ELGG_PLUGINS_DIR env > discover-plugins.sh > error."""
+    d = os.environ.get('ELGG_PLUGINS_DIR') or os.environ.get('PLUGINS_DIR')
+    if d:
+        return Path(d).expanduser()
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        result = subprocess.run(
+            [os.path.join(script_dir, 'discover-plugins.sh')],
+            capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if 'PLUGINS_DIR=' in stripped:
+                d = stripped.split('PLUGINS_DIR=', 1)[1].strip()
+                if d and os.path.isdir(d):
+                    return Path(d)
+    except Exception:
+        pass
+    raise RuntimeError(
+        "ELGG_PLUGINS_DIR not set and discover-plugins.sh returned nothing.\n"
+        "Set ELGG_PLUGINS_DIR=/path/to/your/plugins or run:\n"
+        "  bin/discover-plugins.sh --root /path/to/plugins --save-config"
+    )
+
+
+# PLUGINS_DIR is resolved lazily in main() to avoid import-time errors
+PLUGINS_DIR = Path(".")
 
 SKIP_DIRS = {"_legacy", "notifications_mass_mail_7x_tmp"}
 
@@ -342,6 +367,24 @@ def process_plugin(plugin_dir, plugin_name, results):
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main():
+    global PLUGINS_DIR
+
+    # Parse optional --plugins-dir flag
+    args = sys.argv[1:]
+    plugins_dir_arg = None
+    for i, a in enumerate(args):
+        if a == "--plugins-dir" and i + 1 < len(args):
+            plugins_dir_arg = Path(args[i + 1]).expanduser()
+
+    if plugins_dir_arg is not None:
+        PLUGINS_DIR = plugins_dir_arg
+    else:
+        try:
+            PLUGINS_DIR = _resolve_plugins_dir()
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+
     if not PLUGINS_DIR.exists():
         print(f"ERROR: PLUGINS_DIR does not exist: {PLUGINS_DIR}", file=sys.stderr)
         sys.exit(1)

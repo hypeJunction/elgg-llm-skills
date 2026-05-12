@@ -8,13 +8,30 @@
 #   ./bin/create-missing-migration-branches.sh
 #
 # Requirements:
-#   - PLUGINS_DIR: directory containing plugin repos (default: ~/Data/hypejunction/bodyology/plugins)
-#   - ELGG_MIGRATE_DIR: directory of the elgg-migrate repo (default: ~/Data/elgg-migrate)
+#   - ELGG_PLUGINS_DIR: directory containing plugin repos. If not set, falls
+#     back to bin/discover-plugins.sh output. Required.
+#   - ELGG_MIGRATE_DIR: directory of the elgg-migrate repo. Default: directory
+#     containing this script's parent.
 
 set -euo pipefail
 
-PLUGINS_DIR="${PLUGINS_DIR:-$HOME/Data/hypejunction/bodyology/plugins}"
-ELGG_MIGRATE_DIR="${ELGG_MIGRATE_DIR:-$HOME/Data/elgg-migrate}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ELGG_MIGRATE_DIR="${ELGG_MIGRATE_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+# Resolve PLUGINS_DIR: ELGG_PLUGINS_DIR env > discover-plugins.sh > error
+PLUGINS_DIR=""
+if [[ -n "${ELGG_PLUGINS_DIR:-}" ]]; then
+    PLUGINS_DIR="$ELGG_PLUGINS_DIR"
+elif [[ -x "$SCRIPT_DIR/discover-plugins.sh" ]]; then
+    _disc_out="$(bash "$SCRIPT_DIR/discover-plugins.sh" 2>/dev/null || true)"
+    PLUGINS_DIR="$(echo "$_disc_out" | grep 'PLUGINS_DIR=' | head -1 | cut -d= -f2-)"
+    unset _disc_out
+fi
+if [[ ! -d "${PLUGINS_DIR:-}" ]]; then
+    echo "ERROR: Set ELGG_PLUGINS_DIR=/path/to/your/plugins or run:" >&2
+    echo "  bin/discover-plugins.sh --root /path/to/plugins --save-config" >&2
+    exit 1
+fi
 MANIFEST_2X_3X="$ELGG_MIGRATE_DIR/skills/elgg-migrate/rules/2x-to-3x/manifest.json"
 MANIFEST_3X_4X="$ELGG_MIGRATE_DIR/skills/elgg-migrate/rules/3x-to-4x/manifest.json"
 MIGRATE_PHP="$ELGG_MIGRATE_DIR/skills/elgg-migrate/bin/migrate.php"
