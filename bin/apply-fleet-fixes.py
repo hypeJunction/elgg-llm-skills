@@ -37,8 +37,8 @@ CANONICAL_ELGG = {
 CANONICAL_PHP = {
     "migrate/elgg-3.x": ">=7.2",
     "migrate/elgg-4.x": ">=7.4",
-    "migrate/elgg-5.x": ">=8.1",
-    "migrate/elgg-6.x": ">=8.2",
+    "migrate/elgg-5.x": ">=8.0",   # Elgg 5 minimum per version-matrix.md
+    "migrate/elgg-6.x": ">=8.1",   # Elgg 6 minimum per version-matrix.md
     "migrate/elgg-7.x": ">=8.3",
 }
 
