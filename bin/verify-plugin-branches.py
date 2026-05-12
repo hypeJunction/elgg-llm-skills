@@ -32,7 +32,7 @@ BRANCHES = [
 ]
 
 EXPECTED_ELGG = {
-    "migrate/elgg-3.x": {"pattern": r"^3\.", "label": "3.x"},
+    "migrate/elgg-3.x": {"pattern": r"^3\.|^\^3\.|^~3\.", "label": "3.x"},
     "migrate/elgg-4.x": {"pattern": r"^4\.|^\^4\.|^~4\.", "label": "4.x"},
     "migrate/elgg-5.x": {"pattern": r"^5\.|^\^5\.|^~5\.", "label": "5.x"},
     "migrate/elgg-6.x": {"pattern": r"^6\.|^\^6\.|^~6\.", "label": "6.x"},
