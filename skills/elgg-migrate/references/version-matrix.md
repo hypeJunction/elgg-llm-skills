@@ -36,8 +36,8 @@ use `^` where `~` is listed.
 |--------|-------------|-------|-----------|----------------------|
 | `migrate/elgg-3.x` | `^3.0` | `>=7.2` | 7.4 | `~1.0` |
 | `migrate/elgg-4.x` | `^4.0` | `>=7.4` | 7.4 | `^2.0` |
-| `migrate/elgg-5.x` | `~5.1.0` | `>=8.1` | 8.2 | `^2.0` |
-| `migrate/elgg-6.x` | `~6.1.0` | `>=8.2` | 8.2 | `^2.0` |
+| `migrate/elgg-5.x` | `~5.1.0` | `>=8.0` | 8.2 | `^2.0` |
+| `migrate/elgg-6.x` | `~6.1.0` | `>=8.1` | 8.2 | `^2.0` |
 | `migrate/elgg-7.x` | `~7.0.0` | `>=8.3` | 8.3 | `^2.0` |
 
 Run `python3 bin/verify-plugin-branches.py <plugin-dir>` after updating to confirm.

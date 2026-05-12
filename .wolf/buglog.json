@@ -13234,6 +13234,182 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-05-11T10:56:50.502Z"
+    },
+    {
+      "id": "bug-826",
+      "timestamp": "2026-05-12T10:39:56.408Z",
+      "error_message": "Significant refactor of ",
+      "file": "bin/apply-fleet-fixes.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→15 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:39:56.408Z"
+    },
+    {
+      "id": "bug-827",
+      "timestamp": "2026-05-12T10:45:17.669Z",
+      "error_message": "Significant refactor of ",
+      "file": "bin/apply-fleet-fixes.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→7 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:45:17.669Z"
+    },
+    {
+      "id": "bug-828",
+      "timestamp": "2026-05-12T10:45:22.243Z",
+      "error_message": "Significant refactor of ",
+      "file": "bin/verify-plugin-branches.py",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 7→7 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "py"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:45:22.243Z"
+    },
+    {
+      "id": "bug-829",
+      "timestamp": "2026-05-12T10:49:46.870Z",
+      "error_message": "Significant refactor of ",
+      "file": "bin/fix-branch-linearity.sh",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 13→16 lines (4 removed) | Also: PLUGIN_DIR=\"${1:-}\"; [[ -n \"$PLUGIN_DIR\" ]] || die \"Usage: $0 <plugin-d | Also: warn \"  Aborting cherry-pick — restoring clean sta; die \"Cherry-pick failed at $sha — resolve manually | Also: info \"Done. Applied $APPLIED commit(s) to migrate/; echo \"  2. Run local Docker test stack to verify\"",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "sh"
+      ],
+      "related_bugs": [],
+      "occurrences": 4,
+      "last_seen": "2026-05-12T10:50:16.579Z"
+    },
+    {
+      "id": "bug-830",
+      "timestamp": "2026-05-12T10:54:00.898Z",
+      "error_message": "Wrong reference: object should be create",
+      "file": "../hypejunction/bodyology/plugins/hypeinteractions/elgg-services.php",
+      "root_cause": "Used \"object\" instead of \"create\"",
+      "fix": "Changed object → create",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:54:00.898Z"
+    },
+    {
+      "id": "bug-831",
+      "timestamp": "2026-05-12T10:54:03.951Z",
+      "error_message": "Wrong reference: Elgg should be ElggEntity",
+      "file": "../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php",
+      "root_cause": "Used \"Elgg\" instead of \"ElggEntity\"",
+      "fix": "Changed Elgg → ElggEntity",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:54:03.951Z"
+    },
+    {
+      "id": "bug-832",
+      "timestamp": "2026-05-12T10:54:08.435Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php",
+      "root_cause": "11 lines replaced/restructured",
+      "fix": "Rewrote 24→12 lines (11 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:54:08.435Z"
+    },
+    {
+      "id": "bug-833",
+      "timestamp": "2026-05-12T10:54:11.739Z",
+      "error_message": "Wrong return value",
+      "file": "../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php",
+      "root_cause": "Was returning: $this->hooks->trigger('get_stats', 'interactions',",
+      "fix": "Now returns: elgg_trigger_event_results('get_stats', 'interacti",
+      "tags": [
+        "auto-detected",
+        "return-value",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:54:11.739Z"
+    },
+    {
+      "id": "bug-834",
+      "timestamp": "2026-05-12T10:54:16.501Z",
+      "error_message": "Wrong reference: elgg_register_plugin_hook_handler should be elgg_register_event_handler",
+      "file": "../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php",
+      "root_cause": "Used \"elgg_register_plugin_hook_handler\" instead of \"elgg_register_event_handler\"",
+      "fix": "Changed elgg_register_plugin_hook_handler → elgg_register_event_handler",
+      "tags": [
+        "auto-detected",
+        "wrong-reference",
+        "php"
+      ],
+      "related_bugs": [],
+      "occurrences": 2,
+      "last_seen": "2026-05-12T10:54:25.486Z"
+    },
+    {
+      "id": "bug-835",
+      "timestamp": "2026-05-12T10:55:16.837Z",
+      "error_message": "Significant refactor of ",
+      "file": "../hypejunction/bodyology/plugins/images_ui/.github/workflows/tests.yml",
+      "root_cause": "4 lines replaced/restructured",
+      "fix": "Rewrote 9→4 lines (4 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T10:55:16.837Z"
+    },
+    {
+      "id": "bug-836",
+      "timestamp": "2026-05-12T11:06:27.372Z",
+      "error_message": "Incorrect value in code",
+      "file": "skills/elgg-migrate/references/version-matrix.md",
+      "root_cause": "Had `>=8.1`",
+      "fix": "Changed to `>=8.0`",
+      "tags": [
+        "auto-detected",
+        "wrong-value",
+        "md"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-05-12T11:06:27.373Z"
     }
   ]
 }

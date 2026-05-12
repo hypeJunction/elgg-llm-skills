@@ -1,7 +1,7 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-05-11T10:56:54.310Z
-> Files: 2745 tracked | Anatomy hits: 0 | Misses: 0
+> Auto-maintained by OpenWolf. Last scanned: 2026-05-12T11:06:26.998Z
+> Files: 2760 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ../../../../tmp/
 
@@ -15,6 +15,9 @@
 - `fix_ci.py` — run (~1607 tok)
 - `fix_mismatched_tags.py` — run (~866 tok)
 - `fix-event-docblocks.py` — ... */ docblocks immediately preceding a method whose first (~926 tok)
+- `fix-php-constraints.py` — run, current_branch, stash_if_dirty, pop_stash (~1195 tok)
+- `fix-via-temp-worktree.py` — run, apply_fixes_in_dir (~2947 tok)
+- `fix-worktree-plugins.py` — run, get_worktrees, find_branch_dir, apply_fixes_in_dir (~3130 tok)
 - `install-warp.sh` (~135 tok)
 - `process-phpcs.sh` — Run phpcs, extract function-docblock issues, generate the tab-separated (~219 tok)
 - `split-chain-assign.py` — Split chained assignments like `$a = $b = 0;` into two lines. (~362 tok)
@@ -43,9 +46,18 @@
 
 - `permalink.php` (~122 tok)
 
+## ../../../../tmp/hypediscussions-6x/classes/hypeJunction/Discussions/
+
+- `Seeder.php` — Seeder: getCountOptions, seed, unseed (~339 tok)
+
+## ../../../../tmp/hypedropzone-6x/classes/hypeJunction/Dropzone/
+
+- `Seeder.php` — Seeder for hypedropzone (~258 tok)
+
 ## ../../../../tmp/hypefolders-6x/classes/hypeJunction/Folders/
 
 - `MainFolder.php` — {@inheritdoc} (~2844 tok)
+- `Seeder.php` — Seeds folder entities for development and testing. (~354 tok)
 
 ## ../../../../tmp/hypegallery-6x/classes/hypeJunction/Gallery/
 
@@ -54,6 +66,10 @@
 ## ../../../../tmp/hypeinbox-6x/
 
 - `composer.json` — PHP package manifest (~216 tok)
+
+## ../../../../tmp/hypeinbox-6x/classes/hypeJunction/Inbox/
+
+- `Seeder.php` — Seeds fake private messages between random users for development and testing. (~457 tok)
 
 ## ../../../../tmp/hypeinteractions-6x/
 
@@ -73,6 +89,10 @@
 - `Router.php` — Router: urlHandler, iconUrlHandler (~267 tok)
 - `Seeder.php` — Seeds fake comment entities for development and testing. (~434 tok)
 - `SocialMenu.php` — SocialMenu: __invoke (~431 tok)
+
+## ../../../../tmp/hypeinvite-6x/classes/hypeJunction/Invite/
+
+- `Seeder.php` — Seeds fake user invite objects for development and testing. (~383 tok)
 
 ## ../../../../tmp/hypeseo-6x/
 
@@ -2024,7 +2044,7 @@
 
 ## ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/
 
-- `Bootstrap.php` — {@inheritdoc} (~771 tok)
+- `Bootstrap.php` — {@inheritdoc} (~749 tok)
 - `CanCommentOnComment.php` — Event handler that controls whether users can comment on a comment (~183 tok)
 - `CanEditLikeAnnotation.php` — Event handler that controls edit permissions for like annotations (~205 tok)
 - `Comment.php` — Extends ElggComment with interaction-specific behavior (~1091 tok)
@@ -2034,7 +2054,7 @@
 - `FormatCommentNotification.php` — Event handler that formats comment notification messages (~300 tok)
 - `GetCommentSubscribers.php` — Event handler that returns notification subscribers for comment events (~1103 tok)
 - `InteractionsMenu.php` — Event handler that builds the interactions menu for entities (~899 tok)
-- `InteractionsService.php` — Service providing comment, like, and stats utilities for interactions (~1871 tok)
+- `InteractionsService.php` — Returns service instance from Elgg DI container (~1786 tok)
 - `LikeAction.php` — Adds a like annotation to an entity (~923 tok)
 - `ReplaceCommentsBlock.php` — Event handler that replaces the default comments block with the interactions version (~175 tok)
 - `RiverMenu.php` — Event handler that adds interaction items to the river menu (~113 tok)
@@ -3615,14 +3635,15 @@
 - `ARCHITECTURE.md` — images_ui — Architecture (Elgg 4.x): routes, actions, hooks, entity model, migration notes (~1200 tok)
 - `CHANGELOG.md` — 7.0.0 (2026-05-09) (~779 tok)
 - `CHANGELOG.md` — 4.0.0 (2026-04-16): Elgg 4.x migration notes (~350 tok)
-- `composer.json` — PHP package manifest (~199 tok)
+- `composer.json` — PHP package manifest (~281 tok)
 - `composer.json` — PHP package manifest, requires php>=7.4, elgg/elgg ^4.0, images dep (~200 tok)
 - `elgg-plugin.php` (~386 tok)
 - `elgg-plugin.php` — Bootstrap, plugin deps, routes, actions (~250 tok)
+- `README.md` — Project documentation (~229 tok)
 
 ## ../hypejunction/bodyology/plugins/images_ui/.github/workflows/
 
-- `tests.yml` — CI: Tests (~1812 tok)
+- `tests.yml` — CI: Tests (~1910 tok)
 
 ## ../hypejunction/bodyology/plugins/images_ui/actions/images/
 
@@ -4475,11 +4496,16 @@
 
 ## bin/
 
+- `apply-fleet-fixes.py` — run, branch_exists, current_branch, stash_if_dirty (~3946 tok)
 - `bd-swarm-watch.sh` — Open a tmux split with one pane per swarm slot, each tailing its log. (~785 tok)
 - `bd-swarm.sh` — Run a pool of N parallel Claude workers that each claim a beads issue, (~1832 tok)
 - `discover-plugins.sh` — discover-plugins.sh — find Elgg plugins under a workspace root and prepare (~1574 tok)
+- `fix-branch-linearity.sh` — fix-branch-linearity.sh — forward-port critical 6.x bug fixes into 7.x for ONE plugin (~1867 tok)
 - `gen-elgg-infra.sh` — gen-elgg-infra.sh — generate per-version Docker infra bundles for the (~4171 tok)
+- `post-fix-corrections.py` — run, branch_exists, current_branch, checkout (~1653 tok)
+- `run-fleet-verification.sh` — run-fleet-verification.sh [plugins_dir] [output_file] (~420 tok)
 - `validate-elgg-infra.sh` — validate-elgg-infra.sh — bring up each bundled Elgg infra, verify it (~1525 tok)
+- `verify-plugin-branches.py` — file: run, branch_exists, is_ancestor, git_show + 4 more (~2836 tok)
 
 ## docker/elgg2/
 
@@ -4869,6 +4895,7 @@
 
 - `composer.json` — PHP package manifest (~162 tok)
 - `phpunit.xml` (~151 tok)
+- `SKILL.md` — elgg-migrate (~12026 tok)
 
 ## skills/elgg-migrate/.phpunit.cache/
 
@@ -4953,7 +4980,7 @@
 - `dependency-audit.md` — Dependency Audit (CVE Scanning) (~1535 tok)
 - `elgg-plugin-php-generation.md` — elgg-plugin.php generation (3.x → 4.x) (~1248 tok)
 - `git-hygiene.md` — Git hygiene for plugin and site repos (~1731 tok)
-- `version-matrix.md` — Elgg Version Compatibility Matrix (~413 tok)
+- `version-matrix.md` — Elgg Version Compatibility Matrix (~604 tok)
 
 ## skills/elgg-migrate/references/breaking-changes/
 

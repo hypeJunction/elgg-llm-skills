@@ -2,6 +2,9 @@
 
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
+| 12:56 | Forward-ported critical 6.x fixes onto migrate/elgg-7.x for hypeinteractions (2 applied, 2 manual), hypefolders (2 applied, 2 skipped/resolved), hypeinbox (2 applied clean); merged all to main and pushed | hypeinteractions, hypefolders, hypeinbox | done | ~3000 |
+| session | Fleet verification: ran verify-plugin-branches.py on 70 plugins; found 713 issues (206 linearity, 88 php_constraint_too_low, 56 missing_docker, 49 missing_elgg_dep, 49 missing_tests, 34 zero_test_coverage, 30 missing_branch, 15 wrong_elgg_version, 168 readme_version_mismatch, 2 has_start_php); scripts committed to bin/ on migrate/6.x; BeadsFiler agent filing grouped beads | bin/verify-plugin-branches.py, bin/run-fleet-verification.sh | done | ~2000 |
+| 12:52 | Batch 2 branch linearity forward-port: ran fix-branch-linearity.sh for hypeembed (2 commits: hook→Event + Seeder abstract methods), hypediscovery (2 commits: elgg_load_css + elgg_unregister_css/js + removed hook handler), hypegallery (2 commits: elgg_load_css×2 + Seeder abstract methods); 0 conflicts; pushed 7.x, merged into main, pushed main for all 3 | bodyology/plugins/hypeembed,hypediscovery,hypegallery | done | ~1200 |
 | 13:27 | Elgg 6.x Seeder fix: added getType()+getCountOptions() to 5 plugin Seeders (hypediscussions, hypedropzone, hypefolders, hypeinbox, hypeinvite); also fixed hypegallery, hypeinteractions, hypeembed in prior session; all committed+pushed to migrate/elgg-6.x; rebuilt Docker image d76e4365; all 3 skill gates PASS (site renders, CSS=165KB, 0 PHP fatals) | /tmp/hypediscussions-6x/../Seeder.php x5, bodyology-forum-6x image | done | ~1200 |
 | 11:00 | fleet CI fix elgg-migrate-06lx0: removed version field (69 plugins), fixed .gitignore concat (5 plugins), added ci noop job to tests.yml (65 plugins), hypeembed README already correct; 69 plugins committed+pushed | bodyology/plugins/*/composer.json, .gitignore, .github/workflows/tests.yml | closed | ~1200 |
 | 10:40 | fleet tag elgg-migrate-qdftx: created 19 git tags matching composer.json versions, updated version field in 2 plugins (actions_feature@1.0.0, hypefolders@3.0), 48 already OK, 0 skipped | bodyology/plugins/*/composer.json | closed | ~800 |
@@ -8263,3 +8266,54 @@
 | 13:09 | Created ../../../../tmp/hypeinbox-6x/classes/hypeJunction/Inbox/Seeder.php | — | ~457 |
 | 13:09 | Created ../../../../tmp/hypedropzone-6x/classes/hypeJunction/Dropzone/Seeder.php | — | ~258 |
 | 13:12 | Created ../../../../tmp/hypeinvite-6x/classes/hypeJunction/Invite/Seeder.php | — | ~383 |
+| 13:27 | Session end: 5 writes across 1 files (Seeder.php) | 6 reads | ~1920 tok |
+
+## Session: 2026-05-12 12:17
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 12:21 | Created bin/verify-plugin-branches.py | — | ~2808 |
+| 12:21 | Created bin/run-fleet-verification.sh | — | ~420 |
+| 12:26 | Edited bin/verify-plugin-branches.py | 7→7 lines | ~113 |
+| 12:27 | Session end: 3 writes across 2 files (verify-plugin-branches.py, run-fleet-verification.sh) | 1 reads | ~6179 tok |
+| 12:37 | Created bin/apply-fleet-fixes.py | — | ~3823 |
+| 12:39 | Edited bin/apply-fleet-fixes.py | modified fix() | ~247 |
+| 12:41 | Edited skills/elgg-migrate/SKILL.md | 1→2 lines | ~99 |
+| 12:42 | Edited skills/elgg-migrate/SKILL.md | 1→4 lines | ~244 |
+| 12:42 | Edited skills/elgg-migrate/SKILL.md | expanded (+22 lines) | ~230 |
+| 12:42 | Edited skills/elgg-migrate/SKILL.md | expanded (+19 lines) | ~173 |
+| 12:42 | Edited skills/elgg-migrate/references/version-matrix.md | expanded (+16 lines) | ~209 |
+| 12:45 | Edited bin/apply-fleet-fixes.py | 7→7 lines | ~76 |
+| 12:45 | Edited bin/verify-plugin-branches.py | 7→7 lines | ~73 |
+| 12:47 | Created bin/post-fix-corrections.py | — | ~1653 |
+| 12:48 | Created bin/fix-branch-linearity.sh | — | ~1497 |
+| 12:48 | Session end: 14 writes across 7 files (verify-plugin-branches.py, run-fleet-verification.sh, apply-fleet-fixes.py, SKILL.md, version-matrix.md) | 4 reads | ~19227 tok |
+| 12:49 | Edited bin/fix-branch-linearity.sh | 13→16 lines | ~189 |
+| 12:49 | Edited bin/fix-branch-linearity.sh | expanded (+14 lines) | ~161 |
+| 12:50 | Edited bin/fix-branch-linearity.sh | 3→7 lines | ~66 |
+| 12:50 | Edited bin/fix-branch-linearity.sh | 10→15 lines | ~194 |
+| 12:50 | Edited bin/fix-branch-linearity.sh | expanded (+8 lines) | ~205 |
+| 12:50 | Created ../../../../tmp/fix-php-constraints.py | — | ~1195 |
+| 12:51 | Session end: 20 writes across 8 files (verify-plugin-branches.py, run-fleet-verification.sh, apply-fleet-fixes.py, SKILL.md, version-matrix.md) | 5 reads | ~23161 tok |
+| 12:52 | Created ../hypejunction/bodyology/plugins/images_ui/README.md | — | ~244 |
+| 12:52 | Created ../hypejunction/bodyology/plugins/images_ui/composer.json | — | ~281 |
+| 12:53 | Session end: 22 writes across 10 files (verify-plugin-branches.py, run-fleet-verification.sh, apply-fleet-fixes.py, SKILL.md, version-matrix.md) | 7 reads | ~26346 tok |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/elgg-services.php | 2→1 lines | ~23 |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php | 3→1 lines | ~4 |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php | modified instance() | ~60 |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php | inline fix | ~26 |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php | inline fix | ~8 |
+| 12:54 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/Bootstrap.php | inline fix | ~8 |
+| 12:55 | Created ../hypejunction/bodyology/plugins/hypeinteractions/elgg-services.php | — | ~28 |
+| 12:55 | Edited ../hypejunction/bodyology/plugins/hypeinteractions/classes/hypeJunction/Interactions/InteractionsService.php | removed 6 lines | ~4 |
+| 12:55 | Edited ../hypejunction/bodyology/plugins/images_ui/.github/workflows/tests.yml | modified foreach() | ~74 |
+| 12:57 | Created ../../../../tmp/fix-worktree-plugins.py | — | ~3130 |
+| 12:57 | Session end: 32 writes across 15 files (verify-plugin-branches.py, run-fleet-verification.sh, apply-fleet-fixes.py, SKILL.md, version-matrix.md) | 12 reads | ~29725 tok |
+| 13:10 | Batch 3 fix-branch-linearity: hypeinvite (getType/getCountOptions applied, 2 skips = already fixed), hypeprototyper (2 skips = already fixed), images_ui (lightbox import_esm applied; fixed stash-pop conflict markers in tests.yml), hypelists (hook→Event applied); all merged to main and pushed | hypeinvite, hypeprototyper, images_ui, hypelists | done | ~4500 |
+| 13:00 | Created ../../../../tmp/fix-via-temp-worktree.py | — | ~2947 |
+
+## Session: 2026-05-12 13:00
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+| 13:06 | Edited skills/elgg-migrate/references/version-matrix.md | 2→2 lines | ~32 |
