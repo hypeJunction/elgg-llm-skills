@@ -717,3 +717,67 @@ Verify the list matches exactly what is in `composer.json`'s `require` block.
 | 4.x→5.x | 0 | 20 | `rules/4x-to-5x/manifest.json` |
 | 5.x→6.x | 0 | 12 | `rules/5x-to-6x/manifest.json` |
 | 6.x→7.x | 0 | 21 | `rules/6x-to-7x/manifest.json` |
+
+## upgrade-linear.sh: production upgrade script
+
+`bin/upgrade-linear.sh` automates Part B for a git-managed production site.
+Run it on the server where the site is installed and the production DB is accessible.
+
+### Prerequisites
+
+- Site root is a git repo with all migration branches prepared (Part A complete)
+- `git`, `composer`, `php`, `mysqldump`, `mysql` on PATH
+- Site DB credentials in `<project>/elgg-config/settings.php`
+
+### Basic usage
+
+```bash
+# Auto-detect current version, upgrade to 6.x
+bin/upgrade-linear.sh --project /var/www/html --to 6
+
+# Non-interactive (CI/automation)
+bin/upgrade-linear.sh --project /var/www/html --from 5 --to 6 --yes
+
+# Dry run to preview steps
+bin/upgrade-linear.sh --project /var/www/html --from 5 --to 6 --dry-run
+```
+
+### Branch name defaults
+
+| Version | Default branch |
+|---------|---------------|
+| 2 | `main` |
+| 3 | `migrate/elgg-3.x` |
+| 4 | `migrate/4.x` |
+| 5 | `migrate/5.x` |
+| 6 | `migrate/6.x` |
+| 7 | `migrate/7.x` |
+
+Override with `ELGG_BRANCH_N=<name>` env vars.
+
+### Known MySQL client quirks
+
+- **TLS errors in Docker**: use `--skip-ssl` (script adds this automatically). `--ssl-mode=DISABLED` is MySQL client only — MariaDB client uses `--skip-ssl`.
+- **mysqldump PROCESS privilege**: `mysqldump: Access denied for PROCESS privilege` is a warning, not a failure. The dump still succeeds for the schema. Suppress by granting PROCESS or ignore the warning.
+
+### Composer install fallback
+
+If `composer install` fails due to missing platform extensions or platform-version mismatches (common when upgrading in-place on an older PHP), the script retries with `--ignore-platform-reqs`. This mirrors the Dockerfile approach used during Part A.
+
+### Schema pre-fixes encoded
+
+| Step | Fix |
+|------|-----|
+| 5→6 | `ALTER TABLE elgg_entities ADD COLUMN deleted ENUM('yes','no') NOT NULL DEFAULT 'no', ADD COLUMN time_deleted INT(11) NOT NULL DEFAULT 0` — guards with INFORMATION_SCHEMA check so it's idempotent |
+
+### Validation test (2026-05-13)
+
+Tested via `docker exec` inside the bodyology 5x container against the live production-like DB:
+- Input: Elgg 5.1.x site, 5x DB with carried-forward data from 2x→3x→4x→5x chain
+- `git checkout migrate/6.x` pulled latest branch (commit `164bc3a`)
+- Composer installed with `--ignore-platform-reqs` (PHP 8.2 + MariaDB client)
+- Schema pre-fix added `deleted`/`time_deleted` columns successfully
+- `elgg-cli upgrade async` ran all Phinx migrations
+- `elgg-cli --version` reported **6.1.5** ✓
+- Site returned HTTP 200 ✓
+- Exit code: 0 ✓
