@@ -541,6 +541,173 @@ ln -sf /usr/libexec/docker/cli-plugins/docker-compose ~/.docker/cli-plugins/dock
 docker compose version   # should show Docker Compose version v5.x.x
 ```
 
+## 5.x → 6.x specific: breaking API changes found during linear migration validation
+
+The following were found during sequential 2x→3x→4x→5x→6x DB migration validation on the bodyology project (May 2026).
+
+### `Elgg\Lifecycle\BootstrapInterface` renamed and moved
+
+`Elgg\Lifecycle\BootstrapInterface` no longer exists in Elgg 6.x. The replacement is `Elgg\PluginBootstrapInterface`. However, the interface gained two new required methods — `elgg()` and `plugin()` — that only the abstract base class `Elgg\PluginBootstrap` implements.
+
+**Fix for all plugin Bootstrap classes:**
+```php
+// OLD (5.x)
+use Elgg\Lifecycle\BootstrapInterface;
+class Bootstrap implements BootstrapInterface {
+
+// NEW (6.x)
+use Elgg\PluginBootstrap;
+class Bootstrap extends PluginBootstrap {
+```
+
+Do NOT implement `BootstrapInterface` directly; extend `PluginBootstrap`. The base class also provides constructor injection for `$plugin` and `$dic`.
+
+Files to scan: `grep -rl "Elgg\\Lifecycle\\BootstrapInterface" mod/`
+
+### `elgg_get_breadcrumbs()` removed in 5.x
+
+Breadcrumbs became a menu in Elgg 5.x. Any `navigation/breadcrumbs` view override that calls `elgg_get_breadcrumbs()` will crash with `Call to undefined function`.
+
+**Fix:** replace with `elgg_view_menu('breadcrumbs', ...)`:
+```php
+// OLD (4.x)
+$breadcrumbs = elgg_get_breadcrumbs();
+// ... custom <ul> rendering
+
+// NEW (5.x+)
+echo elgg_view_menu('breadcrumbs', [
+    'sort_by' => 'register',
+    'class' => elgg_extract_class($vars, ['elgg-menu', 'elgg-breadcrumbs', 'elgg-menu-hz']),
+]);
+```
+
+### `elgg_register_widget_type()` changed to array syntax in 6.x
+
+Positional arguments removed; only accepts a single `array $options` argument.
+
+```php
+// OLD (5.x)
+elgg_register_widget_type('feedback', elgg_echo('feedback:name'), elgg_echo('feedback:desc'), ['profile']);
+
+// NEW (6.x)
+elgg_register_widget_type([
+    'id' => 'feedback',
+    'name' => elgg_echo('feedback:name'),
+    'description' => elgg_echo('feedback:desc'),
+    'context' => ['profile'],
+]);
+```
+
+### `add_group_tool_option()` replaced by service API in 6.x
+
+```php
+// OLD (5.x)
+add_group_tool_option('news', elgg_echo('news:enablenews'), true);
+
+// NEW (6.x)
+elgg()->group_tools->register('news', [
+    'label' => elgg_echo('news:enablenews'),
+    'default_on' => true,
+]);
+```
+
+### `elgg_register_entity_type()` removed in 6.x
+
+Entity type registration for search now goes exclusively in `elgg-plugin.php` under the `'entities'` key:
+
+```php
+// elgg-plugin.php
+return [
+    'entities' => [
+        [
+            'type' => 'object',
+            'subtype' => 'my_subtype',
+            'searchable' => true,
+        ],
+    ],
+];
+```
+
+Remove all `elgg_register_entity_type()` / `elgg_unregister_entity_type()` calls from Bootstrap and start.php files. Plugins that only have `start.php` (no `elgg-plugin.php`) need a new manifest file for search to work.
+
+### `elgg_get_upgrade_files()` removed in 6.x
+
+The old file-based upgrade mechanism (`upgrades/*.php` included via `elgg_get_upgrade_files()`) is gone. Plugins using this pattern:
+
+```php
+// OLD — crashes in 6.x
+public static function runUpgrades(\Elgg\Event $event) {
+    $files = elgg_get_upgrade_files(__DIR__ . '/../../../upgrades/');
+    foreach ($files as $file) { include $file; }
+}
+```
+
+**Fix:** stub out with an empty method body (old file-based upgrades from 2012 have certainly already run on any live site). Register proper `ElggUpgrade` batch classes in `elgg-plugin.php` for any new upgrade logic.
+
+### `elgg_entities.deleted` column required before upgrade CLI can boot (5.x → 6.x)
+
+Elgg 6.x added `deleted` and `time_deleted` columns to `elgg_entities` (migration `20230606155735_add_delete_columns_to_entities_tables.php`). But the upgrade CLI queries this column during its own bootstrap — before the Phinx migration that adds it has run.
+
+**Symptom:** `elgg-cli upgrade async` fails immediately with:
+```
+[DatabaseException] Unknown column 'e.deleted' in 'where clause'
+```
+
+**Fix:** add the column manually before running the upgrade CLI:
+```sql
+ALTER TABLE elgg_entities
+    ADD COLUMN deleted ENUM('yes','no') NOT NULL DEFAULT 'no',
+    ADD COLUMN time_deleted INT(11) NOT NULL DEFAULT 0;
+```
+
+Then run `upgrade async -v`. The Phinx migration will detect the column already exists and skip it.
+
+Note: MySQL 5.7 does not support `ADD COLUMN IF NOT EXISTS` — use a raw `ALTER TABLE` and handle the "Duplicate column" error if re-running.
+
+### phpfastcache boot directory must exist before Elgg 5.x boots
+
+Elgg 5.x added phpfastcache as a boot-time cache. The directory must exist before the first request or CLI command:
+
+```bash
+# In docker-entrypoint.sh
+mkdir -p "$ELGG_DATA_ROOT" \
+    "${ELGG_DATA_ROOT}cache/fastcache" \
+    "${ELGG_DATA_ROOT}cache/localfastcache" \
+    "${ELGG_DATA_ROOT}cache/stash" \
+    "${ELGG_DATA_ROOT}assets"
+chown -R www-data:www-data "$ELGG_DATA_ROOT"
+```
+
+Without this, you get:
+```
+PhpfastcacheIOException: The directory /var/data/elgg/cache/fastcache/elgg_boot/Files could not be created
+```
+
+### Composer-installed plugin fixes require updating composer.lock
+
+When a bug fix is committed to a plugin's VCS branch (e.g., `migrate/elgg-6.x`) and the root project's `composer.json` references that branch via `dev-migrate/elgg-6.x`, composer installs the **locked commit** from `composer.lock`. Simply pushing a fix to the branch is not enough.
+
+**Fix:** update the `reference` field for that package in `composer.lock`:
+```python
+import json
+data = json.load(open('composer.lock'))
+for pkg in data['packages']:
+    if pkg['name'] == 'vendor/plugin-name':
+        pkg['source']['reference'] = '<new-commit-hash>'
+        if 'dist' in pkg:
+            pkg['dist']['reference'] = '<new-commit-hash>'
+        break
+json.dump(data, open('composer.lock', 'w'), indent=4)
+```
+
+Or run `composer update vendor/plugin-name` inside the project to have composer resolve the latest commit on the branch.
+
+### Dockerfile rm -rf of composer-managed plugins must not include custom plugins
+
+The 6.x Dockerfile explicitly deletes composer-managed plugin directories before `composer install` so they are refreshed from VCS. **Do not include custom/git-tracked plugin directories** in this list — they are not reinstalled by composer and will be permanently deleted from the container.
+
+Verify the list matches exactly what is in `composer.json`'s `require` block.
+
 ## Available Migration Rules
 
 | Step | Auto | LLM | Manifest |
