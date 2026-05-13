@@ -781,3 +781,39 @@ Tested via `docker exec` inside the bodyology 5x container against the live prod
 - `elgg-cli --version` reported **6.1.5** ✓
 - Site returned HTTP 200 ✓
 - Exit code: 0 ✓
+
+## Composer lock file consistency — prep gate
+
+Run this check on every migration branch **before** declaring Part A complete
+and before running `upgrade-linear.sh` in production:
+
+```bash
+composer install --no-interaction --ignore-platform-reqs 2>&1 | grep -E '^(Problem|Your lock|Installing)' | head -10
+```
+
+If it fails, diagnose by category:
+
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| `lock file does not contain compatible packages` | composer.json changed after lock was committed | `composer update && git add composer.lock && git commit` |
+| `dev-master not found` | Package renamed default branch to `main` | `composer require vendor/pkg:dev-main` or pin to a tag |
+| `requires ext-gmp * → missing` | PHP extension not installed | Add `--ignore-platform-reqs` OR install the extension |
+| `requires php >=8.4` with platform override of `8.2` | Lock was generated without platform override | Add `"platform": {"php": "8.2"}` to `composer.json` config and `composer update` |
+| Dependency conflict between packages | Incompatible package version tree | Update the specific conflicting constraint; may need to upgrade plugin to a newer release |
+
+### upgrade-linear.sh fallback chain
+
+The script tries three tiers automatically:
+1. `composer install` (from lock file, exact versions)
+2. `composer install --ignore-platform-reqs` (platform mismatch only)
+3. `composer update --ignore-platform-reqs` (stale lock file)
+
+Tier 3 (`composer update`) changes the lock file in the running upgrade — it
+is NOT committed back to the migration branch. If tier 3 was needed, fix and
+commit the lock file to the migration branch before the next production run.
+
+### Known migration branch issues (bodyology)
+
+| Branch | Issue | Status |
+|--------|-------|--------|
+| `migrate/elgg-3.x` | composer.lock has `dev-master` refs for packages that renamed to `main`; `composer update` also fails due to pelago/emogrifier conflict. Workaround: pre-seed vendor/ from the 3x Docker container. | Open — composer.lock needs regeneration |

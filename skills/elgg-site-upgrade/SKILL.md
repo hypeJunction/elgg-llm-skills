@@ -358,6 +358,57 @@ upstream, `diff --stat` against it to catch judgment calls the rules missed.
 Don't batch commits across plugins — keep each plugin's work in its own
 commits so a reviewer (and your future self) can follow what changed.
 
+## Verify composer consistency on each migration branch
+
+Before running Docker or declaring a step ready, verify that `composer install`
+succeeds from a clean state on the migration branch. This is the gate that
+catches the most common silent failure mode: a lock file that was committed
+when it was still in sync, but later diverged as upstream packages changed.
+
+```bash
+# Run in a clean directory to avoid inheriting any existing vendor/
+cd /tmp
+git clone <project-repo> test-composer-check
+cd test-composer-check
+git checkout migrate/elgg-${N}.x
+
+# Primary check: does composer install from the lock file?
+composer install --no-interaction 2>&1
+
+# If it fails with platform errors (missing PHP extension, wrong PHP version):
+composer install --no-interaction --ignore-platform-reqs 2>&1
+
+# If it fails with lock-file inconsistency ("lock file does not contain compatible packages"):
+#   → The lock file is out of sync with composer.json.
+#   → Fix by running: composer update --no-interaction && git add composer.lock && git commit
+```
+
+**Common root causes of lock file staleness:**
+
+- Packages renamed their default branch from `master` to `main`. The lock
+  file records the resolved reference (`dev-master`) which no longer exists.
+  Fix: `composer require vendor/package:dev-main` or bump to a tagged version.
+
+- `composer.json` was updated manually without re-running `composer update`.
+  Fix: run `composer update` and commit the new `composer.lock`.
+
+- A lock file was copied from a different version branch.
+  Fix: delete `composer.lock` and run `composer install` (or `update`).
+
+**The gate:**
+
+```bash
+# Must pass (with or without --ignore-platform-reqs) before the branch is
+# declared ready for Part B. If it only passes with composer update (not install),
+# commit the updated composer.lock before proceeding.
+composer install --no-interaction --ignore-platform-reqs 2>&1 && echo PASS || echo FAIL
+```
+
+`upgrade-linear.sh` includes this three-tier fallback automatically (install →
+install --ignore-platform-reqs → update --ignore-platform-reqs), but it cannot
+fix a broken `composer.json` that has unresolvable constraints. Those must be
+fixed in the migration branch before Part B runs.
+
 ## Verify in Docker for the target version
 
 Boot the target version's Docker environment and run the gates. These are
@@ -723,6 +774,7 @@ Before declaring Part A complete, confirm all of the following. Missing any
 of them means production isn't ready:
 
 - All Elgg version steps complete (every step in the upgrade path)
+- `composer install` succeeds on each migration branch (see "Verify composer consistency" above)
 - All PHP dependencies at latest stable
 - All JS/CSS dependencies at latest stable
 - Full test suite green (PHPUnit + Vitest + Playwright)
