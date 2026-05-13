@@ -10,7 +10,7 @@
 #   bin/upgrade-linear.sh --project /path/to/site [--from 5] [--to 6] [--yes]
 #
 # Options:
-#   --project DIR     Site root (required). Must contain vendor/ and elgg-config/settings.php.
+#   --project DIR     Site root (required). Must contain elgg-config/settings.php.
 #   --from N          Starting Elgg major version. Auto-detected from vendor/elgg/elgg if omitted.
 #   --to N            Target major version (default: 6).
 #   --yes             Skip per-step confirmation prompts.
@@ -18,9 +18,18 @@
 #   --backup-dir DIR  Where to store DB backups (default: <project>/../elgg-backups/).
 #   --site-url URL    Override site URL for curl verification (auto-detected from settings.php).
 #
-# Branch naming defaults (override via env vars):
-#   ELGG_BRANCH_2=main   ELGG_BRANCH_3=migrate/elgg-3.x   ELGG_BRANCH_4=migrate/4.x
-#   ELGG_BRANCH_5=migrate/5.x   ELGG_BRANCH_6=migrate/6.x   ELGG_BRANCH_7=migrate/7.x
+# Branch auto-detection (for each target version N, tried in order):
+#   1. ELGG_BRANCH_N env var (explicit override)
+#   2. migrate/elgg-N.x
+#   3. migrate/N.x
+#   4. elgg-N.x
+#   5. N.x
+#   For version 2 specifically: also tries master and main as fallbacks.
+#
+# Examples of branch names the auto-detection handles:
+#   elgg-migrate default : migrate/elgg-3.x, migrate/4.x, migrate/5.x, migrate/6.x
+#   semver style         : 3.x, 4.x, 5.x, 6.x
+#   prefixed style       : elgg-3.x, elgg-4.x
 
 set -euo pipefail
 
@@ -35,13 +44,13 @@ YES=0
 BACKUP_DIR=""
 SITE_URL_OVERRIDE=""
 
-# Branch name for each Elgg major version
-ELGG_BRANCH_2="${ELGG_BRANCH_2:-main}"
-ELGG_BRANCH_3="${ELGG_BRANCH_3:-migrate/elgg-3.x}"
-ELGG_BRANCH_4="${ELGG_BRANCH_4:-migrate/4.x}"
-ELGG_BRANCH_5="${ELGG_BRANCH_5:-migrate/5.x}"
-ELGG_BRANCH_6="${ELGG_BRANCH_6:-migrate/6.x}"
-ELGG_BRANCH_7="${ELGG_BRANCH_7:-migrate/7.x}"
+# Per-version branch overrides (empty = auto-detect from the git repo)
+ELGG_BRANCH_2="${ELGG_BRANCH_2:-}"
+ELGG_BRANCH_3="${ELGG_BRANCH_3:-}"
+ELGG_BRANCH_4="${ELGG_BRANCH_4:-}"
+ELGG_BRANCH_5="${ELGG_BRANCH_5:-}"
+ELGG_BRANCH_6="${ELGG_BRANCH_6:-}"
+ELGG_BRANCH_7="${ELGG_BRANCH_7:-}"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -74,10 +83,6 @@ if [[ -z "$PROJECT" ]]; then
     exit 2
 fi
 PROJECT="$(realpath "$PROJECT")"
-if [[ ! -d "$PROJECT/vendor" ]]; then
-    echo "ERROR: $PROJECT/vendor not found; run composer install first" >&2
-    exit 2
-fi
 if [[ ! -f "$PROJECT/elgg-config/settings.php" ]]; then
     echo "ERROR: $PROJECT/elgg-config/settings.php not found" >&2
     exit 2
@@ -123,10 +128,38 @@ confirm() {
     return 1
 }
 
+# Return the git branch name to check out for target Elgg major version N.
+# Priority: explicit ELGG_BRANCH_N env var → probe candidates in the git repo.
 branch_for_version() {
     local ver="$1"
     local varname="ELGG_BRANCH_${ver}"
-    echo "${!varname:-}"
+    local override="${!varname:-}"
+    if [[ -n "$override" ]]; then
+        echo "$override"
+        return 0
+    fi
+
+    # Candidate branch names in preference order (covers elgg-migrate convention,
+    # semver-style, plain major, and legacy master/main for 2.x)
+    local -a candidates=(
+        "migrate/elgg-${ver}.x"
+        "migrate/${ver}.x"
+        "elgg-${ver}.x"
+        "${ver}.x"
+    )
+    if [[ "$ver" == "2" ]]; then
+        candidates+=("master" "main")
+    fi
+
+    for branch in "${candidates[@]}"; do
+        if git -C "$PROJECT" rev-parse --verify "origin/$branch" &>/dev/null \
+        || git -C "$PROJECT" rev-parse --verify "$branch" &>/dev/null; then
+            echo "$branch"
+            return 0
+        fi
+    done
+
+    return 1  # caller will report the failure
 }
 
 # ---------------------------------------------------------------------------
@@ -135,7 +168,7 @@ branch_for_version() {
 detect_version() {
     local composer_json="$PROJECT/vendor/elgg/elgg/composer.json"
     if [[ ! -f "$composer_json" ]]; then
-        fail "Cannot find $composer_json to detect current Elgg version"
+        fail "Cannot auto-detect Elgg version: $composer_json not found. Pass --from N explicitly."
     fi
     php -r "
         \$j = json_decode(file_get_contents('$composer_json'), true);
@@ -265,7 +298,10 @@ checkout_branch() {
 }
 
 # ---------------------------------------------------------------------------
-# Composer install (falls back to --ignore-platform-reqs if platform check fails)
+# Composer install — three-tier fallback for migration scenarios:
+#   1. install (from lock file, exact versions)
+#   2. install --ignore-platform-reqs (when PHP extensions / version mismatch)
+#   3. update (when lock file is stale or out of sync with composer.json)
 # ---------------------------------------------------------------------------
 run_composer() {
     log "Running composer install"
@@ -273,12 +309,18 @@ run_composer() {
         echo "  [dry-run] composer install --no-interaction --no-progress --optimize-autoloader --working-dir='$PROJECT'"
         return 0
     fi
-    if ! composer install --no-interaction --no-progress --optimize-autoloader \
-        --working-dir="$PROJECT" 2>&1; then
-        log "Retrying with --ignore-platform-reqs"
-        composer install --no-interaction --no-progress --optimize-autoloader \
-            --ignore-platform-reqs --working-dir="$PROJECT" 2>&1
+
+    local common_flags="--no-interaction --no-progress --optimize-autoloader --working-dir=$PROJECT"
+
+    if composer install $common_flags 2>&1; then
+        return 0
     fi
+    log "Retrying with --ignore-platform-reqs"
+    if composer install $common_flags --ignore-platform-reqs 2>&1; then
+        return 0
+    fi
+    log "Lock file appears stale — running composer update"
+    composer update $common_flags --ignore-platform-reqs 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -346,7 +388,7 @@ do_step() {
     local branch
     branch="$(branch_for_version "$to")"
     if [[ -z "$branch" ]]; then
-        fail "No branch configured for Elgg $to (set ELGG_BRANCH_${to})"
+        fail "Cannot find a migration branch for Elgg ${to}.x in $PROJECT. Tried: migrate/elgg-${to}.x, migrate/${to}.x, elgg-${to}.x, ${to}.x. Set ELGG_BRANCH_${to}=<branch> to override."
     fi
 
     echo ""
