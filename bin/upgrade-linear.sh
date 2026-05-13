@@ -181,19 +181,48 @@ load_db_settings() {
 }
 
 # ---------------------------------------------------------------------------
-# DB backup
+# DB backup — full dump of all tables and data, compressed, integrity-verified
 # ---------------------------------------------------------------------------
 backup_db() {
     local label="$1"
     local outfile="$BACKUP_DIR/elgg-${label}-$(date +%Y%m%d-%H%M%S).sql.gz"
     log "Backing up $DB_NAME → $outfile"
-    run "mysqldump -h '$DB_HOST' -P '$DB_PORT' -u '$DB_USER' -p'$DB_PASS' \
-        --skip-ssl --single-transaction --quick '$DB_NAME' | gzip > '$outfile'"
-    if [[ $DRY_RUN -eq 0 ]]; then
-        local size
-        size="$(du -sh "$outfile" 2>/dev/null | cut -f1)"
-        log "Backup complete: $size"
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  [dry-run] mysqldump ... $DB_NAME | gzip > $outfile"
+        return 0
     fi
+
+    # --no-tablespaces avoids needing PROCESS privilege (otherwise mysqldump
+    # fails with "Access denied for PROCESS" on MySQL 5.7.31+ / MariaDB 10.5+).
+    # --single-transaction gives a consistent snapshot without locking tables.
+    # --routines --triggers includes stored procedures and triggers.
+    mysqldump \
+        -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" \
+        --skip-ssl \
+        --no-tablespaces \
+        --single-transaction \
+        --routines \
+        --triggers \
+        --quick \
+        "$DB_NAME" | gzip > "$outfile"
+
+    local dump_rc="${PIPESTATUS[0]}"
+    if [[ $dump_rc -ne 0 ]]; then
+        warn "mysqldump exited $dump_rc — backup may be incomplete: $outfile"
+        return 1
+    fi
+
+    # Verify the gzip archive is not corrupt
+    if ! gzip -t "$outfile" 2>/dev/null; then
+        warn "Backup file failed gzip integrity check: $outfile"
+        return 1
+    fi
+
+    local size tables
+    size="$(du -sh "$outfile" | cut -f1)"
+    tables="$(zcat "$outfile" | grep -c '^CREATE TABLE' || true)"
+    log "Backup complete: $size, $tables tables → $outfile"
 }
 
 # ---------------------------------------------------------------------------
