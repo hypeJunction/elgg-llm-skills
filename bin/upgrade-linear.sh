@@ -292,9 +292,17 @@ disable_maintenance() {
 checkout_branch() {
     local branch="$1"
     log "Checking out branch: $branch"
-    run "git -C '$PROJECT' fetch --quiet origin"
-    run "git -C '$PROJECT' checkout '$branch'"
-    run "git -C '$PROJECT' pull --quiet origin '$branch' || true"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  [dry-run] git fetch; git clean -fd; git checkout $branch; git pull || true"
+        return 0
+    fi
+    # Remove untracked files that would block checkout (safe: vendor/ is .gitignored)
+    git -C "$PROJECT" fetch --quiet origin || true
+    git -C "$PROJECT" clean -fd --quiet
+    if ! git -C "$PROJECT" checkout "$branch"; then
+        return 1
+    fi
+    git -C "$PROJECT" pull --quiet origin "$branch" || true
 }
 
 # ---------------------------------------------------------------------------
