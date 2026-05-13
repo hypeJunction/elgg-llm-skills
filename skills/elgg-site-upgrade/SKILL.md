@@ -27,6 +27,15 @@ one and a bad upgrade stops being a rollback and becomes a restoration.
    fully tested migration branch before Part B (execute) touches production.
    Production is not where you discover problems — it's where you apply
    solutions you already verified work.
+4. **TAG MIGRATION BRANCHES — NO FLOATING DEV REFS IN composer.json.** After
+   migrating a plugin and verifying it activates, tag the migration branch with
+   a semantic version (`git tag N.0.0 && git push origin N.0.0`). Use `^N.0`
+   in the root `composer.json`, not `dev-migrate/elgg-N.x`. Floating branch refs
+   make deployments non-reproducible: any push to the branch changes what
+   `composer install` installs. Tags are immutable. Check existing tags with
+   `git tag | sort -V` before creating a new one — don't duplicate tags that
+   already exist. Read tags from the local plugin workspace; never query Packagist
+   to determine available versions for VCS repos.
 
 Everything else in Part A is judgment and should be adapted to your project.
 Part B is a safety-critical checklist and stays strict.
@@ -542,37 +551,58 @@ elgg_load_css('theme.custom');
 Verify the fix: check that `elgg.css` from simplecache is > 1 KB after a
 cache flush.
 
-### Composer VCS repos: dependency versioning pitfalls
+### Composer VCS repos: dependency versioning
 
-When you add all canonical plugins as VCS repos requiring `dev-migrate/elgg-N.x`,
-several classes of dependency conflicts appear at `composer update` time.
+**Always use tagged version constraints.** After migrating a plugin and
+verifying it works, tag the migration branch and reference the tag in the
+root `composer.json`. Look up the latest available tag from the local plugin
+workspace:
 
-**Inter-plugin version constraints.** Plugins that depend on other plugins
-use semver ranges (`~1.0`, `>=3.2`). A `dev-X` branch doesn't satisfy those
-ranges by default. Fix with inline aliases in the ROOT `composer.json`:
+```bash
+# Find the latest tag for each major version in each plugin repo
+PLUGINS_DIR=~/plugins-workspace
+for plugin in "$PLUGINS_DIR"/*/; do
+  name=$(basename "$plugin")
+  tags=$(git -C "$plugin" tag | sort -V)
+  for major in 3 4 5 6; do
+    latest=$(echo "$tags" | grep "^${major}\." | tail -1)
+    echo "$name: $major.x → ${latest:-NONE}"
+  done
+done
 
-```json
+# Then update composer.json to use ^N.0 constraints
 "require": {
-  "hypejunction/hypelists":    "dev-migrate/elgg-3.x as 3.5.6",
-  "hypejunction/forms_api":    "dev-migrate/elgg-3.x as 1.2.1",
-  "hypejunction/images":       "dev-migrate/elgg-3.x as 1.1.4",
-  "hypejunction/menus_dropdown": "dev-migrate/elgg-3.x as 2.1.0"
+  "hypejunction/hypewall":     "^6.0",
+  "hypejunction/hypeinteractions": "^6.0",
+  "hypejunction/hypelists":    "^6.0"
 }
 ```
 
-The alias tells Composer "treat this branch as version X" so downstream
-constraints resolve correctly. Use the latest tagged version on that branch
-(run `git tag --sort=-version:refname | head -1` in the plugin repo).
+The `^N.0` constraint, pinned by `composer.lock`, is the correct approach:
+reproducible, standard, and forward-compatible within the major. Do NOT use
+`dev-migrate/elgg-N.x` — floating branch refs break reproducibility.
 
-To find ALL inter-plugin constraints that need aliases, scan every plugin's
-`composer.json` on the migration branch:
+**Dev-branch aliases (legacy workaround — avoid).** Before all plugin
+migration branches were tagged, a workaround was to add inline aliases:
+
+```json
+"hypejunction/forms_api": "dev-migrate/elgg-3.x as 1.2.1"
+```
+
+This told Composer to treat the branch as version 1.2.1 so inter-plugin
+constraints resolved. This is unnecessary once the branch is tagged and the
+constraint is `^N.0`. If you encounter aliases in an existing `composer.json`,
+replace them with the proper tagged constraint.
+
+To find which inter-plugin constraints need satisfying (useful when adding a
+new plugin to a migration branch), scan every plugin's `composer.json`:
 
 ```bash
 for p in plugins/*/; do
-  git -C "$p" show migrate/elgg-3.x:composer.json 2>/dev/null
+  git -C "$p" show migrate/elgg-N.x:composer.json 2>/dev/null
 done | python3 -c "
 import sys, json
-for line in sys.stdin:  # pipe all composer.json content
+for line in sys.stdin:
     try:
         d = json.loads(line)
     except Exception:
