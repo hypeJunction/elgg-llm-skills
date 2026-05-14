@@ -63,10 +63,12 @@ issues=0
 fail() { echo "  FAIL: $*"; ((issues++)) || true; }
 ok()   { echo "  OK:   $*"; }
 
-# Grep inside the plugin, excluding vendor/ node_modules/ .git/
+# Grep inside the plugin, excluding non-source dirs. `mod/` holds bundled
+# dependency plugins (gitignored, not part of this repo's source), so it is
+# excluded too — otherwise a vendored plugin's metadata trips the audit.
 pg() {
   grep -r --include="$1" "${@:2}" \
-    --exclude-dir=vendor --exclude-dir=node_modules --exclude-dir=.git \
+    --exclude-dir=vendor --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=mod \
     "$PLUGIN_PATH" 2>/dev/null || true
 }
 
