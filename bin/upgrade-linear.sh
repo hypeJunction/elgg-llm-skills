@@ -296,8 +296,9 @@ checkout_branch() {
         echo "  [dry-run] git fetch; git clean -fd; git checkout $branch; git pull || true"
         return 0
     fi
-    # Remove untracked files that would block checkout (safe: vendor/ is .gitignored)
+    # Reset tracked modified files (e.g. composer.lock after composer update) then remove untracked
     git -C "$PROJECT" fetch --quiet origin || true
+    git -C "$PROJECT" reset --hard HEAD --quiet 2>/dev/null || true
     git -C "$PROJECT" clean -fd --quiet
     if ! git -C "$PROJECT" checkout "$branch"; then
         return 1

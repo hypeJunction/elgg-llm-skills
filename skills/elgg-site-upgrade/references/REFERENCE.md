@@ -812,6 +812,122 @@ Tier 3 (`composer update`) changes the lock file in the running upgrade — it
 is NOT committed back to the migration branch. If tier 3 was needed, fix and
 commit the lock file to the migration branch before the next production run.
 
+### Composer `version` field in tagged commits silently breaks constraints
+
+When a plugin's `composer.json` contains a hard-coded `"version"` field (e.g., `"version": "5.1.3"`) AND
+you create a git tag with a different name (e.g., `5.0.0`), Composer silently rejects the tag.
+
+**Symptom:** `composer require vendor/plugin:^5.0` resolves to a pre-existing 5.1.x tag instead of
+your migration `5.0.0` tag, or `[InvalidArgumentException] version constraint is not parseable`.
+
+**Root cause:** Composer reads the `version` field from the tagged commit's `composer.json`. If the field
+value disagrees with the tag name, Composer ignores the tag. If the field value matches a *different*
+existing tag, the two entries collide.
+
+**Fix:** remove the `"version"` field entirely from `composer.json` before tagging. Composer will then
+use the git tag name as the version. Commit the removal, force-retag, and force-push:
+
+```bash
+# In the plugin repo, on the migration branch
+python3 -c "
+import json, sys
+d = json.load(open('composer.json'))
+d.pop('version', None)
+json.dump(d, open('composer.json', 'w'), indent=4)
+print('version field removed')
+"
+git add composer.json && git commit -m 'chore: remove version field so Composer uses tag name'
+git tag -f 5.0.0   # or whatever the migration tag is
+git push origin 5.0.0 --force
+```
+
+Scan all migration-branch `composer.json` files before tagging:
+```bash
+for dir in ~/Data/hypejunction/bodyology/plugins/*/; do
+  f="$dir/composer.json"
+  [ -f "$f" ] && python3 -c "import json,sys; d=json.load(open('$f')); print('$f:', d.get('version','OK — no version field'))" 2>/dev/null
+done | grep -v 'OK'
+```
+
+### `amdConfig` DI service removed in Elgg 6.x
+
+`_elgg_services()->amdConfig` (the RequireJS AMD configuration service) was removed in Elgg 6.x when
+AMD/RequireJS was replaced by native ES modules.
+
+**Symptom:** `DI\NotFoundException: No entry or class found for 'amdConfig'` — site returns HTTP 500
+on the first request after the 5→6 upgrade.
+
+**Common location:** theme plugins' `foot.php` view override:
+```php
+// OLD (5.x) — remove both lines
+$deps = _elgg_services()->amdConfig->getDependencies();
+// ... later in the file:
+require(<?= json_encode($deps, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT); ?>);
+```
+
+**Fix:** delete both lines. In Elgg 6.x, JS modules are loaded via `<script type="module">` tags
+managed by the core `page/elements/foot` view. Theme `foot.php` overrides should not inject AMD
+require calls.
+
+Scan for usages: `grep -rl "amdConfig" mod/`
+
+### Elgg 3.x `Upgrade\Locator::getBatch()` fails when plugin classes not yet autoloaded
+
+During an in-place upgrade from 2.x to 3.x, the upgrade CLI bootstraps before plugins are fully
+initialized. If a plugin registers an `ElggUpgrade` batch class in `elgg-plugin.php`, the class exists
+in `mod/<plugin>/classes/` but is NOT yet on the autoloader path when `Locator::getBatch()` is called.
+
+**Symptom:** `InvalidArgumentException: Upgrade class Foo\Bar\Upgrade\MyBatch was not found` — the
+upgrade skips or aborts the batch even though the file exists.
+
+**Fix:** patch `Elgg\Upgrade\Locator::getBatch()` to fall back to scanning `mod/*/classes/` before
+throwing:
+
+```php
+public function getBatch($class) {
+    if (!class_exists($class)) {
+        $classFile = str_replace('\\', DIRECTORY_SEPARATOR, ltrim($class, '\\')) . '.php';
+        $modDir = realpath(__DIR__ . '/../../../../../../../mod');
+        if ($modDir) {
+            foreach (glob($modDir . '/*/classes/', GLOB_ONLYDIR) ?: [] as $dir) {
+                $path = $dir . $classFile;
+                if (file_exists($path)) {
+                    require_once $path;
+                    break;
+                }
+            }
+        }
+    }
+    if (!class_exists($class)) {
+        throw new \InvalidArgumentException("Upgrade class $class was not found");
+    }
+    // ... rest unchanged
+}
+```
+
+The `realpath(...)` depth is 7 levels up from `engine/classes/Elgg/Upgrade/Locator.php` to the webroot.
+
+This patch should be submitted upstream to Elgg 3.x or carried as a project-level override. Once plugins
+are properly activated in the running PHP process (second pass with `upgrade async`), the fallback is
+no longer needed.
+
+### `checkout_branch()` in upgrade-linear.sh: reset tracked files before clean
+
+`git clean -fd` only removes *untracked* files. After `composer update` modifies `composer.lock` (a
+tracked file), switching branches with `git checkout` fails:
+
+```
+error: Your local changes to the following files would be overwritten by checkout:
+    composer.lock
+```
+
+**Fix** (already applied to `bin/upgrade-linear.sh`): add `git reset --hard HEAD` before `git clean -fd`:
+
+```bash
+git -C "$PROJECT" reset --hard HEAD --quiet 2>/dev/null || true
+git -C "$PROJECT" clean -fd --quiet
+```
+
 ### Known migration branch issues (bodyology)
 
 | Branch | Issue | Status |
