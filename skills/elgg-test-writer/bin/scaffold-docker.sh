@@ -240,13 +240,17 @@ ensure_trailing_newline() {
 # Idempotently ensure each entry is present as its own exact line. `grep -Fxq`
 # matches the whole line literally, so a glued or partial line is correctly
 # treated as missing and the proper entry gets appended.
+# Note: tests/playwright/package-lock.json is deliberately NOT ignored — it
+# is committed so `npm ci` has a lockfile. node_modules / test-results /
+# playwright-report are masked by named volumes in docker-compose.yml and
+# never reach the host; the entries below are a belt-and-braces guard for
+# anyone who runs the tooling outside Docker.
 gitignore_entries=(
     'docker/.env'
     'tests/deps.local.txt'
     'tests/.phpunit.result.cache'
     'tests/.phpunit.cache/'
     'tests/playwright/node_modules/'
-    'tests/playwright/package-lock.json'
     'tests/playwright/playwright-report/'
     'tests/playwright/test-results/'
 )

@@ -70,6 +70,13 @@ services:
     image: mcr.microsoft.com/playwright:v1.49.0-noble
     volumes:
       - ..:/plugin
+      # Keep generated test artifacts off the host bind mount. npm and
+      # Playwright write these as root inside the container; named volumes
+      # keep them in Docker-managed storage instead of the plugin repo.
+      # Clear them with `docker compose ... down -v`.
+      - node-modules:/plugin/tests/playwright/node_modules
+      - playwright-results:/plugin/tests/playwright/test-results
+      - playwright-report:/plugin/tests/playwright/playwright-report
     working_dir: /plugin
     environment:
       PLUGIN_ID: ${PLUGIN_ID}
@@ -88,3 +95,6 @@ services:
 volumes:
   elgg-data:
   db-data:
+  node-modules:
+  playwright-results:
+  playwright-report:
