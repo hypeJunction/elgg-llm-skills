@@ -933,3 +933,63 @@ git -C "$PROJECT" clean -fd --quiet
 | Branch | Issue | Status |
 |--------|-------|--------|
 | `migrate/elgg-3.x` | composer.lock has `dev-master` refs for packages that renamed to `main`; `composer update` also fails due to pelago/emogrifier conflict. Workaround: pre-seed vendor/ from the 3x Docker container. | Open — composer.lock needs regeneration |
+
+## 6.x → 7.x specific: breaking API changes found during linear migration validation
+
+The following were found during sequential 2x→3x→4x→5x→6x→7x DB migration validation on the bodyology project (May 2026).
+
+### `add_translation()` removed in 7.x
+
+Language files using the old `add_translation($lang, $array)` pattern fail at boot with `Call to undefined function add_translation()`.
+
+**Old format (pre-5.x):**
+```php
+$english = array('key' => 'value');
+add_translation('en', $english);
+```
+
+**New format (5.x+):**
+```php
+return ['key' => 'value'];
+```
+
+For dynamic translation registration inside class methods (e.g., `Config::registerLabels()`), replace with the translator service:
+```php
+// OLD
+add_translation('en', ['key' => 'value']);
+// NEW
+elgg()->translator->addTranslation('en', ['key' => 'value']);
+```
+
+Scan: `grep -rl 'add_translation' mod/ | grep '\.php$' | grep -v vendor`
+
+### `elgg_register_notification_event()` action arg must be string in 7.x
+
+Passing an array of actions no longer works:
+```php
+// OLD (5.x) — crashes in 7.x
+elgg_register_notification_event('object', 'my_subtype', ['create', 'update']);
+
+// NEW — one call per action
+elgg_register_notification_event('object', 'my_subtype', 'create');
+elgg_register_notification_event('object', 'my_subtype', 'update');
+```
+
+Scan: `grep -rn 'elgg_register_notification_event.*\[' mod/ | grep -v vendor`
+
+### Upgrade succeeds (exit 0) despite "Cannot include elgg-plugin.php" warnings
+
+During `elgg-cli upgrade async`, Elgg logs `ERROR: Cannot include elgg-plugin.php for plugin X` for
+plugins that don't have an `elgg-plugin.php` (still in 2.x/3.x format with only `start.php`). These
+are non-fatal warnings — the upgrade completes successfully (exit 0) even if many plugins log this.
+The affected plugins simply won't be activated during the upgrade run; they remain disabled until
+migrated.
+
+### Validation test (2026-05-14)
+
+Tested via Docker 7x stack (PHP 8.3, `bodyology7x-app-1`), seeded with 6x DB dump:
+- Phinx migration `20250904095834 UpdateSystemLog` ran successfully
+- `elgg-cli upgrade async` exit code: 0
+- Additional fixes required beyond what the 5→6 step needed (see above)
+- Site returned HTTP 200, CSS 164KB ✓
+- Elgg version: 7.0.0-rc.1
