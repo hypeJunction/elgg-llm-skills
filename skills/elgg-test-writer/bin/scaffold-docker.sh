@@ -218,30 +218,46 @@ if [ -f "$dev_md_src" ]; then
     copy_if_missing "$dev_md_src" "$dev_md_dst"
 fi
 
-# Extend .gitignore so local files don't get committed.
+# Extend .gitignore so local / generated test files don't get committed.
 #
-# Ensure the file ends with a trailing newline before appending — without
-# this, `printf '<entry>\n' >> .gitignore` concatenates the new entry onto
-# the last existing line (e.g. `Gemfile.lockdocker/.env`).
+# This is the single owner of the test-stack .gitignore entries — the
+# phpunit/playwright artifacts used to be appended ad-hoc by agents, which
+# left files without a trailing newline and produced glued lines like
+# `tests/playwright/test-results/docker/.env`.
 gitignore="$plugin_dir/.gitignore"
+
+# Append a newline only if the file is non-empty and its last byte isn't one.
+# `$(tail -c1 ...)` strips a trailing newline, so a final newline byte yields
+# an empty string. Pure shell — no dependency on xxd/od.
 ensure_trailing_newline() {
     local f="$1"
-    [ -f "$f" ] || return 0
     [ -s "$f" ] || return 0
-    if [ "$(tail -c1 "$f" | xxd -p)" != "0a" ]; then
+    if [ -n "$(tail -c1 "$f")" ]; then
         printf '\n' >> "$f"
     fi
 }
-if ! { [ -f "$gitignore" ] && grep -qE '^docker/\.env$' "$gitignore"; }; then
+
+# Idempotently ensure each entry is present as its own exact line. `grep -Fxq`
+# matches the whole line literally, so a glued or partial line is correctly
+# treated as missing and the proper entry gets appended.
+gitignore_entries=(
+    'docker/.env'
+    'tests/deps.local.txt'
+    'tests/.phpunit.result.cache'
+    'tests/.phpunit.cache/'
+    'tests/playwright/node_modules/'
+    'tests/playwright/package-lock.json'
+    'tests/playwright/playwright-report/'
+    'tests/playwright/test-results/'
+)
+for entry in "${gitignore_entries[@]}"; do
+    if [ -f "$gitignore" ] && grep -Fxq "$entry" "$gitignore"; then
+        continue
+    fi
     ensure_trailing_newline "$gitignore"
-    printf 'docker/.env\n' >> "$gitignore"
-    echo "  appended to .gitignore: docker/.env"
-fi
-if ! { [ -f "$gitignore" ] && grep -q 'deps.local.txt' "$gitignore"; }; then
-    ensure_trailing_newline "$gitignore"
-    printf 'tests/deps.local.txt\n' >> "$gitignore"
-    echo "  appended to .gitignore: tests/deps.local.txt"
-fi
+    printf '%s\n' "$entry" >> "$gitignore"
+    echo "  appended to .gitignore: $entry"
+done
 
 cat <<NEXT
 

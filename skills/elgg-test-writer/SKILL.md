@@ -87,7 +87,7 @@ The script writes:
     <plugin>/docker/.env.example
     <plugin>/docker/.env                  (PLUGIN_ID filled in)
     <plugin>/DEVELOPMENT.md               (if missing)
-    <plugin>/.gitignore                   (appends docker/.env)
+    <plugin>/.gitignore                   (ensures docker/.env + test-runner artifacts)
 
 Existing files are left alone unless `--force` is passed. After the
 scaffold runs, every subsequent command — `docker compose -f
