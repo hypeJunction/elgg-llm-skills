@@ -121,6 +121,94 @@ starts skipping steps to "get to the end." Guard: if you find yourself
 shortcutting, commit what you have, push it, and hand off to a fresh
 session with a beads issue describing exactly where you stopped.
 
+## Freelance migration anti-patterns
+
+These are failure modes specific to long-running sessions where the agent
+stops following the skill's process and starts inventing its own. They are
+the "I'll just do it faster" failures. Every one of them silently violates
+multiple Iron Laws and produces commits that look like migrations but
+aren't. The 17 acceptance gates exist to catch them — skip the gates and
+the freelance becomes invisible until much later.
+
+**Doing N→N+1 and N→N+2 in the same session.** Symptom: the agent edits
+plugin files with both N+1 and N+2 APIs in the same commit ("just do 4x
+and 5x together — they're so similar"). Violates Iron Laws 1 and 7. Each
+major step has its own AST rules, its own pre-migration tests, its own
+gate run, and its own *self-consistent* API surface. Trying to land at
+"4.x+" is meaningless — there is no such version. A file with both
+`\Elgg\Hook` and `\Elgg\Event` type hints is broken, not "compatible."
+Guard: branch is named `migrate/elgg-N.x` for exactly ONE N; if you
+notice yourself reaching for N+1 APIs while you should be on N, stop —
+the migration you're doing is N→N+1, not whatever's in your head.
+
+**Rsync'ing migrated files across migrate branches.** Symptom: a single
+"migration" commit lands on both `migrate/elgg-4.x` and
+`migrate/elgg-5.x` by copying the same files. The agent thinks "they're
+the same plugin." They're not — each branch represents a *different
+Elgg version's API surface*. Rsync skips: the 4→5 AST rules
+(hook→event renames), the 4.x→5.x verifier (catches 5.x APIs
+accidentally used while on 4.x and vice versa), the pre-migration tests
+adapted for the new API, and the 17 acceptance gates for that branch.
+The 4.x commit is *probably* valid; the 5.x commit isn't a migration,
+it's a copy. Guard: every migrate branch is its own session with its own
+gate report. If the same plugin appears in commit histories of two
+adjacent branches with identical diffs, redo the second one properly.
+
+**Migrating site-embedded customs as if they were plugin repos.** A site
+repo (e.g. a bodyology-forum-style monorepo) holds custom plugins
+git-tracked inside `mod/`. The skill is for plugin repos — separate
+repos with their own `docker/elgg{N}/` infra, their own `migrate/elgg-N.x`
+branches based on the previous one, their own `tests/`. Editing customs
+in-place on a site repo's `migrate/4.x` branch (which is a *site*
+branch) skips Docker infra per branch, branch linearity, plugin-repo
+verify, plugin-level beads tracking, and the entire "one plugin × one
+version cell" model. Symptom: the agent commits "fix(4.x): migrate
+community_spam_tools" on the site repo's `migrate/4.x` instead of on
+`community_spam_tools` plugin repo's `migrate/elgg-4.x`. Guard: before
+editing any custom, ask: does this plugin have its own repo? If no, the
+correct first step is to **extract it to one** (with `git filter-repo`
+preserving history if useful), then run the skill there. Site repo
+just composer-includes the migrated plugin.
+
+**Treating "site activates with N plugins" as a migration success metric.**
+The fleet-level worktrees (`/tmp/bodyology-{2..6}x`) verify whether the
+site BOOTS with a given composer-resolved plugin set. They are an
+input to `elgg-site-upgrade`, not output of `elgg-migrate`. A plugin
+that boots in the site stack but has no pre-migration tests, no
+`--verify --security` pass, no PHPCS, no ARCHITECTURE.md, and no gate
+report is not migrated — it's *included*. Guard: "did the gates pass
+for this plugin × this version step" is the only definition of migrated.
+Site-level boot is necessary but not sufficient.
+
+**Filing migration commits without a gate report.** The skill's
+subagent contract says: every migration commit must report PASS/FAIL/
+SKIP-WITH-REASON on each of the 17 acceptance gates. A commit message
+that says "migrate(4.x): community_spam_tools to elgg-plugin.php"
+without listing what gates ran is missing the only evidence that the
+migration actually happened. Guard: if you can't list which gates
+passed for the commit you're about to make, the commit is premature —
+go back and run the gates first.
+
+**"Just one more plugin" creep.** When the user says "continue," the
+agent assumes "do another plugin like the last one" rather than
+"resume from the documented state with proper gates." On a long
+session this compounds: each "continue" adds another freelance
+migration to the pile. The "speed" feels productive but every commit
+is a future cleanup task. Guard: "continue" after a checkpoint means
+"proceed with the *next gate* of the *current plugin*" by default,
+NOT "start the next plugin." Confirm scope explicitly before moving
+to a new plugin.
+
+**Substituting custom verification for the skill's verification.** The
+agent writes its own `verify-something.sh` to check the site boots
+and reports OK/FAIL counts. The skill ships `bin/elgg-migrate-verify`
+that runs the documented gates and produces a structured report. The
+custom script measures different things, will diverge over time, and
+its output isn't recognized by the skill's downstream tooling.
+Guard: if you're tempted to write a verifier, first check whether
+`bin/elgg-migrate-verify` already does what you need. If it doesn't,
+extend that script — don't write a parallel one.
+
 ## Recovery playbook
 
 When things go wrong — and they will — the right move is almost never

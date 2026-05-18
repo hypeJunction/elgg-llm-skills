@@ -109,6 +109,15 @@ Same structure as 4.x with these changes:
 - Private settings removed (migrated to metadata)
 - Some plugins rename handler classes: e.g., `TidypicsHooks` → `TidypicsEvents`
 
+**5.x removed functions** (every removal here is a boot-time fatal if any code path still references it; sweep with `grep -rn` across the plugin):
+
+| Removed | Replacement |
+|---------|-------------|
+| `add_translation('en', $arr)` (in `languages/*.php`) | `return [...]` from the language file; Elgg auto-discovers the return value. **4.x accepts both formats — migrate everything during 3→4 to avoid a 5.x sweep.** |
+| `elgg_ws_expose_function('foo', ...)` | Declare REST methods in `elgg-plugin.php` under `'webservices'` key, or as `\Elgg\WebServices\ApiMethods\*` classes. Plugins not yet refactored: guard with `if (!function_exists('elgg_ws_expose_function')) return;` so they no-op cleanly. |
+| `elgg_get_total_comments()` previously provided by hypestash | If a plugin depends on hypestash for this helper, the dependency must be declared in `composer.json` (`hypejunction/hypestash`) AND in `.plugin-order.txt` before the consumer — Elgg-core didn't absorb this one, hypestash still owns it. |
+| `\Elgg\Hook` interface | Renamed to `\Elgg\Event` in 5.x. All hook handler signatures must change type hint from `\Elgg\Hook $hook` → `\Elgg\Event $event`; bodies that called `$hook->getValue()` / `getParam()` / `getType()` keep the same method names on the new object. The `'hooks'` key in `elgg-plugin.php` is removed — everything goes under `'events'`. |
+
 ### Elgg 6.x — ES Modules Era
 
 Same structure as 5.x with:
@@ -162,6 +171,9 @@ Same structure as 5.x with:
 - [ ] Remove deprecated actions that core now handles
 - [ ] Migrate private settings → metadata
 - [ ] Consider renaming handler classes (e.g., `Hooks.php` → `Events.php`) for clarity
+- [ ] **Sweep all language files** for `add_translation()` calls — convert to `return [...]` format (single unconverted file 500s every page load): `grep -rln 'add_translation' mod/<plugin>/languages/`
+- [ ] **Sweep for `elgg_ws_expose_function()` calls** — guard with `function_exists()` (no-op) or refactor to declarative `'webservices'` in `elgg-plugin.php`
+- [ ] Drop plugins **superseded by core** from `.plugin-order.txt` if not already done at 3→4 (e.g. `apiadmin` conflicts with core `web_services` on `api_key` subtype; `mrclay_combiner` is incompatible with the AMD asset pipeline)
 
 **5.x → 6.x: Modernize JS and add capabilities**
 - [ ] Bump `composer.json`: `php >=8.2`, `elgg/elgg ^6.0`; bump 3rd-party deps for PHP 8.2
