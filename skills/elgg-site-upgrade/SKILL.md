@@ -473,7 +473,14 @@ Activation passing and homepage 200 are necessary but not sufficient: a
 silent regression can ship a page that *renders* but with completely
 different (or missing) content. Take an HTTP snapshot of a fixed set of
 anonymous-accessible pages on each version and compare against a known-good
-baseline (typically 3.x for a 2.x→7.x path).
+baseline.
+
+**The baseline is the production source version** — the actual state your
+users see today — not an intermediate migration step. For a 2.x→7.x upgrade,
+baseline 2.x; for a 3.x→7.x upgrade, baseline 3.x. The intermediate steps
+exist to satisfy Iron Law 1 (one major at a time, so each Elgg upgrade
+script runs), but the *content contract* is "the site after the upgrade
+shows the same things the site before the upgrade showed."
 
 The bodyology runner (`bin/verify-migration-path.sh`) implements this gate
 out of the box. After the activation + simplecache checks, it:
@@ -498,8 +505,11 @@ goal is to catch *catastrophic* drift, not pixel-perfect parity.
 Override with environment variables:
 
 ```bash
-SNAPSHOT_BASELINE=2x SNAPSHOT_DRIFT_PCT=30 bin/verify-migration-path.sh
+SNAPSHOT_BASELINE=3x SNAPSHOT_DRIFT_PCT=30 bin/verify-migration-path.sh
 ```
+
+The bodyology runner defaults to `SNAPSHOT_BASELINE=2x` because that's
+production. Override only when a project's source is something else.
 
 For projects that aren't bodyology, port the same shape: pick a small set
 of representative anonymous routes (login, list pages for any plugin you
