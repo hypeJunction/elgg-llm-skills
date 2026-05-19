@@ -289,10 +289,51 @@ and outputs a structured PASS/FAIL report:
 # After `docker compose -f docker/docker-compose.yml up -d` in the plugin dir:
 ~/.claude/skills/elgg-migrate/bin/elgg-migrate-verify /path/to/plugin
 ~/.claude/skills/elgg-migrate/bin/elgg-migrate-verify /path/to/plugin --phpunit
+
+# Or against an `elgg-migrate-run`-orchestrated stack (no per-plugin compose file):
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-verify /path/to/plugin \
+  --project=em-<plugin>-<sha> --json
 ```
 
 Gates covered: PHP syntax (excl. vendor/tests), homepage render (>1000 bytes),
 login render (>1000 bytes), PHP Fatal/Error count in Apache log, PHPUnit suite.
+
+### Fleet activation gate
+
+For the "plugin activates in Docker" gate at fleet scale (all plugins in a
+workspace, one branch at a time), use the `verify-fleet` subcommand of
+`elgg-migrate-run`. It walks every plugin under the configured
+`plugins_source`, guards on current branch, runs `cmd_up` + `elgg-migrate-verify`
+per plugin, and writes NDJSON results.
+
+```bash
+# Confirm each plugin currently sits on migrate/elgg-7.x; run the full
+# elgg-migrate-verify gate against each; emit one NDJSON line per plugin.
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-run verify-fleet \
+  --version=elgg7 \
+  --require-branch=migrate/elgg-7.x \
+  --output=/tmp/fleet-elgg7.ndjson
+
+# Dry-run: discovery + branch check only, no Docker.
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-run verify-fleet --dry-run
+
+# Narrow to a few plugins, keep failing stacks up for inspection.
+~/.claude/skills/elgg-migrate/bin/elgg-migrate-run verify-fleet \
+  --only=hypefolders,hypescraper --keep-up-on-fail
+```
+
+Per-plugin status values in the NDJSON: `pass`, `up_failed`, `activation_failed`,
+`not_attempted` (plugin id never appeared in activation log), `verify_failed`,
+`skip` (branch mismatch), `dry_run`. Each `pass`/`verify_failed` row also
+carries a `verify.gates` object with the syntax / render / php_errors / phpcs /
+phpunit gate states.
+
+**Why this gate matters** — static branch checks (`run-fleet-verification.sh`)
+don't load the plugin into PHP, so signature-incompatibility fatals, missing
+abstract-method implementations, and references to removed constants
+(`ELGG_CACHE_PERSISTENT` in 7.x, `Elgg\PluginBootstrap` superclass changes)
+pass static review and only surface when the site boots. `verify-fleet` is the
+runtime counterpart — gate 9 (Iron Law 3) applied across the fleet.
 
 ---
 
