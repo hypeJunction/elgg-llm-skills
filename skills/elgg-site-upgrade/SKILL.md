@@ -468,6 +468,44 @@ passing count must match the baseline from Part A's test phase. See
 pitfalls (hypeWall interception, foreach-by-reference crashes, OPcache
 stale code).
 
+**Anonymous page contents are stable across versions (snapshot drift gate).**
+Activation passing and homepage 200 are necessary but not sufficient: a
+silent regression can ship a page that *renders* but with completely
+different (or missing) content. Take an HTTP snapshot of a fixed set of
+anonymous-accessible pages on each version and compare against a known-good
+baseline (typically 3.x for a 2.x→7.x path).
+
+The bodyology runner (`bin/verify-migration-path.sh`) implements this gate
+out of the box. After the activation + simplecache checks, it:
+
+1. `curl`s a fixed set of URLs against the running stack (`/`, `/login`,
+   `/activity`, `/members`, `/groups/all`, `/news/all`) and saves each
+   HTML response under `/tmp/bodyology-snapshot-<ver>/<slug>.html`.
+2. Records HTTP code, byte size, and `<title>` in `pages.tsv`.
+3. After all stacks run, walks every baseline page and reports per-version:
+
+   - HTTP code match (`200→200`, not `200→500`)
+   - Byte size within ±50% of baseline (`SNAPSHOT_DRIFT_PCT` env var to
+     override) — a 30 KB activity page collapsing to 1 KB is a regression
+     even with HTTP 200
+   - Baseline had a real `<title>` and this version says `Fatal Error.`
+
+The threshold is intentionally wide: real version differences (theme
+overrides, new features, deprecated widgets) move byte counts by 10–30%.
+Tight thresholds (e.g. ±5%) drown the report in false positives. The
+goal is to catch *catastrophic* drift, not pixel-perfect parity.
+
+Override with environment variables:
+
+```bash
+SNAPSHOT_BASELINE=2x SNAPSHOT_DRIFT_PCT=30 bin/verify-migration-path.sh
+```
+
+For projects that aren't bodyology, port the same shape: pick a small set
+of representative anonymous routes (login, list pages for any plugin you
+trust), snapshot once on the last-known-good version, then re-snapshot on
+each upgrade step and diff.
+
 When any gate fails, fix it in the workspace, commit the fix, and re-run
 the failing gate. Don't mask failures by commenting tests out.
 
