@@ -70,4 +70,5 @@ skills-lock.json
 bin/bd-swarm.sh
 bin/bd-swarm-watch.sh
 .swarm-logs
-.idea__pycache__/
+.idea
+__pycache__/
