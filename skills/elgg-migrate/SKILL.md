@@ -930,7 +930,7 @@ After documenting the architecture, update the public-facing docs to the hypeJun
 
 1. **Audit:** `bin/audit-plugin-docs.sh <plugin-path>` — review all flagged issues (badge version, donation CTAs, hypejunction.com refs, missing description).
 2. **Auto-fix:** `bin/fix-plugin-docs.sh <plugin-path> --apply` — rewrites badge, strips CTAs, replaces hypejunction.com URLs.
-3. **Rewrite README.md** from `templates/README.md.tpl` — fill in NAME, ELGG_VERSION (from `elgg/elgg` constraint), REPO_SLUG, a fresh 1-2 sentence tagline, FEATURES, LICENSE. Drop all legacy stacked badges and donation/sponsor blocks.
+3. **Rewrite README.md** from `templates/README.md.tpl` — fill in NAME, ELGG_VERSION (from `elgg/elgg` constraint), VENDOR (the org part of your Composer name, e.g. `hypejunction`), REPO_SLUG, a fresh 1-2 sentence tagline, FEATURES, LICENSE. Drop all legacy stacked badges and donation/sponsor blocks.
 3b. **Update compatibility table** — after rewriting README.md, update the `## Compatibility` section:
     - Read the `elgg/elgg` constraint from `composer.json` to derive the target Elgg major version (e.g. `~7.0.0` → `7.x`).
     - If the README has no `## Compatibility` section, append one with a starter row: `| current | 7.x |`.

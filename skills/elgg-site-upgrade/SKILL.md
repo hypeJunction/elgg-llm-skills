@@ -482,12 +482,14 @@ exist to satisfy Iron Law 1 (one major at a time, so each Elgg upgrade
 script runs), but the *content contract* is "the site after the upgrade
 shows the same things the site before the upgrade showed."
 
-The bodyology runner (`bin/verify-migration-path.sh`) implements this gate
-out of the box. After the activation + simplecache checks, it:
+A per-project verify-migration runner (typically in your project's
+`bin/`, e.g. `verify-migration-path.sh`) implements this gate. After the
+activation + simplecache checks, it:
 
-1. `curl`s a fixed set of URLs against the running stack (`/`, `/login`,
-   `/activity`, `/members`, `/groups/all`, `/news/all`) and saves each
-   HTML response under `/tmp/bodyology-snapshot-<ver>/<slug>.html`.
+1. `curl`s a fixed set of URLs against the running stack (e.g. `/`,
+   `/login`, `/activity`, `/members`, `/groups/all`, plus any plugin
+   index pages you rely on) and saves each HTML response under
+   `/tmp/<project>-snapshot-<ver>/<slug>.html`.
 2. Records HTTP code, byte size, and `<title>` in `pages.tsv`.
 3. After all stacks run, walks every baseline page and reports per-version:
 
@@ -498,9 +500,10 @@ out of the box. After the activation + simplecache checks, it:
    - Baseline had a real `<title>` and this version says `Fatal Error.`
 
 The threshold is intentionally wide: real version differences (theme
-overrides, new features, deprecated widgets) move byte counts by 10–30%.
-Tight thresholds (e.g. ±5%) drown the report in false positives. The
-goal is to catch *catastrophic* drift, not pixel-perfect parity.
+overrides, new features, deprecated widgets) move byte counts by 10–30%
+per step, and 2–4× across a 2.x→7.x sweep. Tight thresholds (e.g. ±5%)
+drown the report in false positives. The goal is to catch *catastrophic*
+drift, not pixel-perfect parity.
 
 Override with environment variables:
 
@@ -508,13 +511,13 @@ Override with environment variables:
 SNAPSHOT_BASELINE=3x SNAPSHOT_DRIFT_PCT=30 bin/verify-migration-path.sh
 ```
 
-The bodyology runner defaults to `SNAPSHOT_BASELINE=2x` because that's
-production. Override only when a project's source is something else.
+Default the baseline to whatever your production site runs today.
 
-For projects that aren't bodyology, port the same shape: pick a small set
-of representative anonymous routes (login, list pages for any plugin you
-trust), snapshot once on the last-known-good version, then re-snapshot on
-each upgrade step and diff.
+Picking the URL set: anything anonymous-accessible that a logged-out
+visitor lands on. Login form, public activity feed, members and groups
+indexes if those plugins are active, and any plugin-specific index your
+users hit (news, blog, gallery, etc.). Avoid auth-gated pages — they
+need session-aware tooling, which is what Playwright covers in step 7.
 
 When any gate fails, fix it in the workspace, commit the fix, and re-run
 the failing gate. Don't mask failures by commenting tests out.
