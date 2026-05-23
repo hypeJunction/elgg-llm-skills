@@ -242,7 +242,7 @@ if [[ "$EMIT_JSON" -eq 1 ]]; then
         --arg id "$id" --arg s "${GATE_STATUS[$id]}" --arg d "${GATE_DETAIL[$id]}" \
         '$g + {($id): {status: $s, detail: $d}}')"
     done
-    jq -n \
+    jq -nc \
       --arg plugin "$PLUGIN_ID" \
       --argjson pass "$PASS" --argjson fail "$FAIL" --argjson skip "$SKIP" \
       --argjson gates "$gates_json" \
