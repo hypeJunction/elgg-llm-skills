@@ -226,7 +226,14 @@ classify_dep() {
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
   local override="$plugin_dir/tests/deps.txt"
-  if [[ -f "$override" ]]; then
+  # The override file is opt-in: only treat it as authoritative when it
+  # actually contains at least one non-comment, non-empty line. A file
+  # that is all comments (annotating *why* there are no deps to mount)
+  # used to silently zero out the elgg-plugin.php-declared deps —
+  # plugin-order.txt would then list only the plugin under test, the
+  # install script wouldn't symlink declared-but-missing core deps,
+  # and activation would fail with "Requires plugin 'X' to be active."
+  if [[ -f "$override" ]] && grep -qE '^[^#[:space:]]' "$override"; then
     local out="[]" line stripped name lower classified source path
     while IFS= read -r line; do
       # Strip everything from a leading '#' (full-line comment) so
