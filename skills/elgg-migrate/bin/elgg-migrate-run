@@ -652,6 +652,7 @@ cmd_verify_fleet() {
 
     sha="$(job_sha "$pdir")"
     jdir="$(job_path "$plugin" "$sha")"
+    mkdir -p "$jdir"
     project="em-${plugin}-${sha}"
 
     # --- up (build + install + activate) -------------------------------------
