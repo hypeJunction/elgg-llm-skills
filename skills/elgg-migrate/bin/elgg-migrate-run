@@ -566,6 +566,16 @@ fleet_check_activation() {
     | parse_activation_log "$plugin"
 }
 
+# Tear down a per-plugin stack by project name without relying on report.json
+# (which cmd_down requires and which doesn't exist on cmd_up failure paths).
+# Running cmd_up failures leave the db + elgg containers up, RAM accumulates,
+# and the fleet sweep eventually gets OOM-killed mid-iteration. This is the
+# hard cleanup used inside verify-fleet.
+fleet_force_down() {
+  local project="$1"
+  docker compose --project-name "$project" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+
 cmd_verify_fleet() {
   local version="elgg7"
   local require_branch="migrate/elgg-7.x"
@@ -682,7 +692,7 @@ cmd_verify_fleet() {
             --arg log "$jdir/verify-fleet.log" \
         '{plugin:$p, version:$v, status:"up_failed", branch:$b, sha:$s, log:$log}' >> "$output"
       fail=$(( fail + 1 ))
-      (( keep_up_on_fail )) || cmd_down "$plugin" >/dev/null 2>&1 || true
+      (( keep_up_on_fail )) || fleet_force_down "$project"
       continue
     fi
 
@@ -702,7 +712,7 @@ cmd_verify_fleet() {
             --arg st "$act_status" --arg d "$act_detail" --arg pj "$project" \
         '{plugin:$p, version:$v, status:$st, branch:$b, sha:$s, project:$pj, error:$d}' >> "$output"
       fail=$(( fail + 1 ))
-      (( keep_up_on_fail )) || cmd_down "$plugin" >/dev/null 2>&1 || true
+      (( keep_up_on_fail )) || fleet_force_down "$project"
       continue
     fi
 
@@ -735,14 +745,14 @@ cmd_verify_fleet() {
             --arg pj "$project" --argjson g "$verify_json" \
         '{plugin:$p, version:$v, status:"pass", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
       pass=$(( pass + 1 ))
-      cmd_down "$plugin" >/dev/null 2>&1 || true
+      fleet_force_down "$project"
     else
       printf "FAIL (gates)\n"
       jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
             --arg pj "$project" --argjson g "$verify_json" \
         '{plugin:$p, version:$v, status:"verify_failed", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
       fail=$(( fail + 1 ))
-      (( keep_up_on_fail )) || cmd_down "$plugin" >/dev/null 2>&1 || true
+      (( keep_up_on_fail )) || fleet_force_down "$project"
     fi
   done
 
