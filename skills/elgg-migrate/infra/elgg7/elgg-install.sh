@@ -102,7 +102,17 @@ SETTINGS_VALUES
                 if (empty(\$id) || \$id[0] === '#') continue;
                 \$plugin = elgg_get_plugin_from_id(\$id);
                 if (!\$plugin) { echo 'Plugin not found: ' . \$id . PHP_EOL; continue; }
-                if (\$plugin->isActive()) { \$activated++; continue; }
+                if (\$plugin->isActive()) {
+                    // Plugin was auto-activated by ElggInstaller::batchInstall
+                    // (which activates everything in mod/ before this loop
+                    // runs). Echo '+ <id>' anyway so the activation-log parser
+                    // can distinguish 'activated' from 'not_attempted' — without
+                    // this, the verify-fleet gate misreports successfully-active
+                    // plugins as not_attempted.
+                    \$activated++;
+                    echo '  + ' . \$id . PHP_EOL;
+                    continue;
+                }
                 try {
                     // Bump each plugin to the highest priority among
                     // inactives at activation time. The .plugin-order.txt
