@@ -576,6 +576,7 @@ cmd_verify_fleet() {
   local skip_phpcs_arg=""
   local keep_up_on_fail=0
   local dry_run=0
+  local resume=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --version=*)        version="${1#*=}" ;;
@@ -587,6 +588,7 @@ cmd_verify_fleet() {
       --no-phpcs)         skip_phpcs_arg="--no-phpcs" ;;
       --keep-up-on-fail)  keep_up_on_fail=1 ;;
       --dry-run)          dry_run=1 ;;
+      --resume)           resume=1 ;;
       *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
     shift
@@ -602,7 +604,19 @@ cmd_verify_fleet() {
 
   : "${output:=$STATE_HOME/fleet-activation-${version}.ndjson}"
   mkdir -p "$(dirname "$output")"
-  : > "$output"  # truncate
+  if (( resume )) && [[ -s "$output" ]]; then
+    echo "resume: appending to existing $output ($(wc -l < "$output") prior rows)"
+  else
+    : > "$output"  # truncate
+  fi
+
+  # When resuming, track which plugins already have a row so we can skip them.
+  local -A done_plugins=()
+  if (( resume )); then
+    while IFS= read -r p; do
+      [[ -n "$p" ]] && done_plugins["$p"]=1
+    done < <(jq -r '.plugin // empty' "$output" 2>/dev/null)
+  fi
 
   local verify_script="$BIN_DIR/elgg-migrate-verify"
   [[ -x "$verify_script" ]] || { echo "missing: $verify_script" >&2; exit 2; }
@@ -632,6 +646,12 @@ cmd_verify_fleet() {
     idx=$(( idx + 1 ))
     pdir="$src/$plugin"
     printf "[%3d/%d] %-40s " "$idx" "$total" "$plugin"
+
+    # --- resume guard ---------------------------------------------------------
+    if (( resume )) && [[ -n "${done_plugins[$plugin]:-}" ]]; then
+      printf "RESUME-SKIP (already recorded)\n"
+      continue
+    fi
 
     # --- branch guard ---------------------------------------------------------
     current="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
