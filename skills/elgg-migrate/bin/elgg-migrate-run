@@ -58,7 +58,7 @@ config_set() {
   if [[ -f "$CONFIG_FILE" ]]; then
     jq --arg k "$key" --arg v "$val" '.[$k] = $v' "$CONFIG_FILE" > "$tmp"
   else
-    jq -n --arg k "$key" --arg v "$val" '{($k): $v}' > "$tmp"
+    jq -nc --arg k "$key" --arg v "$val" '{($k): $v}' > "$tmp"
   fi
   mv "$tmp" "$CONFIG_FILE"
 }
@@ -637,7 +637,7 @@ cmd_verify_fleet() {
     current="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
     if [[ "$current" != "$require_branch" ]]; then
       printf "SKIP (branch=%s)\n" "${current:-detached}"
-      jq -n --arg p "$plugin" --arg v "$version" --arg rb "$require_branch" --arg cb "$current" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg rb "$require_branch" --arg cb "$current" \
         '{plugin:$p, version:$v, status:"skip", reason:"branch_mismatch", required_branch:$rb, current_branch:$cb}' \
         >> "$output"
       skip=$(( skip + 1 )); continue
@@ -645,7 +645,7 @@ cmd_verify_fleet() {
 
     if (( dry_run )); then
       printf "DRY-RUN (on %s)\n" "$require_branch"
-      jq -n --arg p "$plugin" --arg v "$version" --arg b "$require_branch" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" \
         '{plugin:$p, version:$v, status:"dry_run", branch:$b}' >> "$output"
       continue
     fi
@@ -658,7 +658,7 @@ cmd_verify_fleet() {
     # --- up (build + install + activate) -------------------------------------
     if ! cmd_up "$plugin" --version="$version" >> "$jdir/verify-fleet.log" 2>&1; then
       printf "FAIL (up)\n"
-      jq -n --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
             --arg log "$jdir/verify-fleet.log" \
         '{plugin:$p, version:$v, status:"up_failed", branch:$b, sha:$s, log:$log}' >> "$output"
       fail=$(( fail + 1 ))
@@ -678,7 +678,7 @@ cmd_verify_fleet() {
 
     if [[ "$act_status" != "activated" ]]; then
       printf "FAIL (%s)\n" "$act_status"
-      jq -n --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
             --arg st "$act_status" --arg d "$act_detail" --arg pj "$project" \
         '{plugin:$p, version:$v, status:$st, branch:$b, sha:$s, project:$pj, error:$d}' >> "$output"
       fail=$(( fail + 1 ))
@@ -703,14 +703,14 @@ cmd_verify_fleet() {
 
     if (( verify_rc == 0 )); then
       printf "PASS\n"
-      jq -n --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
             --arg pj "$project" --argjson g "$verify_json" \
         '{plugin:$p, version:$v, status:"pass", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
       pass=$(( pass + 1 ))
       cmd_down "$plugin" >/dev/null 2>&1 || true
     else
       printf "FAIL (gates)\n"
-      jq -n --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
             --arg pj "$project" --argjson g "$verify_json" \
         '{plugin:$p, version:$v, status:"verify_failed", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
       fail=$(( fail + 1 ))
