@@ -697,7 +697,15 @@ cmd_verify_fleet() {
     set -e
     # Last line of stdout is the JSON summary; earlier lines are the TTY report
     # (in case the user is watching live).
-    verify_json="$(tail -n1 "$verify_tmp" | jq -c . 2>/dev/null || echo '{}')"
+    # Pick the last line that looks like a JSON object. tail -n1 isn't
+    # robust here: elgg-migrate-verify can emit trailing TTY noise (e.g.
+    # phpcs error summaries) after its final compact-JSON line on some
+    # gates' failure paths, and an unparseable last line then poisons
+    # the downstream --argjson call and kills the fleet sweep.
+    verify_json="$(grep -E '^\{.*\}$' "$verify_tmp" | tail -n1)"
+    if ! printf '%s' "$verify_json" | jq -e . >/dev/null 2>&1; then
+      verify_json='{}'
+    fi
     cat "$verify_tmp" | sed '$d'  # echo TTY report (drop json line)
     rm -f "$verify_tmp"
 
