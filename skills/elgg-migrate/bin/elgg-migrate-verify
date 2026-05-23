@@ -116,7 +116,7 @@ echo ""
 
 echo "  ── PHP syntax ──────────────────────────────────────────────────"
 syntax_errors=$(dc exec elgg sh -c \
-  "find mod/$PLUGIN_ID -name '*.php' | grep -v /vendor/ | grep -v /tests/ | xargs php -l 2>&1 | grep -v 'No syntax errors' || true" 2>&1 \
+  "find mod/$PLUGIN_ID -name '*.php' | grep -v /vendor/ | grep -v /vendors/ | grep -v /tests/ | xargs php -l 2>&1 | grep -v 'No syntax errors' || true" 2>&1 \
   | grep -v "^$" || true)
 if [[ -z "$syntax_errors" ]]; then
   gate "PHP syntax clean (excl. vendor, tests)" PASS "" syntax
