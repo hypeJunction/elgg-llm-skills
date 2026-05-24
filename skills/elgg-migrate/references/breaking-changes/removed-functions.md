@@ -245,6 +245,7 @@ Use this as the definitive reference for building automated migration checks.
 - `elgg_register_tag_metadata_name()`
 - `elgg_get_registered_tag_metadata_names()`
 - `elgg_unregister_tag_metadata_name()`
+- `elgg_register_admin_menu_item()` -> declarative `menus.page.<plugin_id>` block in `elgg-plugin.php` (no deprecation shim; activation fatal in 4.x)
 - `create_api_user()`, `get_api_user()`, `remove_api_user()`
 - `create_user_token()`, `get_user_tokens()`, `validate_user_token()`
 - `remove_user_token()`, `remove_expired_user_tokens()`
@@ -252,6 +253,17 @@ Use this as the definitive reference for building automated migration checks.
 - `service_handler()`, `ws_page_handler()`, `ws_rest_handler()`
 - `pam_auth_session()`
 - `get_standard_api_key_array()`
+
+## 3.x to 4.0: Deprecated Functions (still ship in deprecated-4.x.php; REMOVED in 5.x)
+
+These are NOT removed in 4.0 — they still work through 4.3 via the
+`engine/lib/deprecated-4.x.php` shims. Flagging them as "removed in 4.0" is a
+false positive (see bd elgg-migrate-4pye6). Fix them at the 3→4 boundary to avoid
+a 5.x activation landmine (bd elgg-migrate-5h0u4).
+
+- `forward()` (deprecated-4.0.php) -> `elgg_redirect_response()` or throw `\Elgg\Exceptions\HttpException`
+- `elgg_register_entity_type()` (deprecated-4.1.php) -> `'entities'` key in `elgg-plugin.php`
+- `add_translation()` (deprecated-4.3.php) -> rewrite `languages/<lang>.php` to `return ['key' => 'value', ...];`
 
 ## 3.x to 4.0: Removed Hooks/Events
 
@@ -278,6 +290,11 @@ Use this as the definitive reference for building automated migration checks.
 - `get_user_by_email` -> `elgg_get_user_by_email`
 - `get_user_by_username` -> `elgg_get_user_by_username`
 - `ElggWidget::saveSettings()`
+- `add_translation` (was deprecated-only in 4.3) -> `return ['key' => 'value', ...];` at the top of `languages/<lang>.php`
+- `forward` (was deprecated-only in 4.0) -> `elgg_redirect_response()` or throw `\Elgg\Exceptions\HttpException`
+- `elgg_register_entity_type` (was deprecated-only in 4.1) -> `'entities'` key in `elgg-plugin.php`
+- `current_page_url` -> `elgg_get_current_url`
+- `get_default_access` -> `elgg_get_default_access`
 
 ## 4.x to 5.0: Deprecated APIs (removed in 6.0+)
 

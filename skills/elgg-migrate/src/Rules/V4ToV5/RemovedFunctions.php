@@ -14,22 +14,50 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 
 /**
- * Handles procedural helper functions removed in Elgg 5.0 that have
- * exact 1:1 function renames.
+ * Handles procedural helper functions removed in Elgg 5.0.
  *
- * - current_page_url()   → elgg_get_current_url()
- * - get_default_access() → elgg_get_default_access()
+ * Two categories:
+ * - 'rename': function has an exact 1:1 replacement → auto-renamed
+ * - 'warn':   function removed without a 1:1 swap, refactor required → warn only
+ *
+ * Warn-only entries cover functions that were only deprecated (not removed) in 4.x
+ * but were dropped from deprecated-4.x.php in 5.0 — a latent 5.x landmine that
+ * needs to be flagged at the 4→5 boundary. See bd elgg-migrate-5h0u4.
  */
 final class RemovedFunctions extends AbstractRule
 {
     /**
-     * Map of old function name → new function name.
+     * Map of old function name → entry.
      *
-     * @var array<string, string>
+     * Entry shape:
+     *   ['action' => 'rename', 'replacement' => 'new_fn_name']
+     *   ['action' => 'warn',   'note' => 'human-readable refactor hint']
+     *
+     * @var array<string, array{action: string, replacement?: string, note?: string}>
      */
     public const MAP = [
-        'current_page_url'  => 'elgg_get_current_url',
-        'get_default_access' => 'elgg_get_default_access',
+        // 1:1 renames (auto-applied)
+        'current_page_url' => ['action' => 'rename', 'replacement' => 'elgg_get_current_url'],
+        'get_default_access' => ['action' => 'rename', 'replacement' => 'elgg_get_default_access'],
+
+        // Warn-only: hard-removed in 5.0 (these were deprecated-only in 4.x; the
+        // deprecation shim is dropped in 5.0, causing activation fatals).
+        'add_translation' => [
+            'action' => 'warn',
+            'note' => "Removed in 5.0 (was deprecated-only in 4.3). Rewrite languages/<lang>.php to 'return [\"key\" => \"value\", ...];' instead of calling add_translation(\$code, [...]).",
+        ],
+        'forward' => [
+            'action' => 'warn',
+            'note' => 'Removed in 5.0 (was deprecated-only in 4.0). Use elgg_redirect_response() or throw \\Elgg\\Exceptions\\HttpException.',
+        ],
+        'elgg_register_entity_type' => [
+            'action' => 'warn',
+            'note' => "Removed in 5.0 (was deprecated-only in 4.1). Use the 'entities' key in elgg-plugin.php.",
+        ],
+        'elgg_register_admin_menu_item' => [
+            'action' => 'warn',
+            'note' => "Removed in 4.0 without deprecation (still bites at the 4→5 boundary if not previously fixed). Use a declarative 'menus.page.<plugin_id>' block in elgg-plugin.php.",
+        ],
     ];
 
     public function getId(): string
@@ -69,12 +97,18 @@ final class RemovedFunctions extends AbstractRule
 
             foreach ($calls as $call) {
                 $funcName = $call->name->toString();
-                $replacement = self::MAP[$funcName];
+                $entry = self::MAP[$funcName];
+
+                if ($entry['action'] === 'rename') {
+                    $description = "{$funcName}() removed in 5.0 — rename to {$entry['replacement']}()";
+                } else {
+                    $description = "{$funcName}() removed in 5.0: {$entry['note']}";
+                }
 
                 $findings[] = new Finding(
                     file: $relativePath,
                     line: $call->getLine(),
-                    description: "{$funcName}() removed in 5.0 — rename to {$replacement}()",
+                    description: $description,
                     code: $printer->prettyPrintExpr($call),
                 );
             }
@@ -113,6 +147,16 @@ final class RemovedFunctions extends AbstractRule
             $calls = $this->findFunctionCalls($ast, $targetNames);
             if (empty($calls)) {
                 continue;
+            }
+
+            // Emit warn-only findings up front (they don't transform but must surface)
+            foreach ($calls as $call) {
+                $funcName = $call->name->toString();
+                $entry = self::MAP[$funcName];
+
+                if ($entry['action'] === 'warn') {
+                    $warnings[] = "{$relativePath}:{$call->getLine()} — {$funcName}() removed in 5.0: {$entry['note']}";
+                }
             }
 
             $result = $this->transformFile($code);
@@ -167,7 +211,14 @@ final class RemovedFunctions extends AbstractRule
                     && isset(RemovedFunctions::MAP[$node->name->toString()])
                 ) {
                     $oldName = $node->name->toString();
-                    $newName = RemovedFunctions::MAP[$oldName];
+                    $entry = RemovedFunctions::MAP[$oldName];
+
+                    // Only auto-rename entries; warn-only entries are surfaced in apply().
+                    if ($entry['action'] !== 'rename') {
+                        return null;
+                    }
+
+                    $newName = $entry['replacement'];
                     $this->warnings[] = "{$oldName}() → {$newName}()";
                     $this->changed = true;
 

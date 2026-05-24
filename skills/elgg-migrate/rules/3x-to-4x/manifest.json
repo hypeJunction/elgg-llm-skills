@@ -100,10 +100,10 @@
     },
     {
       "id": "012-removed-functions-4x",
-      "name": "Flag functions deprecated in 3.x and removed in 4.0",
+      "name": "Flag functions removed or deprecated in 4.x",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedFunctions",
-      "breaking_change": "~25 functions removed: validate_*, forward(), plugin settings, filter tabs, etc.",
+      "breaking_change": "~25 hard removals (validate_*, plugin settings, filter tabs, elgg_register_admin_menu_item, etc.) plus a few that ship in deprecated-4.x.php and bite at the 5.x boundary (forward, elgg_register_entity_type, add_translation).",
       "priority": 120
     },
     {
