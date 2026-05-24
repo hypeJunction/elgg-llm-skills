@@ -195,6 +195,96 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    // --- Upgrade class keyword (fh7db regression) ---
+
+    public function testCatchesExtendsAsynchronousUpgradeIn3x(): void
+    {
+        // \Elgg\Upgrade\AsynchronousUpgrade is an interface in 3.x.
+        // 'extends' fatals at autoload — never caught by activation gate.
+        $dir = $this->makePluginDir([
+            'start.php' => "<?php\nreturn function() {};",
+            'elgg-plugin.php' => "<?php\nreturn ['upgrades' => [\\MyPlugin\\Upgrades\\EncodeSettings::class]];",
+            'classes/MyPlugin/Upgrades/EncodeSettings.php' => "<?php\nnamespace MyPlugin\\Upgrades;\nuse Elgg\\Upgrade\\AsynchronousUpgrade;\nuse Elgg\\Upgrade\\Result;\nclass EncodeSettings extends AsynchronousUpgrade {\n    public function getVersion() { return 2026052400; }\n    public function needsIncrementOffset() { return false; }\n    public function shouldBeSkipped() { return false; }\n    public function countItems() { return 0; }\n    public function run(Result \$result, \$offset) { return \$result; }\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $this->assertFalse($result->passed);
+
+            $errors = $result->errors();
+            $upgradeErrors = array_filter(
+                $errors,
+                fn($v) => $v->category === 'upgrade-class-keyword',
+            );
+            $this->assertCount(1, $upgradeErrors, 'Expected one upgrade-class-keyword violation');
+            $violation = array_values($upgradeErrors)[0];
+            $this->assertStringContainsString('AsynchronousUpgrade is an INTERFACE', $violation->message);
+            $this->assertStringContainsString("implements AsynchronousUpgrade", $violation->message);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatchesExtendsSystemUpgradeIn4x(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [];",
+            'classes/MyPlugin/Upgrades/MyUpgrade.php' => "<?php\nnamespace MyPlugin\\Upgrades;\nclass MyUpgrade extends \\Elgg\\Upgrade\\SystemUpgrade {\n    public function getVersion() { return 1; }\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '4.x');
+            $errors = $result->errors();
+            $upgradeErrors = array_filter(
+                $errors,
+                fn($v) => $v->category === 'upgrade-class-keyword',
+            );
+            $this->assertNotEmpty($upgradeErrors, 'Expected upgrade-class-keyword violation for extends SystemUpgrade in 4.x');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testAcceptsImplementsAsynchronousUpgradeIn3x(): void
+    {
+        $dir = $this->makePluginDir([
+            'start.php' => "<?php\nreturn function() {};",
+            'elgg-plugin.php' => "<?php\nreturn ['upgrades' => []];",
+            'classes/MyPlugin/Upgrades/Good.php' => "<?php\nnamespace MyPlugin\\Upgrades;\nuse Elgg\\Upgrade\\AsynchronousUpgrade;\nuse Elgg\\Upgrade\\Result;\nclass Good implements AsynchronousUpgrade {\n    public function getVersion() { return 1; }\n    public function needsIncrementOffset() { return false; }\n    public function shouldBeSkipped() { return true; }\n    public function countItems() { return 0; }\n    public function run(Result \$result, \$offset) { return \$result; }\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $upgradeErrors = array_filter(
+                $result->errors(),
+                fn($v) => $v->category === 'upgrade-class-keyword',
+            );
+            $this->assertEmpty($upgradeErrors, 'implements AsynchronousUpgrade must not be flagged in 3.x');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIgnoresExtendsAsynchronousUpgradeIn5x(): void
+    {
+        // In 5.x, AsynchronousUpgrade is correctly an abstract class — extends is right.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [];",
+            'classes/MyPlugin/Upgrades/Good.php' => "<?php\nnamespace MyPlugin\\Upgrades;\nclass Good extends \\Elgg\\Upgrade\\AsynchronousUpgrade {\n    public function run(int \$count): bool { return true; }\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '5.x');
+            $upgradeErrors = array_filter(
+                $result->errors(),
+                fn($v) => $v->category === 'upgrade-class-keyword',
+            );
+            $this->assertEmpty($upgradeErrors, 'extends AsynchronousUpgrade is correct for 5.x');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Result helpers ---
 
     public function testResultErrorsAndWarningsSeparation(): void

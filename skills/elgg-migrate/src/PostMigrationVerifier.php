@@ -158,6 +158,17 @@ final class PostMigrationVerifier
             $violations = array_merge($violations, $this->check3xStartPhpExists($pluginPath));
         }
 
+        // \Elgg\Upgrade\AsynchronousUpgrade and \Elgg\Upgrade\SystemUpgrade are
+        // INTERFACES in 3.x and 4.x — only became abstract classes in 5.x. The
+        // wrong keyword fatals at autoload when the UI invokes the upgrade,
+        // never during the activation gate. Catch it statically.
+        if (in_array($targetVersion, ['3.x', '4.x'], true)) {
+            $violations = array_merge(
+                $violations,
+                $this->checkUpgradeClassKeyword($pluginPath, $targetVersion),
+            );
+        }
+
         // Smoke-test scaffold check applies to every target version that supports
         // \Elgg\IntegrationTestCase (3.x onwards). Reported as a warning so it
         // surfaces in output without breaking the gate for plugins that haven't
@@ -434,6 +445,55 @@ final class PostMigrationVerifier
                 code: '',
                 category: 'config-structure',
             );
+        }
+
+        return $violations;
+    }
+
+    /**
+     * In 3.x and 4.x, \Elgg\Upgrade\AsynchronousUpgrade and
+     * \Elgg\Upgrade\SystemUpgrade are INTERFACES. They became abstract classes
+     * only in 5.x. A `class Foo extends AsynchronousUpgrade` declaration is a
+     * latent autoload-time fatal — never triggered by the activation gate
+     * because the upgrade class is loaded lazily by the upgrade UI.
+     *
+     * Scan classes/ for `extends AsynchronousUpgrade|SystemUpgrade` (with or
+     * without leading namespace) and flag as an error.
+     *
+     * @return array<Violation>
+     */
+    private function checkUpgradeClassKeyword(string $pluginPath, string $targetVersion): array
+    {
+        $classesDir = $pluginPath . '/classes';
+        if (!is_dir($classesDir)) {
+            return [];
+        }
+
+        $violations = [];
+        $pattern = '/\bextends\s+(?:\\\\?Elgg\\\\Upgrade\\\\)?(AsynchronousUpgrade|SystemUpgrade)\b/';
+
+        foreach ($this->phpFiles($classesDir) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+
+            $relativePath = $this->relativePath($pluginPath, $file);
+            $lines = explode("\n", $content);
+
+            foreach ($lines as $lineNum => $line) {
+                if (preg_match($pattern, $line, $matches)) {
+                    $name = $matches[1];
+                    $violations[] = new Violation(
+                        file: $relativePath,
+                        line: $lineNum + 1,
+                        severity: 'error',
+                        message: "\\Elgg\\Upgrade\\{$name} is an INTERFACE in Elgg {$targetVersion}; use 'implements {$name}', not 'extends {$name}'. The 'extends' form is 5.x-only and fatals at autoload when the upgrade runs from the UI (the activation gate does not load upgrade classes).",
+                        code: trim($line),
+                        category: 'upgrade-class-keyword',
+                    );
+                }
+            }
         }
 
         return $violations;
