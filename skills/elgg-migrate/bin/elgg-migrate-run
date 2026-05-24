@@ -739,7 +739,10 @@ cmd_verify_fleet() {
     # phpcs error summaries) after its final compact-JSON line on some
     # gates' failure paths, and an unparseable last line then poisons
     # the downstream --argjson call and kills the fleet sweep.
-    verify_json="$(grep -E '^\{.*\}$' "$verify_tmp" | tail -n1)"
+    # Use awk (single tool, no pipeline) — grep|tail under pipefail can
+    # SIGPIPE (exit 141) when tail closes its read end after the first
+    # match, aborting verify-fleet with empty NDJSON. See bead 5gtfq.
+    verify_json="$(awk '/^\{.*\}$/ {last=$0} END {print last}' "$verify_tmp")"
     if ! printf '%s' "$verify_json" | jq -e . >/dev/null 2>&1; then
       verify_json='{}'
     fi
