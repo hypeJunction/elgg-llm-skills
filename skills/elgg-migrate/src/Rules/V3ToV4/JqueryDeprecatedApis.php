@@ -13,23 +13,53 @@ use ElggMigrate\RuleResult;
 /**
  * Replaces jQuery APIs removed or deprecated in jQuery 3.5.x (shipped with Elgg 4.0).
  *
- * Auto-fixed replacements:
- * - .bind(     → .on(
- * - .unbind(   → .off(
- * - $.parseJSON(    → JSON.parse(
- * - jQuery.parseJSON( → JSON.parse(
- * - $.isArray(      → Array.isArray(
- * - jQuery.isArray( → Array.isArray(
- * - $.unique(       → $.uniqueSort(
- * - jQuery.unique(  → jQuery.uniqueSort(
+ * Auto-fixed replacements (scoped to jQuery receivers only — see BIND_REGEX):
+ * - <jQuery>.bind(     → <jQuery>.on(
+ * - <jQuery>.unbind(   → <jQuery>.off(
+ * - $.parseJSON(       → JSON.parse(
+ * - jQuery.parseJSON(  → JSON.parse(
+ * - $.isArray(         → Array.isArray(
+ * - jQuery.isArray(    → Array.isArray(
+ * - $.unique(          → $.uniqueSort(
+ * - jQuery.unique(     → jQuery.uniqueSort(
  *
  * Warn-only (arg reordering makes auto-fix unsafe):
  * - .delegate(
  * - .undelegate(
  * - .size()
+ *
+ * Receiver scoping for .bind()/.unbind():
+ * Native Function.prototype.bind() (e.g. `this.foo.bind(this)`) must NOT be
+ * rewritten — that's a runtime breakage. We restrict the rewrite to receivers
+ * that are recognizably jQuery:
+ *   - selector / call return:  `)`.bind(   e.g. `$('.foo').bind(`, `$(this).bind(`
+ *   - $-prefixed identifier:   `$elem.bind(`, `$this.bind(`
+ *   - jQuery namespace:        `jQuery.bind(` (rare on the namespace itself,
+ *                              but covered for completeness)
+ * Plain dotted property chains (e.g. `this.getLine.bind(this)`) are left alone.
+ *
+ * Path exclusions for JS scanning:
+ * Vendored 3rd-party libraries (under `vendor/` OR `vendors/`) MUST NOT be
+ * rewritten in place — they ship as upstream artefacts and need updates via
+ * their original maintainers. Same gotcha as the phpcs ignore glob.
  */
 final class JqueryDeprecatedApis extends AbstractRule
 {
+    /**
+     * Match `.bind(` only when the receiver is recognizably a jQuery object.
+     *
+     * Valid receivers:
+     *   - `)`             — chain ends in a call/selector: `$('.x').bind(`, `$(this).first().bind(`
+     *   - `$<ident>`      — jQuery-conventional variable name: `$elem.bind(`
+     *   - `jQuery`        — namespace itself
+     *
+     * Specifically excludes: bare identifier chains like `this.foo.bind(`,
+     * `Function.prototype.bind`, `someObj.method.bind`.
+     */
+    private const BIND_REGEX = '/(?<receiver>\)|\$[A-Za-z_][A-Za-z0-9_]*|\bjQuery)\.bind\(/';
+
+    private const UNBIND_REGEX = '/(?<receiver>\)|\$[A-Za-z_][A-Za-z0-9_]*|\bjQuery)\.unbind\(/';
+
     public function getId(): string
     {
         return 'jquery-deprecated-apis-4x';
@@ -54,19 +84,19 @@ final class JqueryDeprecatedApis extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            if (str_contains($code, '.bind(')) {
+            if (preg_match(self::BIND_REGEX, $code) === 1) {
                 $findings[] = new Finding(
                     file: $rel,
-                    line: $this->firstLineOf('/\.bind\(/', $code),
+                    line: $this->firstLineOf(self::BIND_REGEX, $code),
                     description: '.bind() — removed in jQuery 3.x; replace with .on()',
                     code: '.bind(',
                 );
             }
 
-            if (str_contains($code, '.unbind(')) {
+            if (preg_match(self::UNBIND_REGEX, $code) === 1) {
                 $findings[] = new Finding(
                     file: $rel,
-                    line: $this->firstLineOf('/\.unbind\(/', $code),
+                    line: $this->firstLineOf(self::UNBIND_REGEX, $code),
                     description: '.unbind() — removed in jQuery 3.x; replace with .off()',
                     code: '.unbind(',
                 );
@@ -151,11 +181,12 @@ final class JqueryDeprecatedApis extends AbstractRule
 
             $original = $code;
 
-            // Auto-fix: .bind( → .on(
-            $code = str_replace('.bind(', '.on(', $code);
+            // Auto-fix: <jQuery>.bind( → <jQuery>.on(
+            // Scoped to jQuery receivers — leaves Function.prototype.bind alone.
+            $code = preg_replace(self::BIND_REGEX, '$1.on(', $code) ?? $code;
 
-            // Auto-fix: .unbind( → .off(
-            $code = str_replace('.unbind(', '.off(', $code);
+            // Auto-fix: <jQuery>.unbind( → <jQuery>.off(
+            $code = preg_replace(self::UNBIND_REGEX, '$1.off(', $code) ?? $code;
 
             // Auto-fix: $.parseJSON( and jQuery.parseJSON( → JSON.parse(
             $code = str_replace('$.parseJSON(', 'JSON.parse(', $code);
@@ -215,7 +246,14 @@ final class JqueryDeprecatedApis extends AbstractRule
 
     /**
      * Yield all .js files recursively under a plugin directory.
-     * Excludes node_modules, vendor, tests/playwright, __tests__, and minified files.
+     *
+     * Excludes:
+     *   - node_modules/
+     *   - vendor/ AND vendors/ (the trailing-s form is what bodyology plugins use
+     *     for bundled 3rd-party JS like joyride/, hopscotch/, WideImage/ — same
+     *     gotcha as the phpcs ignore glob; in-place rewrites cause regressions).
+     *   - tests/playwright/, __tests__/
+     *   - minified files (*.min.js)
      *
      * @return \Generator<string>
      */
@@ -234,6 +272,7 @@ final class JqueryDeprecatedApis extends AbstractRule
             if (
                 str_contains($path, '/node_modules/') ||
                 str_contains($path, '/vendor/') ||
+                str_contains($path, '/vendors/') ||
                 str_contains($path, '/tests/playwright/') ||
                 str_contains($path, '/__tests__/') ||
                 str_ends_with($path, '.min.js')

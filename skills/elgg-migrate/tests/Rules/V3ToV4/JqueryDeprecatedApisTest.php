@@ -26,6 +26,8 @@ final class JqueryDeprecatedApisTest extends TestCase
 
         $this->assertTrue($analysis->applicable);
 
+        // bind, unbind, isArray, parseJSON, delegate — the $el.bind shares the
+        // same .bind finding bucket; Function.prototype.bind must NOT add one.
         $this->assertCount(5, $analysis->findings, 'Expected 5 findings: bind, unbind, isArray, parseJSON, delegate');
 
         $descriptions = array_map(fn($f) => $f->description, $analysis->findings);
@@ -110,6 +112,118 @@ final class JqueryDeprecatedApisTest extends TestCase
             $analysis = $this->rule->analyze($dir);
             $this->assertFalse($analysis->applicable);
             $this->assertEmpty($analysis->findings);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * Regression: Function.prototype.bind (e.g. `this.fn.bind(this)`) must NOT
+     * be rewritten to `.on()` — that's a runtime breakage caught on csv_process
+     * and bodyology tour during 3→4 migration. See bead zjioe.
+     */
+    public function testFunctionPrototypeBindIsNotRewrittenOrFlagged(): void
+    {
+        $dir = $this->tempDir();
+        mkdir($dir . '/views/default/myplugin', 0755, true);
+        $js = $dir . '/views/default/myplugin/poller.js';
+        $source = "define('myplugin/poller', function(require) {\n"
+                . "    function Poller() {}\n"
+                . "    Poller.prototype.start = function() {\n"
+                . "        window.setTimeout(this.getLine.bind(this), 2000);\n"
+                . "        someArr.map(fn.bind(ctx));\n"
+                . "    };\n"
+                . "    return Poller;\n"
+                . "});\n";
+        file_put_contents($js, $source);
+
+        try {
+            $analysis = $this->rule->analyze($dir);
+            $this->assertFalse(
+                $analysis->applicable,
+                'Function.prototype.bind() must not surface as a jQuery .bind() finding',
+            );
+
+            $result = $this->rule->apply($dir);
+            $this->assertTrue($result->success);
+            $this->assertEmpty($result->changes, 'No file should be rewritten');
+
+            $this->assertSame(
+                $source,
+                file_get_contents($js),
+                'Function.prototype.bind() must remain byte-for-byte unchanged',
+            );
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * Regression: jQuery .bind() on a $-prefixed alias (`$el.bind('click', ...)`)
+     * is the conventional plugin pattern and MUST be rewritten to .on().
+     */
+    public function testDollarPrefixedAliasBindIsRewritten(): void
+    {
+        $dir = $this->tempDir();
+        mkdir($dir . '/views/default/myplugin', 0755, true);
+        $js = $dir . '/views/default/myplugin/alias.js';
+        file_put_contents(
+            $js,
+            "define('myplugin/alias', function(require) {\n"
+            . "    var \$ = require('jquery');\n"
+            . "    var \$el = \$('.foo');\n"
+            . "    \$el.bind('click', function() {});\n"
+            . "    \$el.unbind('focus');\n"
+            . "});\n",
+        );
+
+        try {
+            $result = $this->rule->apply($dir);
+            $this->assertTrue($result->success);
+            $this->assertCount(1, $result->changes);
+
+            $out = file_get_contents($js);
+            $this->assertStringContainsString("\$el.on('click'", $out);
+            $this->assertStringContainsString("\$el.off('focus'", $out);
+            $this->assertStringNotContainsString('.bind(', $out);
+            $this->assertStringNotContainsString('.unbind(', $out);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * Regression: files under vendors/ (e.g. bundled joyride, hopscotch,
+     * WideImage) must NOT be rewritten in place. Surfaced on bodyology tour
+     * 3→4 — tour agent had to revert vendors/joyride and vendors/hopscotch.
+     */
+    public function testVendorsDirectoryIsExcluded(): void
+    {
+        $dir = $this->tempDir();
+        mkdir($dir . '/vendors/joyride', 0755, true);
+        $vendorJs = $dir . '/vendors/joyride/joyride.js';
+        $source = "// Upstream joyride bundle\n"
+                . "(function(\$) {\n"
+                . "    \$('.tour').bind('click', function() {});\n"
+                . "    \$('.tour').unbind('focus');\n"
+                . "    \$.parseJSON('{}');\n"
+                . "})(jQuery);\n";
+        file_put_contents($vendorJs, $source);
+
+        try {
+            $analysis = $this->rule->analyze($dir);
+            $this->assertFalse(
+                $analysis->applicable,
+                'vendors/ tree must be invisible to the scanner',
+            );
+
+            $result = $this->rule->apply($dir);
+            $this->assertEmpty($result->changes);
+            $this->assertSame(
+                $source,
+                file_get_contents($vendorJs),
+                'vendors/ files must remain byte-for-byte unchanged',
+            );
         } finally {
             $this->removeDir($dir);
         }

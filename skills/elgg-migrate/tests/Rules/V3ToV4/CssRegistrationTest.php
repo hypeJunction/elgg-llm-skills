@@ -40,18 +40,74 @@ final class CssRegistrationTest extends TestCase
         }
     }
 
-    public function testApplyProducesWarningsButNoFileChanges(): void
+    public function testApplyRewritesAllFourAutoFixableCalls(): void
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
         mkdir($workDir, 0755, true);
-        copy(__DIR__ . '/../../fixtures/3x-to-4x/css-registration/input/code.php', $workDir . '/code.php');
+        $file = $workDir . '/code.php';
+        copy(__DIR__ . '/../../fixtures/3x-to-4x/css-registration/input/code.php', $file);
 
         try {
             $result = $this->rule->apply($workDir);
 
             $this->assertTrue($result->success);
-            $this->assertEmpty($result->changes, 'Warn-only rule should not modify files');
-            $this->assertCount(4, $result->warnings);
+            $this->assertCount(1, $result->changes, 'One file should be modified');
+
+            $out = file_get_contents($file);
+            $this->assertStringContainsString(
+                "elgg_register_external_file('css', 'my-styles', 'path/to/style.css')",
+                $out,
+            );
+            $this->assertStringContainsString(
+                "elgg_load_external_file('css', 'my-styles')",
+                $out,
+            );
+            $this->assertStringContainsString(
+                "elgg_register_external_file('js', 'my-script', 'path/to/script.js')",
+                $out,
+            );
+            $this->assertStringContainsString(
+                "elgg_load_external_file('js', 'my-script')",
+                $out,
+            );
+
+            // No legacy call should remain.
+            $this->assertStringNotContainsString('elgg_register_css(', $out);
+            $this->assertStringNotContainsString('elgg_load_css(', $out);
+            $this->assertStringNotContainsString('elgg_register_js(', $out);
+            $this->assertStringNotContainsString('elgg_load_js(', $out);
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
+    /**
+     * elgg_get_loaded_css/js have shifted default args; the rule should warn
+     * (with file:line) rather than blind-rewrite. Regression for bead zjioe.
+     */
+    public function testGetLoadedCssJsAreWarnOnlyNotRewritten(): void
+    {
+        $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
+        mkdir($workDir, 0755, true);
+        $file = $workDir . '/loaded.php';
+        $source = "<?php\n"
+                . "\$css = elgg_get_loaded_css();\n"
+                . "\$js = elgg_get_loaded_js();\n";
+        file_put_contents($file, $source);
+
+        try {
+            $analysis = $this->rule->analyze($workDir);
+            $this->assertTrue($analysis->applicable);
+            $this->assertCount(2, $analysis->findings);
+
+            $result = $this->rule->apply($workDir);
+            $this->assertEmpty($result->changes, 'Warn-only calls must not be rewritten');
+            $this->assertCount(2, $result->warnings);
+            $this->assertSame($source, file_get_contents($file), 'File must be untouched');
+
+            foreach ($result->warnings as $w) {
+                $this->assertStringContainsString('loaded.php:', $w);
+            }
         } finally {
             $this->removeDir($workDir);
         }
