@@ -20,7 +20,7 @@ use PhpParser\Node;
  *
  * When applicable, the rule:
  * - Generates classes/<Namespace>/Cli/DoctorCommand.php extending \Elgg\Cli\Command
- * - Registers the command class in elgg-plugin.php under 'cli' => ['commands' => [...]]
+ * - Registers the command class in elgg-plugin.php under top-level 'cli_commands' => [...]
  *
  * The generated command checks:
  * - Entity counts per owned type/subtype (sanity baseline)
@@ -181,11 +181,11 @@ final class ScaffoldDoctorCommand extends AbstractRule
             $changes[] = new FileChange(
                 file: 'elgg-plugin.php',
                 type: 'modified',
-                description: "Registered DoctorCommand under 'cli' => ['commands' => [...]]",
+                description: "Registered DoctorCommand under top-level 'cli_commands' => [...]",
             );
         } else {
             $warnings[] = sprintf(
-                "Could not auto-register DoctorCommand in elgg-plugin.php — add manually: 'cli' => ['commands' => [\\%s\\Cli\\DoctorCommand::class]]",
+                "Could not auto-register DoctorCommand in elgg-plugin.php — add manually: 'cli_commands' => [\\%s\\Cli\\DoctorCommand::class]",
                 $namespace,
             );
         }
@@ -397,8 +397,6 @@ declare(strict_types=1);
 namespace {$commandNs};
 
 use Elgg\Cli\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Post-migration data integrity checks for the {$pluginId} plugin.
@@ -408,13 +406,22 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 class DoctorCommand extends Command {
 
-    protected static \$defaultName = '{$pluginId}:doctor';
-
+    /**
+     * {@inheritdoc}
+     */
     protected function configure(): void {
-        \$this->setDescription('Post-migration data integrity checks for {$pluginId}');
+        \$this->setName('{$pluginId}:doctor')
+            ->setDescription('Post-migration data integrity checks for {$pluginId}');
     }
 
-    protected function command(InputInterface \$input, OutputInterface \$output): int {
+    /**
+     * {@inheritdoc}
+     *
+     * Elgg's \\Elgg\\Cli\\Command::command() takes no arguments — the parent
+     * Command::execute() populates \$this->input / \$this->output before
+     * dispatching here.
+     */
+    protected function command() {
         \$exitCode = self::SUCCESS;
 
 {$checksCode}
@@ -429,9 +436,9 @@ class DoctorCommand extends Command {
         // TODO: verify expected plugin settings are set and valid
 
         if (\$exitCode === self::SUCCESS) {
-            \$output->writeln('<info>{$pluginId}:doctor complete — no issues found</info>');
+            \$this->output->writeln('<info>{$pluginId}:doctor complete — no issues found</info>');
         } else {
-            \$output->writeln('<error>{$pluginId}:doctor found issues — review output above</error>');
+            \$this->output->writeln('<error>{$pluginId}:doctor found issues — review output above</error>');
         }
 
         return \$exitCode;
@@ -458,7 +465,7 @@ PHP;
             $lines[] = "            'subtype' => '{$subtype}',";
             $lines[] = "            'count' => true,";
             $lines[] = "        ]);";
-            $lines[] = "        \$output->writeln(\"  {$type}/{$subtype}: {{$varName}} entities\");";
+            $lines[] = "        \$this->output->writeln(\"  {$type}/{$subtype}: {{$varName}} entities\");";
             $lines[] = "";
         }
         return implode("\n", $lines);
@@ -469,10 +476,12 @@ PHP;
     // -------------------------------------------------------------------------
 
     /**
-     * Register the DoctorCommand class in elgg-plugin.php under 'cli' => ['commands' => [...]].
+     * Register the DoctorCommand class in elgg-plugin.php under top-level 'cli_commands' => [...].
      *
-     * Uses format-preserving printing where possible; falls back to appended text injection
-     * if the AST approach cannot locate the return array.
+     * 4.x uses a flat top-level 'cli_commands' key (see Elgg core
+     * mod/garbagecollector/elgg-plugin.php). The legacy nested
+     * 'cli' => ['commands' => [...]] form is NOT picked up by
+     * Elgg\Cli::loadCommands() — silent failure.
      *
      * Returns true on success, false if the injection could not be applied.
      */
@@ -489,20 +498,20 @@ PHP;
             return true;
         }
 
-        // Check whether 'cli' key already exists in the file
-        $hasCli = str_contains($code, "'cli'") || str_contains($code, '"cli"');
+        // Check whether a top-level 'cli_commands' key already exists
+        $hasCliCommands = str_contains($code, "'cli_commands'") || str_contains($code, '"cli_commands"');
 
-        if ($hasCli) {
-            // Try to inject into an existing 'commands' array under 'cli'
-            $injected = $this->injectIntoExistingCliSection($code, $commandClass);
+        if ($hasCliCommands) {
+            // Try to inject into the existing 'cli_commands' array
+            $injected = $this->injectIntoExistingCliCommandsSection($code, $commandClass);
             if ($injected !== null) {
                 file_put_contents($pluginPhpPath, $injected);
                 return true;
             }
         }
 
-        // Append 'cli' key before the closing ]; of the return array
-        $injected = $this->appendCliSection($code, $namespace);
+        // Append a new 'cli_commands' key before the closing ]; of the return array
+        $injected = $this->appendCliCommandsSection($code, $namespace);
         if ($injected !== null) {
             file_put_contents($pluginPhpPath, $injected);
             return true;
@@ -512,21 +521,21 @@ PHP;
     }
 
     /**
-     * Try to inject the DoctorCommand class into an existing 'commands' array under 'cli'.
+     * Try to inject the DoctorCommand class into an existing top-level 'cli_commands' array.
      */
-    private function injectIntoExistingCliSection(string $code, string $commandClass): ?string
+    private function injectIntoExistingCliCommandsSection(string $code, string $commandClass): ?string
     {
-        // Match 'commands' => [ ... ] and append before the closing bracket
+        // Match 'cli_commands' => [ ... ] and append before the closing bracket
         $new = preg_replace_callback(
-            "/'commands'\s*=>\s*\[([^\]]*)\]/s",
+            "/'cli_commands'\s*=>\s*\[([^\]]*)\]/s",
             function (array $m) use ($commandClass): string {
                 $inner = rtrim($m[1]);
-                $indent = '            ';
+                $indent = '        ';
                 if ($inner === '') {
-                    return "'commands' => [\n{$indent}{$commandClass},\n        ]";
+                    return "'cli_commands' => [\n{$indent}{$commandClass},\n    ]";
                 }
                 // Already contains entries — append after last entry
-                return "'commands' => [{$m[1]}{$indent}{$commandClass},\n        ]";
+                return "'cli_commands' => [{$m[1]}{$indent}{$commandClass},\n    ]";
             },
             $code,
         );
@@ -539,18 +548,16 @@ PHP;
     }
 
     /**
-     * Append a new 'cli' section to the elgg-plugin.php return array.
+     * Append a new top-level 'cli_commands' key to the elgg-plugin.php return array.
      * Inserts before the closing ]; of the outermost return array.
      */
-    private function appendCliSection(string $code, string $namespace): ?string
+    private function appendCliCommandsSection(string $code, string $namespace): ?string
     {
         $commandClass = '\\' . $namespace . '\\Cli\\DoctorCommand::class';
 
         $cliSection = <<<PHP
-    'cli' => [
-        'commands' => [
-            {$commandClass},
-        ],
+    'cli_commands' => [
+        {$commandClass},
     ],
 PHP;
 

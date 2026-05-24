@@ -241,11 +241,105 @@ final class ScaffoldDoctorCommandTest extends TestCase
             $pluginPhpChange = array_filter($modifiedFiles, fn($f) => $f === 'elgg-plugin.php');
             $this->assertNotEmpty($pluginPhpChange, 'elgg-plugin.php should appear in changes');
 
-            // Verify CLI registration is in the file
+            // Verify CLI registration is in the file under the 4.x top-level key
             $pluginPhpContent = file_get_contents($workDir . '/elgg-plugin.php');
-            $this->assertStringContainsString("'cli'", $pluginPhpContent);
-            $this->assertStringContainsString("'commands'", $pluginPhpContent);
+            $this->assertStringContainsString("'cli_commands'", $pluginPhpContent);
             $this->assertStringContainsString('DoctorCommand::class', $pluginPhpContent);
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
+    /**
+     * Regression test for pyizp: rule MUST emit top-level 'cli_commands' (4.x manifest key),
+     * not the legacy nested 'cli' => ['commands' => [...]] form which silently fails to register.
+     */
+    public function testApplyEmitsTopLevelCliCommandsNotNestedCliKey(): void
+    {
+        $workDir = $this->copyFixture('with-entities');
+
+        try {
+            $this->rule->apply($workDir);
+
+            $pluginPhpContent = file_get_contents($workDir . '/elgg-plugin.php');
+
+            // Must use the 4.x top-level key
+            $this->assertStringContainsString(
+                "'cli_commands'",
+                $pluginPhpContent,
+                "elgg-plugin.php must register commands under top-level 'cli_commands' key",
+            );
+
+            // Must NOT emit the legacy nested 'cli' => ['commands' => ...] form,
+            // which Elgg 4.x's Cli::loadCommands() does not pick up (silent failure).
+            $this->assertDoesNotMatchRegularExpression(
+                "/'cli'\s*=>\s*\[\s*'commands'/",
+                $pluginPhpContent,
+                "elgg-plugin.php must NOT emit nested 'cli' => ['commands' => [...]] form",
+            );
+
+            // Also verify the actual returned manifest array exposes 'cli_commands' at top level
+            $manifest = include $workDir . '/elgg-plugin.php';
+            $this->assertIsArray($manifest);
+            $this->assertArrayHasKey('cli_commands', $manifest, "Returned manifest must contain 'cli_commands' key");
+            $this->assertArrayNotHasKey('cli', $manifest, "Returned manifest must NOT contain legacy nested 'cli' key");
+            $this->assertIsArray($manifest['cli_commands']);
+            $this->assertNotEmpty($manifest['cli_commands']);
+        } finally {
+            $this->removeDir($workDir);
+        }
+    }
+
+    /**
+     * Regression test for pyizp: the generated DoctorCommand must declare command() with
+     * NO arguments. Elgg's \Elgg\Cli\Command declares `abstract protected function command();`,
+     * so a Symfony-style command(InputInterface, OutputInterface) signature is a fatal
+     * incompatible-declaration error on first invocation.
+     */
+    public function testApplyDoctorCommandUsesNoArgCommandSignature(): void
+    {
+        $workDir = $this->copyFixture('with-entities');
+
+        try {
+            $this->rule->apply($workDir);
+
+            $doctorPath = $this->findDoctorCommandPath($workDir);
+            $this->assertNotNull($doctorPath, 'DoctorCommand.php must have been created');
+
+            $content = file_get_contents($doctorPath);
+
+            // Must declare the no-arg form that matches Elgg\Cli\Command::command()
+            $this->assertMatchesRegularExpression(
+                '/protected\s+function\s+command\s*\(\s*\)/',
+                $content,
+                'DoctorCommand::command() must take no arguments to match Elgg\\Cli\\Command',
+            );
+
+            // Must NOT emit Symfony's command(InputInterface, OutputInterface) signature
+            $this->assertDoesNotMatchRegularExpression(
+                '/function\s+command\s*\([^)]*InputInterface/',
+                $content,
+                'DoctorCommand::command() must not accept InputInterface/OutputInterface args',
+            );
+
+            // Must NOT pull in the Symfony Input/Output interfaces — they aren't used.
+            $this->assertStringNotContainsString(
+                'Symfony\\Component\\Console\\Input\\InputInterface',
+                $content,
+                'DoctorCommand must not import Symfony InputInterface (use $this->input)',
+            );
+            $this->assertStringNotContainsString(
+                'Symfony\\Component\\Console\\Output\\OutputInterface',
+                $content,
+                'DoctorCommand must not import Symfony OutputInterface (use $this->output)',
+            );
+
+            // Output is written via the inherited $this->output property, not a getter.
+            $this->assertStringContainsString(
+                '$this->output->writeln',
+                $content,
+                'DoctorCommand should write via inherited $this->output property',
+            );
         } finally {
             $this->removeDir($workDir);
         }
