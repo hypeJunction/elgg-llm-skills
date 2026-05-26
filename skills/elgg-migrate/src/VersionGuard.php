@@ -169,7 +169,24 @@ final class VersionGuard
                     'fix' => 'Function was removed in Elgg 4.x — see RemovedFunctions rule notes for the replacement.',
                 ],
             ],
-            // Add 4.x->5.x, 5.x->6.x, 6.x->7.x as we encounter them.
+            '4.x->5.x' => [
+                [
+                    'id' => 'elgg-hook-param',
+                    'detector' => 'elggHookParamType',
+                    'fix' => 'Convert `\\Elgg\\Hook $hook` parameter to `\\Elgg\\Event $event`; rename body references ($hook → $event) — 5.x unified hooks/events as Event.',
+                ],
+                [
+                    'id' => 'hooks-key-in-elgg-plugin',
+                    'detector' => 'hooksKeyInElggPlugin',
+                    'fix' => "Rename the top-level 'hooks' key in elgg-plugin.php to 'events' — 5.x merged the two.",
+                ],
+                [
+                    'id' => 'removed-function-call-5x',
+                    'detector' => 'removedIn5xFunctionCall',
+                    'fix' => 'Function was removed in Elgg 5.x — see the suggested replacement.',
+                ],
+            ],
+            // Add 5.x->6.x, 6.x->7.x as we encounter them.
         ];
         return $patterns[$key] ?? [];
     }
@@ -249,6 +266,118 @@ final class VersionGuard
             $hits[] = [
                 'line' => $call->getStartLine(),
                 'description' => sprintf("Call to '%s()' — removed in Elgg 4.x. %s", $name, self::REMOVED_IN_4X[$name]),
+            ];
+        }
+        return $hits;
+    }
+
+    /**
+     * Detector: parameter typed as `\Elgg\Hook` (or `Hook` with a `use Elgg\Hook;`
+     * import). In Elgg 5.x the hook + event APIs merged into a single Event class;
+     * handlers must take `\Elgg\Event` instead.
+     */
+    private function find_elggHookParamType(array $ast, array $pattern): array
+    {
+        $finder = new NodeFinder();
+        $hits = [];
+
+        // Track `use Elgg\Hook` imports (so unqualified `Hook` resolves to it).
+        $hookImported = false;
+        foreach ($finder->findInstanceOf($ast, Node\Stmt\Use_::class) as $u) {
+            assert($u instanceof Node\Stmt\Use_);
+            if ($u->type !== Node\Stmt\Use_::TYPE_NORMAL && $u->type !== Node\Stmt\Use_::TYPE_UNKNOWN) continue;
+            foreach ($u->uses as $uu) {
+                if ($uu->name->toString() === 'Elgg\\Hook') {
+                    $hookImported = true;
+                }
+            }
+        }
+
+        $functions = $finder->find($ast, fn (Node $n) => $n instanceof Node\FunctionLike);
+        foreach ($functions as $fn) {
+            /** @var Node\FunctionLike $fn */
+            foreach ($fn->getParams() as $param) {
+                $type = $param->type;
+                if ($type === null) continue;
+                $typeName = match (true) {
+                    $type instanceof Node\Name => $type->toString(),
+                    $type instanceof Node\NullableType && $type->type instanceof Node\Name => $type->type->toString(),
+                    default => null,
+                };
+                if ($typeName === null) continue;
+                $isElggHook = $typeName === 'Elgg\\Hook' || ($typeName === 'Hook' && $hookImported);
+                if (!$isElggHook) continue;
+
+                $method = $fn instanceof Node\Stmt\Function_ ? $fn->name->toString()
+                       : ($fn instanceof Node\Stmt\ClassMethod ? $fn->name->toString() : '<closure>');
+                $hits[] = [
+                    'line' => $param->getStartLine(),
+                    'description' => sprintf(
+                        "Parameter '%s \$%s' in %s() uses Elgg 4.x \\Elgg\\Hook type",
+                        $typeName,
+                        $param->var instanceof Node\Expr\Variable && is_string($param->var->name) ? $param->var->name : '?',
+                        $method,
+                    ),
+                ];
+            }
+        }
+        return $hits;
+    }
+
+    /**
+     * Detector: top-level `'hooks' =>` key in elgg-plugin.php. 5.x merged hooks
+     * and events under a single `'events' =>` key.
+     */
+    private function find_hooksKeyInElggPlugin(array $ast, array $pattern): array
+    {
+        // Only meaningful when the file is elgg-plugin.php at the root. The
+        // scanner passes us every PHP file's AST though, so we recognise the
+        // canonical shape: a top-level Return_ statement returning an Array_
+        // with a string key 'hooks'. False positives on other files are negligible.
+        $hits = [];
+        foreach ($ast as $stmt) {
+            if (!$stmt instanceof Node\Stmt\Return_) continue;
+            if (!$stmt->expr instanceof Node\Expr\Array_) continue;
+            foreach ($stmt->expr->items as $item) {
+                if (!$item instanceof Node\Expr\ArrayItem) continue;
+                if (!$item->key instanceof Node\Scalar\String_) continue;
+                if ($item->key->value !== 'hooks') continue;
+                $hits[] = [
+                    'line' => $item->getStartLine(),
+                    'description' => "Top-level 'hooks' key in elgg-plugin.php — 5.x merged hooks/events under 'events'",
+                ];
+            }
+        }
+        return $hits;
+    }
+
+    /**
+     * Functions removed/deprecated at the 4.x → 5.x boundary that need
+     * rewriting. Conservative list; extend as new gaps surface.
+     */
+    private const REMOVED_IN_5X = [
+        'elgg_register_plugin_hook_handler' => 'Use elgg_register_event_handler($event, $type, $callback) or the events key in elgg-plugin.php',
+        'elgg_unregister_plugin_hook_handler' => 'Use elgg_unregister_event_handler',
+        'elgg_trigger_plugin_hook' => 'Use elgg_trigger_event_results / elgg_trigger_before_event / elgg_trigger_after_event',
+        'elgg_clear_plugin_hook_handlers' => 'Use elgg_clear_event_handlers',
+    ];
+
+    /**
+     * @param array<Node\Stmt> $ast
+     * @return array<int, array{line:int, description:string}>
+     */
+    private function find_removedIn5xFunctionCall(array $ast, array $pattern): array
+    {
+        $finder = new NodeFinder();
+        $hits = [];
+        foreach ($finder->findInstanceOf($ast, Node\Expr\FuncCall::class) as $call) {
+            assert($call instanceof Node\Expr\FuncCall);
+            if (!$call->name instanceof Node\Name) continue;
+            $name = $call->name->toString();
+            if (!isset(self::REMOVED_IN_5X[$name])) continue;
+            $hits[] = [
+                'line' => $call->getStartLine(),
+                'description' => sprintf("Call to '%s()' — removed in Elgg 5.x. %s", $name, self::REMOVED_IN_5X[$name]),
             ];
         }
         return $hits;
