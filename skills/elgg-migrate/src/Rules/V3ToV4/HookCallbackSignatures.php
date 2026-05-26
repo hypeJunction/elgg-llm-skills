@@ -375,11 +375,34 @@ final class HookCallbackSignatures extends AbstractRule
 
     /**
      * Rewrite a hook handler: ($hook, $type, $return, $params) → (\Elgg\Hook $hook)
+     *
+     * Tolerates optional defaults on params 2-4 (`$type = null, $return = null,
+     * $params = null` is a real shape seen in the wild). The first param never
+     * has a default — the registered hook callback always receives a value.
+     *
+     * Skips bodies that already have an `instanceof \Elgg\Hook` compat shim
+     * — those are written by humans transitioning the plugin to 4.x and
+     * pattern-rewriting them produces invalid PHP like
+     * `$hook->getParams() = $hook->getParams();` (lvalue on a method call).
      */
     private function rewriteHookHandler(string $code, string $method): string
     {
-        // Capture the 4 parameter names
-        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*\)/';
+        // `(?:\s*=\s*[^,)]+)?` accepts an optional default value on params 2-4.
+        $paramOptDefault = '(?:\s*=\s*[^,)]+)?';
+        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*\)/';
+
+        // Compat-shim guard: if the method body already references
+        // `\Elgg\Hook` (most commonly `if ($hook instanceof \Elgg\Hook)`),
+        // the human already adapted it for 4.x. Leave it alone.
+        $body = $this->extractMethodBody($code, $method);
+        if ($body !== null) {
+            $bodyText = substr($code, $body['start'], $body['end'] - $body['start']);
+            if (str_contains($bodyText, 'instanceof \\Elgg\\Hook')
+                || str_contains($bodyText, 'instanceof Hook')
+            ) {
+                return $code;
+            }
+        }
 
         if (!preg_match($sigPattern, $code, $m)) {
             return $code;
@@ -494,11 +517,24 @@ final class HookCallbackSignatures extends AbstractRule
 
     /**
      * Rewrite an event handler: ($event, $type, $entity) → (\Elgg\Event $event)
+     *
+     * Tolerates optional defaults on params 2-3 (same rationale as rewriteHookHandler).
+     * Skips bodies that already have an `instanceof \Elgg\Event` compat shim.
      */
     private function rewriteEventHandler(string $code, string $method): string
     {
-        // Capture the 3 parameter names
-        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*\)/';
+        $paramOptDefault = '(?:\s*=\s*[^,)]+)?';
+        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*\)/';
+
+        $body = $this->extractMethodBody($code, $method);
+        if ($body !== null) {
+            $bodyText = substr($code, $body['start'], $body['end'] - $body['start']);
+            if (str_contains($bodyText, 'instanceof \\Elgg\\Event')
+                || str_contains($bodyText, 'instanceof Event')
+            ) {
+                return $code;
+            }
+        }
 
         if (!preg_match($sigPattern, $code, $m)) {
             return $code;
