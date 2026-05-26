@@ -200,6 +200,141 @@ final class VersionGuardTest extends TestCase
         }
     }
 
+    // --- Incomplete-pattern detection (deep guards) ---
+
+    public function testIncompletePatternsFlags4xShapeWith3xHookSignature(): void
+    {
+        // Plugin shape: 4.x (elgg-plugin.php, no start.php, no manifest.xml).
+        // Content: still a 3.x 4-arg hook handler — the gap hypeinbox hit.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+            'classes/Foo/Router.php' => <<<'PHP'
+                <?php
+                namespace Foo;
+                class Router {
+                    public static function resolvePageOwner($hook, $type, $return, $params) {
+                        return $return;
+                    }
+                }
+                PHP,
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir);
+            $this->assertCount(1, $findings);
+            $this->assertSame('old-hook-signature', $findings[0]->patternId);
+            $this->assertSame('3.x', $findings[0]->sourceVersion);
+            $this->assertSame('4.x', $findings[0]->claimedVersion);
+            $this->assertStringContainsString('resolvePageOwner', $findings[0]->description);
+            $this->assertStringContainsString('Router.php', $findings[0]->file);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsFlagsRemovedIn4xFunctionCalls(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+            'classes/Foo/Boot.php' => <<<'PHP'
+                <?php
+                namespace Foo;
+                class Boot {
+                    public function init(): void {
+                        \elgg_register_admin_menu_item('a', 'b', 'c');
+                        $x = sanitize_string($input);
+                        $y = sanitize_int($n);
+                        \elgg_set_plugin_setting('k', 'v', 'p');
+                    }
+                }
+                PHP,
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir);
+            $patternIds = array_map(fn ($f) => $f->patternId, $findings);
+            $descriptions = array_map(fn ($f) => $f->description, $findings);
+
+            // 4 removed-function calls, no hook-signature hits.
+            $this->assertCount(4, $findings);
+            $this->assertSame(['removed-function-call', 'removed-function-call', 'removed-function-call', 'removed-function-call'], $patternIds);
+            $this->assertTrue(str_contains(implode('|', $descriptions), 'elgg_register_admin_menu_item'));
+            $this->assertTrue(str_contains(implode('|', $descriptions), 'sanitize_string'));
+            $this->assertTrue(str_contains(implode('|', $descriptions), 'sanitize_int'));
+            $this->assertTrue(str_contains(implode('|', $descriptions), 'elgg_set_plugin_setting'));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsClearsAfterMigration(): void
+    {
+        // A genuinely-clean 4.x plugin returns zero findings.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+            'classes/Foo/Router.php' => <<<'PHP'
+                <?php
+                namespace Foo;
+                class Router {
+                    public static function resolvePageOwner(\Elgg\Hook $hook) {
+                        return $hook->getValue();
+                    }
+                }
+                PHP,
+        ]);
+
+        try {
+            $this->assertEmpty($this->guard->detectIncompletePatterns($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsReturnsEmptyForUnknownPriorVersion(): void
+    {
+        // 2.x has no prior — must short-circuit to [].
+        $dir = $this->makePluginDir([
+            'start.php' => "<?php\nelgg_register_event_handler('init', 'system', 'foo');",
+            'manifest.xml' => '<?xml version="1.0"?><plugin_manifest/>',
+        ]);
+
+        try {
+            $this->assertEmpty($this->guard->detectIncompletePatterns($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsRespectsExplicitClaimedVersion(): void
+    {
+        // Tell the guard to check this 4.x plugin for 5.x-leftover patterns
+        // (none defined yet) — must not blow up, must return [].
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+        ]);
+
+        try {
+            $this->assertEmpty($this->guard->detectIncompletePatterns($dir, '5.x'));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsIgnoresVendorAndTestsDirs(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+            'vendor/bad-lib/legacy.php' => "<?php\nfunction stale(\$hook, \$type, \$return, \$params) {}",
+            'mod/sub-plugin/legacy.php' => "<?php\nfunction also_stale(\$hook, \$type, \$return, \$params) {}",
+        ]);
+
+        try {
+            $this->assertEmpty($this->guard->detectIncompletePatterns($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Helpers ---
 
     private function makePluginDir(array $files): string
