@@ -99,12 +99,44 @@
       "priority": 110
     },
     {
+      "id": "033-namespaced-global-elgg-helpers",
+      "name": "Prefix unqualified elgg_* helper calls with `\\` inside namespaced files",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\NamespacedGlobalElggHelpers",
+      "breaking_change": "Elgg helper functions called from inside a namespace without `\\` prefix fatal with 'Call to undefined function Namespace\\elgg_x()'",
+      "priority": 110
+    },
+    {
       "id": "012-removed-functions-4x",
       "name": "Flag functions deprecated in 3.x and removed in 4.0",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedFunctions",
       "breaking_change": "~25 functions removed: validate_*, forward(), plugin settings, filter tabs, etc.",
       "priority": 120
+    },
+    {
+      "id": "013b-amd-removed-apis",
+      "name": "Remove AMD module APIs dropped in Elgg 4.x (elgg/init, elgg.echo, elgg.provide)",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\AmdRemovedApis",
+      "breaking_change": "elgg/init AMD module removed; elgg.echo() moved to elgg/i18n; elgg.provide() removed",
+      "priority": 125
+    },
+    {
+      "id": "013c-elgg-instanceof",
+      "name": "Replace elgg_instanceof() with native PHP instanceof checks",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ElggInstanceof",
+      "breaking_change": "elgg_instanceof() removed in Elgg 4.x \u2014 use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
+      "priority": 126
+    },
+    {
+      "id": "015b-css-js-registration",
+      "name": "Flag CSS/JS registration functions removed in Elgg 4.x",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\CssRegistration",
+      "breaking_change": "elgg_register_css/js() and elgg_load_css/js() removed \u2014 use elgg_register_external_file()",
+      "priority": 127
     },
     {
       "id": "013-removed-methods-4x",
@@ -131,12 +163,12 @@
       "priority": 150
     },
     {
-      "id": "015b-css-js-registration",
-      "name": "Flag CSS/JS registration functions removed in Elgg 4.x",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\CssRegistration",
-      "breaking_change": "elgg_register_css/js() and elgg_load_css/js() removed \u2014 use elgg_register_external_file()",
-      "priority": 127
+      "id": "017-install-plugin-deps",
+      "name": "Install plugin-specific Composer dependencies",
+      "automated": false,
+      "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
+      "breaking_change": "Plugin-local dependencies must be installed for activation",
+      "priority": 150
     },
     {
       "id": "016-removed-constants",
@@ -161,14 +193,6 @@
       "class": "ElggMigrate\\Rules\\V3ToV4\\ElggCallIgnoreAccess",
       "breaking_change": "access_get_show_hidden_status() removed in 4.x; use elgg_call(ELGG_IGNORE_ACCESS | ELGG_SHOW_DISABLED_ENTITIES, fn) pattern instead",
       "priority": 202
-    },
-    {
-      "id": "017-install-plugin-deps",
-      "name": "Install plugin-specific Composer dependencies",
-      "automated": false,
-      "llm_instructions": "Check each plugin directory for a `composer.json` with its own `require` section. If the plugin has Composer dependencies but no `vendor/` directory, run:\n\n```bash\ncomposer install -d <plugin-path> --no-interaction\n```\n\nCommon plugins that have their own deps:\n- hypeSeo (fire015/flintstone)\n- hypeGeo (various geo libraries)\n- stripe (stripe/stripe-php)\n\nAdd `file_exists()` guards around `require_once __DIR__ . '/vendor/autoload.php'` if not already present.",
-      "breaking_change": "Plugin-local dependencies must be installed for activation",
-      "priority": 150
     },
     {
       "id": "029-lowercase-plugin-id-callsites",
@@ -221,6 +245,15 @@
       "priority": 250
     },
     {
+      "id": "032-action-controller-analyzer",
+      "name": "Identify action files that are candidates for Controller class extraction",
+      "automated": false,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ActionControllerAnalyzer",
+      "llm_instructions": "The analyzer has identified action files with significant procedural logic (>30 LOC, multiple branches, or loops). Refactor each candidate into a Controller class implementing __invoke(\\Elgg\\Request $request). Steps:\n1. Create classes/<PluginNamespace>/Actions/<ActionName>.php extending or implementing the controller pattern\n2. Move validation logic to the top, business logic to the middle, response (forward()/error()) at the bottom\n3. Register the controller class in elgg-plugin.php: 'actions' => ['name' => ['controller' => \\Plugin\\Actions\\Name::class]]\n4. Delete or empty the original action file\nReference: profile_manager BackupController pattern for the __invoke signature.",
+      "breaking_change": "Procedural action files are still supported in Elgg 4/5/6 but Controller classes are the modern pattern and required for testability",
+      "priority": 250
+    },
+    {
       "id": "024-doctrine-dbal-v3",
       "name": "Update Doctrine DBAL v2 \u2192 v3 usage",
       "automated": true,
@@ -246,12 +279,28 @@
       "priority": 280
     },
     {
+      "id": "030-scaffold-doctor-command",
+      "name": "Scaffold <plugin_id>:doctor CLI command for post-migration data integrity",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ScaffoldDoctorCommand",
+      "breaking_change": "Elgg 3+ has Symfony Console CLI; doctor command validates migrated data integrity",
+      "priority": 285
+    },
+    {
       "id": "027-jquery-ui-requires",
       "name": "Add explicit requires for jQuery UI widgets",
       "automated": true,
       "breaking_change": "jQuery UI no longer fully loaded \u2014 must require individual widget modules",
       "priority": 290,
       "class": "ElggMigrate\\Rules\\V3ToV4\\JqueryUiRequires"
+    },
+    {
+      "id": "031-debug-surface-cleanup",
+      "name": "Strip debug residue: elgg_dump, commented var_dump/print_r, Logger constants",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\DebugSurfaceCleanup",
+      "breaking_change": "Debug residue (elgg_dump, commented var_dump) left in migrated code is a security/cleanliness issue",
+      "priority": 291
     },
     {
       "id": "028-removed-js-deps",
@@ -268,47 +317,6 @@
       "class": "ElggMigrate\\Rules\\Shared\\AddDocBlocks",
       "breaking_change": "None \u2014 quality-of-life improvement applied at the end of every migration so migrated plugins carry type-bearing docblocks",
       "priority": 9999
-    },
-    {
-      "id": "013b-amd-removed-apis",
-      "name": "Remove AMD module APIs dropped in Elgg 4.x (elgg/init, elgg.echo, elgg.provide)",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\AmdRemovedApis",
-      "breaking_change": "elgg/init AMD module removed; elgg.echo() moved to elgg/i18n; elgg.provide() removed",
-      "priority": 125
-    },
-    {
-      "id": "013c-elgg-instanceof",
-      "name": "Replace elgg_instanceof() with native PHP instanceof checks",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\ElggInstanceof",
-      "breaking_change": "elgg_instanceof() removed in Elgg 4.x \u2014 use $entity instanceof \\ElggObject && $entity->getSubtype() === 'subtype'",
-      "priority": 126
-    },
-    {
-      "id": "030-scaffold-doctor-command",
-      "name": "Scaffold <plugin_id>:doctor CLI command for post-migration data integrity",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\ScaffoldDoctorCommand",
-      "breaking_change": "Elgg 3+ has Symfony Console CLI; doctor command validates migrated data integrity",
-      "priority": 285
-    },
-    {
-      "id": "031-debug-surface-cleanup",
-      "name": "Strip debug residue: elgg_dump, commented var_dump/print_r, Logger constants",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\DebugSurfaceCleanup",
-      "breaking_change": "Debug residue (elgg_dump, commented var_dump) left in migrated code is a security/cleanliness issue",
-      "priority": 291
-    },
-    {
-      "id": "032-action-controller-analyzer",
-      "name": "Identify action files that are candidates for Controller class extraction",
-      "automated": false,
-      "class": "ElggMigrate\\Rules\\V3ToV4\\ActionControllerAnalyzer",
-      "llm_instructions": "The analyzer has identified action files with significant procedural logic (>30 LOC, multiple branches, or loops). Refactor each candidate into a Controller class implementing __invoke(\\Elgg\\Request $request). Steps:\n1. Create classes/<PluginNamespace>/Actions/<ActionName>.php extending or implementing the controller pattern\n2. Move validation logic to the top, business logic to the middle, response (forward()/error()) at the bottom\n3. Register the controller class in elgg-plugin.php: 'actions' => ['name' => ['controller' => \\Plugin\\Actions\\Name::class]]\n4. Delete or empty the original action file\nReference: profile_manager BackupController pattern for the __invoke signature.",
-      "breaking_change": "Procedural action files are still supported in Elgg 4/5/6 but Controller classes are the modern pattern and required for testability",
-      "priority": 250
     }
   ]
 }
