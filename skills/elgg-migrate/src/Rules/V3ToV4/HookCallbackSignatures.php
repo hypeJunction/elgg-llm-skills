@@ -186,7 +186,16 @@ final class HookCallbackSignatures extends AbstractRule
      */
     private function findUnregisteredLegacyHandlers(string $pluginPath): array
     {
-        $hookParams = ['hook', 'type', 'return', 'params'];
+        // Accept common variations on the 3rd param name. `return` is the
+        // canonical Elgg name, but `returnvalue` / `value` / `return_value`
+        // show up in third-party plugins (e.g. ColdTrick's). The rewriter
+        // already adapts to whatever name it captured.
+        $hookParamShapes = [
+            ['hook', 'type', 'return', 'params'],
+            ['hook', 'type', 'returnvalue', 'params'],
+            ['hook', 'type', 'value', 'params'],
+            ['hook', 'type', 'return_value', 'params'],
+        ];
         $eventParams = ['event', 'type', 'entity'];
 
         $found = [];
@@ -219,11 +228,17 @@ final class HookCallbackSignatures extends AbstractRule
                     fn (Node\Param $p) => $p->var instanceof Node\Expr\Variable && is_string($p->var->name) ? $p->var->name : '',
                     $fn->getParams(),
                 );
-                $kind = match ($names) {
-                    $hookParams => 'hook',
-                    $eventParams => 'event',
-                    default => null,
-                };
+                $kind = null;
+                if ($names === $eventParams) {
+                    $kind = 'event';
+                } else {
+                    foreach ($hookParamShapes as $shape) {
+                        if ($names === $shape) {
+                            $kind = 'hook';
+                            break;
+                        }
+                    }
+                }
                 if ($kind === null) continue;
 
                 $method = $fn instanceof Node\Stmt\Function_ ? $fn->name->toString()

@@ -210,24 +210,36 @@ final class VersionGuard
         $functions = $finder->find($ast, fn (Node $n) =>
             $n instanceof Node\FunctionLike
         );
+        // The canonical Elgg 3.x hook signature is ($hook, $type, $return, $params)
+        // but third-party plugins (e.g. ColdTrick's) name the 3rd param differently.
+        // Match any of the common variants to avoid false negatives.
+        $shapes = [
+            ['hook', 'type', 'return', 'params'],
+            ['hook', 'type', 'returnvalue', 'params'],
+            ['hook', 'type', 'value', 'params'],
+            ['hook', 'type', 'return_value', 'params'],
+        ];
         foreach ($functions as $fn) {
             /** @var Node\FunctionLike $fn */
             $params = $fn->getParams();
             if (count($params) !== 4) continue;
-            $expected = ['hook', 'type', 'return', 'params'];
             $actual = array_map(
                 fn (Node\Param $p) => $p->var instanceof Node\Expr\Variable && is_string($p->var->name) ? $p->var->name : '',
                 $params,
             );
-            if ($actual !== $expected) continue;
+            if (!in_array($actual, $shapes, true)) continue;
 
             $name = $fn instanceof Node\Stmt\Function_ ? $fn->name->toString()
                   : ($fn instanceof Node\Stmt\ClassMethod ? $fn->name->toString() : '<closure>');
             $hits[] = [
                 'line' => $fn->getStartLine(),
                 'description' => sprintf(
-                    "Function '%s(\$hook, \$type, \$return, \$params)' uses 3.x hook handler signature",
+                    "Function '%s(\$%s, \$%s, \$%s, \$%s)' uses 3.x hook handler signature",
                     $name,
+                    $actual[0],
+                    $actual[1],
+                    $actual[2],
+                    $actual[3],
                 ),
             ];
         }
