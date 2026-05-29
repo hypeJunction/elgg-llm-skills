@@ -181,22 +181,32 @@ if (!empty($llmInstructions)) {
 if ($dryRun) {
     echo "[DRY RUN] No files modified.\n";
 
-    // Still run verification, security, and audit in dry-run mode (read-only)
+    // Still run verification, security, and audit in dry-run mode (read-only).
+    // These gates must propagate their exit codes (3/4/5) even in dry-run —
+    // the documented "Verify only" workflow is `--dry-run --verify`, and a gate
+    // that reports violations but exits 0 is silently non-blocking in CI.
+    $exitCode = 0;
     if ($verify || $security || $audit) {
         echo "\n";
     }
     if ($verify) {
         $manifest = $runner->loadManifest($manifestPath);
-        runVerification($pluginPath, $manifest['to']);
+        if (!runVerification($pluginPath, $manifest['to'])) {
+            $exitCode = 3;
+        }
     }
     if ($security) {
-        runSecuritySweep($pluginPath);
+        if (!runSecuritySweep($pluginPath)) {
+            $exitCode = max($exitCode, 4);
+        }
     }
     if ($audit) {
-        runDependencyAudit($pluginPath);
+        if (!runDependencyAudit($pluginPath)) {
+            $exitCode = max($exitCode, 5);
+        }
     }
 
-    exit(0);
+    exit($exitCode);
 }
 
 // Apply phase

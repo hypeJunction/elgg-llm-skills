@@ -24,6 +24,19 @@ final class PostMigrationVerifier
      * If target is 4.x, any usage from 5.x+ boundaries is a violation.
      */
     private const VERSION_BOUNDARIES = [
+        '6.x' => [
+            // ES module loading is 6.x-only (references/version-api-boundaries.md).
+            // AMD (elgg_define_js/elgg_require_js) is the ≤5.x equivalent. Seeing these
+            // on a 3.x/4.x/5.x branch means an AMD→ESM sweep leaked a future API down —
+            // exactly the bodyology chain contamination (bd elgg-migrate-xs2g6).
+            'functions' => [
+                'elgg_import_esm',
+                'elgg_register_esm',
+            ],
+            'type_hints' => [],
+            'config_patterns' => [],
+            'forbidden_files' => [],
+        ],
         '5.x' => [
             // elgg_trigger_event_results is the only unambiguously 5.x-only function name.
             // elgg_register_event_handler / elgg_unregister_event_handler exist in 3.x and 4.x
@@ -41,7 +54,23 @@ final class PostMigrationVerifier
             'forbidden_files' => [],
         ],
         '4.x' => [
-            'functions' => [],
+            // elgg_-prefixed renames that do NOT exist in 3.x (the elgg_ prefixing
+            // initiative landed in 4.x). 3.x code must use the unprefixed forms:
+            //   elgg_get_current_language()    -> get_current_language()
+            //   elgg_register_error_message()  -> register_error()
+            //   elgg_register_success_message()-> system_message()
+            // See references/breaking-changes/overview.md "Function Renames".
+            'functions' => [
+                'elgg_get_current_language',
+                'elgg_register_error_message',
+                'elgg_register_success_message',
+                // elgg_string_to_array() lives in engine/lib/input.php from 4.x; in 3.x
+                // the equivalent is string_to_tag_array().
+                'elgg_string_to_array',
+                // The capability system (and this lookup) is 4.x+; 3.x has no
+                // 'capabilities' entity registration to query.
+                'elgg_entity_types_with_capability',
+            ],
             'type_hints' => [],
             'config_patterns' => [],
             'forbidden_files' => [

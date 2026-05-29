@@ -39,6 +39,63 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    public function testCatchesEsmImportIn3xTarget(): void
+    {
+        // AMD→ESM sweep leaking elgg_import_esm() (6.x) onto a 3.x branch —
+        // the bodyology chain contamination (bd elgg-migrate-xs2g6).
+        $dir = $this->makePluginDir([
+            'views/default/menu.php' => "<?php\nelgg_import_esm('navigation/menu/folders');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $this->assertFalse($result->passed);
+            $messages = array_map(fn($v) => $v->message, $result->errors());
+            $this->assertStringContainsString('elgg_import_esm', implode(' ', $messages));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testEsmImportAllowedIn6xTarget(): void
+    {
+        // ESM is valid from 6.x — must NOT be flagged when targeting 6.x.
+        $dir = $this->makePluginDir([
+            'views/default/menu.php' => "<?php\nelgg_import_esm('navigation/menu/folders');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            foreach ($result->errors() as $e) {
+                $this->assertStringNotContainsString('elgg_import_esm', $e->message);
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatches4xRenameIn3xTarget(): void
+    {
+        // elgg_-prefixed renames that don't exist in 3.x.
+        $dir = $this->makePluginDir([
+            'classes/MyPlugin/Field.php' => "<?php\nnamespace MyPlugin;\nclass Field {\n    public function lang() {\n        return elgg_get_current_language();\n    }\n    public function flags(\$v) {\n        return elgg_string_to_array(\$v);\n    }\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $this->assertFalse($result->passed);
+            $messages = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('elgg_get_current_language', $messages);
+            $this->assertStringContainsString('elgg_string_to_array', $messages);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     public function testIgnoresElggEventTypeHintIn4x(): void
     {
         // \Elgg\Event has existed since 3.x for typed event handlers.
