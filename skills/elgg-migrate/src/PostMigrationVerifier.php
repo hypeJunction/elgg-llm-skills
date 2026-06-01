@@ -375,10 +375,22 @@ final class PostMigrationVerifier
         // This is a structural check on elgg-plugin.php
         $lines = explode("\n", $content);
         $inEventsBlock = false;
+        // Top-level elgg-plugin.php keys that are siblings of 'events'. Hitting any
+        // of these means the 'events' array has ended — reset the flag so hook names
+        // in a later 'hooks' (or other) block are not false-flagged.
+        $siblingKeys = ['hooks', 'actions', 'routes', 'entities', 'views', 'view_extensions',
+            'view_options', 'widgets', 'group_tools', 'notifications', 'plugin', 'bootstrap', 'upgrades', 'settings'];
 
         foreach ($lines as $lineNum => $line) {
             if (preg_match("/['\"]events['\"]\s*=>/", $line)) {
                 $inEventsBlock = true;
+            } elseif ($inEventsBlock) {
+                foreach ($siblingKeys as $sk) {
+                    if (preg_match("/['\"]" . preg_quote($sk, '/') . "['\"]\s*=>/", $line)) {
+                        $inEventsBlock = false;
+                        break;
+                    }
+                }
             }
 
             if ($inEventsBlock) {

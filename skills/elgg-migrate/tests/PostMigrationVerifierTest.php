@@ -188,6 +188,24 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    public function testHooksAfterEventsBlockNotFlagged(): void
+    {
+        // Regression: hook names under a 'hooks' block that appears AFTER the
+        // 'events' block must NOT be flagged. The inEventsBlock flag must reset
+        // when the events array ends (on the sibling 'hooks' key).
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'events' => [\n        'create' => [\n            'object' => [],\n        ],\n    ],\n    'hooks' => [\n        'register' => [\n            'menu:entity' => [],\n        ],\n        'prepare' => [\n            'notification:publish:object:foo' => [],\n        ],\n    ],\n];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '4.x');
+            $confusion = array_filter($result->violations, fn($v) => $v->category === 'hook-event-confusion');
+            $this->assertEmpty($confusion, 'register/prepare under a hooks block after events must not be flagged');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Clean plugin passes ---
 
     public function testClean4xPluginPasses(): void
