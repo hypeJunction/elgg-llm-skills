@@ -104,7 +104,13 @@ final class ElggInstanceof extends AbstractRule
                 $class = self::TYPE_CLASS_MAP[$type] ?? ('\\Elgg' . ucfirst($type));
 
                 if ($subtype !== '') {
-                    return "{$var} instanceof {$class} && {$var}->getSubtype() === '{$subtype}'";
+                    // Wrap the composite expression in parentheses so it stays
+                    // correct under a leading `!` and inside `&&`/`||`/assignment.
+                    // Without parens, `!elgg_instanceof($e, 'object', 'blog')`
+                    // would become `!$e instanceof X && $e->getSubtype() === ...`
+                    // which PHP parses as `(!$e instanceof X) && ...` — inverting
+                    // only the first half of the check.
+                    return "({$var} instanceof {$class} && {$var}->getSubtype() === '{$subtype}')";
                 }
 
                 return "{$var} instanceof {$class}";
