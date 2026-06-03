@@ -194,6 +194,12 @@ final class PostMigrationVerifier
         // promotes this to required once every plugin has been swept.
         $violations = array_merge($violations, $this->checkSmokeTestScaffold($pluginPath));
 
+        // Calls to functions REMOVED at (or before) the target version — the
+        // "undefined symbol at runtime" class that the shape-based completeness
+        // gate is blind to (bd elgg-migrate-abyju). Data-driven from
+        // references/removed-functions.json.
+        $violations = array_merge($violations, $this->checkRemovedFunctions($pluginPath, $targetVersion));
+
         $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
 
         return new VerificationResult(
@@ -201,6 +207,97 @@ final class PostMigrationVerifier
             violations: $violations,
             passed: count($errors) === 0,
         );
+    }
+
+    /**
+     * Flag calls to global functions REMOVED at (or before) the target major.
+     *
+     * This is the dual of the future-version check: where checkFunctions()
+     * catches APIs from the FUTURE leaking backward, this catches legacy APIs
+     * that were removed and would fatal with "Call to undefined function" at
+     * runtime on the target core. The shape-based completeness gate
+     * (VersionGuard::detectIncompletePatterns) is blind to this class.
+     *
+     * Data-driven from references/removed-functions.json. The map is treated
+     * cumulatively: a function removed at 4.x is still removed at 6.x.
+     *
+     * @return array<Violation>
+     */
+    private function checkRemovedFunctions(string $pluginPath, string $targetVersion): array
+    {
+        $removed = $this->removedFunctionsFor($targetVersion);
+        if (empty($removed)) {
+            return [];
+        }
+
+        $names = array_keys($removed);
+        $pattern = '/(?<![\w>$:\\\\])(' . implode('|', array_map('preg_quote', $names)) . ')\s*\(/';
+
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) continue;
+
+            $relativePath = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $lineNum => $line) {
+                $trimmed = ltrim($line);
+                // Skip comment lines (best-effort) — a removed name mentioned in
+                // a docblock or // comment is not a live call.
+                if ($trimmed === '' || $trimmed[0] === '*' || str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#')) {
+                    continue;
+                }
+                if (preg_match($pattern, $line, $m)) {
+                    $func = $m[1];
+                    // Guard against method calls / definitions the lookbehind
+                    // can't fully exclude (e.g. "function forward(").
+                    if (preg_match('/(?:->|::|function)\s*' . preg_quote($func, '/') . '\s*\(/', $line)) {
+                        continue;
+                    }
+                    $replacement = $removed[$func];
+                    $violations[] = new Violation(
+                        file: $relativePath,
+                        line: $lineNum + 1,
+                        severity: 'error',
+                        message: "{$func}() was removed in Elgg {$targetVersion} — use: {$replacement}",
+                        code: trim($line),
+                        category: 'removed-function',
+                    );
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Build the cumulative removed-function map for a target version: union of
+     * every data entry whose major version is <= the target major.
+     *
+     * @return array<string,string>  removed function name => replacement hint
+     */
+    private function removedFunctionsFor(string $targetVersion): array
+    {
+        $path = __DIR__ . '/../references/removed-functions.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data)) {
+            return [];
+        }
+        $targetMajor = (int) $targetVersion;
+        $map = [];
+        foreach ($data as $version => $entries) {
+            if (!is_array($entries) || !preg_match('/^\d/', (string) $version)) {
+                continue; // skip _meta and malformed keys
+            }
+            if ((int) $version <= $targetMajor) {
+                foreach ($entries as $fn => $replacement) {
+                    $map[$fn] = (string) $replacement;
+                }
+            }
+        }
+        return $map;
     }
 
     /**

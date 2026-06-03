@@ -289,6 +289,73 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    // --- removed-function check (bd elgg-migrate-abyju) ---
+
+    public function testCatchesRemovedHookTriggerIn6xTarget(): void
+    {
+        // elgg_trigger_plugin_hook was deprecated in 5.x, REMOVED in 6.x.
+        // The shape-based completeness gate is blind to this; --verify must catch it.
+        $dir = $this->makePluginDir([
+            'classes/MyPlugin/Graph.php' => "<?php\nnamespace MyPlugin;\nclass Graph {\n    public function run() {\n        return elgg_trigger_plugin_hook('aliases', 'graph', null, []);\n    }\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $messages = array_map(fn($v) => $v->message, $result->errors());
+            $joined = implode(' ', $messages);
+            $this->assertStringContainsString('elgg_trigger_plugin_hook', $joined);
+            // The replacement hint must point at the value-returning event fn,
+            // NOT elgg_trigger_event (3-arg, returns bool).
+            $this->assertStringContainsString('elgg_trigger_event_results', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatchesLegacyRemovedFunctionsIn6xTarget(): void
+    {
+        // 2.x-era functions that leaked onto a 6.x branch (the never-migrated
+        // bodyology custom-plugin backlog).
+        $dir = $this->makePluginDir([
+            'actions/save.php' => "<?php\nregister_error('nope');\nforward('/');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('removed-function', $cats);
+            $joined = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('register_error', $joined);
+            $this->assertStringContainsString('forward', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testDoesNotFlagReplacementOrCommentOrMethod(): void
+    {
+        // The correct replacements + comment mentions + method calls of the
+        // same name must NOT be flagged.
+        $dir = $this->makePluginDir([
+            'actions/save.php' => "<?php\n// register_error() was removed — using the new API\nelgg_register_error_message('ok');\n\$svc->forward('/x');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            foreach ($result->errors() as $e) {
+                $this->assertNotSame('removed-function', $e->category, "unexpected removed-function flag: {$e->message}");
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Helpers ---
 
     private function makePluginDir(array $files): string
