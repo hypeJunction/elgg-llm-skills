@@ -4,7 +4,8 @@
     "method": "Verified empirically via Elgg\\Application::loadCore() + function_exists() inside the real core container (not static grep, which is fooled by plugin-provided functions). 6.x set verified against Elgg 6.1.5 on 2026-06-03.",
     "false_positives_excluded": {
       "elgg_ws_expose_function": "provided by the web_services bundled plugin — not a core removal",
-      "elgg_stars_get_entity_rating_values": "provided by the elgg_stars plugin"
+      "elgg_stars_get_entity_rating_values": "provided by the elgg_stars plugin",
+      "elgg_view_input": "provided by the forms_api plugin (mod/forms_api/functions.php) as a BC shim — calls work wherever forms_api is active; migrating to elgg_view_field() is optional modernization, not a fatal-fix, so it is NOT listed as removed"
     }
   },
   "6.x": {
@@ -27,7 +28,6 @@
     "elgg_get_version": "elgg_get_release",
     "elgg_instanceof": "$e instanceof \\ElggObject && $e->getSubtype() === $subtype",
     "elgg_set_ignore_access": "elgg_call(ELGG_IGNORE_ACCESS, function () { ... })",
-    "elgg_view_input": "elgg_view_field(['#type' => $type] + $vars)",
     "elgg_format_attributes": "elgg_format_element('', $attrs)",
     "elgg_view_menu_item": "elgg_view('navigation/menu/elements/item', ['item' => ...])",
     "elgg_pop_breadcrumb": "breadcrumbs auto-managed; remove or use elgg_set_breadcrumbs([])",
