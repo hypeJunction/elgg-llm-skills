@@ -52,5 +52,19 @@
     "_elgg_get_display_query": "private API removed — use QueryBuilder",
     "_elgg_get_access_where_sql": "private API removed — use QueryBuilder access clauses",
     "_elgg_admin_add_plugin_settings_menu": "private API removed"
+  },
+  "7.x": {
+    "elgg_is_admin_user": "(elgg_get_entity($guid) instanceof \\ElggUser && elgg_get_entity($guid)->isAdmin())",
+    "elgg_get_logged_in_user": "elgg_get_logged_in_user_entity()",
+    "elgg_new_entity": "new \\ElggObject() (then set ->subtype); was elgg_new_entity('object', $subtype)",
+    "elgg_get_entities_from_relationship": "elgg_get_entities() — relationship/relationship_guid/inverse_relationship are standard options",
+    "elgg_get_total_comments": "$entity->countComments()",
+    "elgg_get_total_likes": "elgg_count_annotations / likes service count",
+    "elgg_get_total_friends": "elgg_count_entities(['relationship' => 'friend', ...])",
+    "elgg_get_total_members": "elgg_count_entities(['relationship' => 'member', ...])",
+    "elgg_is_registered_viewtype": "_elgg_services()->views->isValidViewtype($viewtype)",
+    "elgg_get_registered_entity_types": "elgg_entity_types_with_capability('searchable') / config registry",
+    "elgg_geocode_location": "removed — no core replacement; needs a geocoding service (plugin-specific)",
+    "elgg_get_metastring_id": "removed — internal metastrings API; rework via QueryBuilder/metadata API"
   }
 }
