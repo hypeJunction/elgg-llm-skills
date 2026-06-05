@@ -4,11 +4,16 @@
 # Usage:
 #   elgg-migrate-verify <plugin-dir> [options]
 #
-# Options:
-#   --compose-file=<path>   Path to docker-compose.yml (default: <plugin-dir>/docker/docker-compose.yml)
+# Stack selector (mutually exclusive; default: --compose-file=<plugin-dir>/docker/docker-compose.yml):
+#   --compose-file=<path>   Path to docker-compose.yml (default for per-plugin scaffolds)
+#   --project=<name>        Existing compose project (used by elgg-migrate-run orchestrated stacks)
+#
+# Other options:
+#   --plugin-id=<id>        Override plugin id (default: basename of <plugin-dir>)
 #   --phpunit               Run PHPUnit integration tests
 #   --no-render             Skip HTTP render checks (useful when Elgg isn't installed yet)
 #   --no-phpcs              Skip PHP_CodeSniffer check
+#   --json                  Emit a single JSON line summary on stdout (in addition to TTY report)
 #
 # Gates run:
 #   [syntax]   PHP syntax check on all .php files (excl. vendor/, tests/)
@@ -22,40 +27,60 @@
 #   1  One or more gates failed
 #   2  Usage error
 #
-# The Docker stack must already be running. Start it with:
+# The Docker stack must already be running. Start it with either:
 #   docker compose -f <plugin-dir>/docker/docker-compose.yml up -d
+#   elgg-migrate-run up <plugin> --version=elgg{N}   # then pass --project=em-<plugin>-<sha>
 
 set -euo pipefail
 
-PLUGIN_DIR="${1:?usage: elgg-migrate-verify <plugin-dir> [--phpunit] [--compose-file=...]}"
+PLUGIN_DIR="${1:?usage: elgg-migrate-verify <plugin-dir> [--phpunit] [--compose-file=...|--project=...]}"
 PLUGIN_DIR="$(readlink -f "$PLUGIN_DIR")"
 PLUGIN_ID="$(basename "$PLUGIN_DIR")"
 
-COMPOSE_FILE="$PLUGIN_DIR/docker/docker-compose.yml"
+COMPOSE_FILE=""
+PROJECT_NAME=""
 RUN_PHPUNIT=0
 SKIP_RENDER=0
 SKIP_PHPCS=0
+EMIT_JSON=0
 
 shift
 for arg in "$@"; do
   case "$arg" in
     --compose-file=*) COMPOSE_FILE="${arg#*=}" ;;
+    --project=*)      PROJECT_NAME="${arg#*=}" ;;
+    --plugin-id=*)    PLUGIN_ID="${arg#*=}" ;;
     --phpunit)        RUN_PHPUNIT=1 ;;
     --no-render)      SKIP_RENDER=1 ;;
     --no-phpcs)       SKIP_PHPCS=1 ;;
+    --json)           EMIT_JSON=1 ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
 
-[[ -f "$COMPOSE_FILE" ]] || { echo "ERROR: compose file not found: $COMPOSE_FILE" >&2; exit 1; }
-
-dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+if [[ -n "$COMPOSE_FILE" && -n "$PROJECT_NAME" ]]; then
+  echo "ERROR: --compose-file and --project are mutually exclusive" >&2; exit 2
+fi
+if [[ -z "$COMPOSE_FILE" && -z "$PROJECT_NAME" ]]; then
+  COMPOSE_FILE="$PLUGIN_DIR/docker/docker-compose.yml"
+fi
+if [[ -n "$COMPOSE_FILE" ]]; then
+  [[ -f "$COMPOSE_FILE" ]] || { echo "ERROR: compose file not found: $COMPOSE_FILE" >&2; exit 1; }
+  dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+  STACK_LABEL="compose: $COMPOSE_FILE"
+else
+  dc() { docker compose --project-name "$PROJECT_NAME" "$@"; }
+  STACK_LABEL="project: $PROJECT_NAME"
+fi
 
 PASS=0; FAIL=0; SKIP=0; FAIL_DETAILS=()
+# Per-gate state, keyed by short id (syntax, render_home, render_login, php_errors,
+# phpcs, phpunit). Used to build the --json summary at the end.
+declare -A GATE_STATUS=()
+declare -A GATE_DETAIL=()
 
 gate() {
-  local name="$1" result="$2" detail="${3:-}"
-  local prefix=" "
+  local name="$1" result="$2" detail="${3:-}" id="${4:-}"
   case "$result" in
     PASS) printf "  \033[32m✓\033[0m  %-55s \033[32mPASS\033[0m\n" "$name"; PASS=$(( PASS + 1 )) ;;
     FAIL)
@@ -64,31 +89,39 @@ gate() {
       ;;
     SKIP) printf "  \033[33m-\033[0m  %-55s \033[33mSKIP\033[0m  %s\n" "$name" "$detail"; SKIP=$(( SKIP + 1 )) ;;
   esac
+  if [[ -n "$id" ]]; then
+    GATE_STATUS[$id]="$result"
+    GATE_DETAIL[$id]="$detail"
+  fi
 }
 
 # ─── check container is up ──────────────────────────────────────────────────
 
 if ! dc ps --services 2>/dev/null | grep -q elgg; then
   echo "ERROR: elgg service not found in compose project. Is the stack running?" >&2
-  echo "  docker compose -f $COMPOSE_FILE up -d" >&2
+  if [[ -n "$COMPOSE_FILE" ]]; then
+    echo "  docker compose -f $COMPOSE_FILE up -d" >&2
+  else
+    echo "  docker compose --project-name $PROJECT_NAME ps" >&2
+  fi
   exit 1
 fi
 
 echo ""
 echo "  elgg-migrate-verify  ·  $PLUGIN_ID"
-echo "  compose: $COMPOSE_FILE"
+echo "  $STACK_LABEL"
 echo ""
 
 # ─── gate 1: PHP syntax ─────────────────────────────────────────────────────
 
 echo "  ── PHP syntax ──────────────────────────────────────────────────"
 syntax_errors=$(dc exec elgg sh -c \
-  "find mod/$PLUGIN_ID -name '*.php' | grep -v /vendor/ | grep -v /tests/ | xargs php -l 2>&1 | grep -v 'No syntax errors' || true" 2>&1 \
+  "find mod/$PLUGIN_ID -name '*.php' | grep -v /vendor/ | grep -v /vendors/ | grep -v /tests/ | xargs php -l 2>&1 | grep -v 'No syntax errors' || true" 2>&1 \
   | grep -v "^$" || true)
 if [[ -z "$syntax_errors" ]]; then
-  gate "PHP syntax clean (excl. vendor, tests)" PASS
+  gate "PHP syntax clean (excl. vendor, tests)" PASS "" syntax
 else
-  gate "PHP syntax clean (excl. vendor, tests)" FAIL "$(echo "$syntax_errors" | head -3)"
+  gate "PHP syntax clean (excl. vendor, tests)" FAIL "$(echo "$syntax_errors" | head -3)" syntax
 fi
 
 # ─── gate 2: HTTP render ────────────────────────────────────────────────────
@@ -96,21 +129,21 @@ fi
 echo ""
 echo "  ── HTTP render ─────────────────────────────────────────────────"
 if [[ "$SKIP_RENDER" -eq 1 ]]; then
-  gate "Homepage renders (>1000 bytes)" SKIP "--no-render"
-  gate "Login page renders (>1000 bytes)" SKIP "--no-render"
+  gate "Homepage renders (>1000 bytes)" SKIP "--no-render" render_home
+  gate "Login page renders (>1000 bytes)" SKIP "--no-render" render_login
 else
   hp_size=$(dc exec elgg sh -c "curl -sL http://localhost/ | wc -c" 2>&1 | tr -d '[:space:]')
   if [[ "${hp_size:-0}" -gt 1000 ]]; then
-    gate "Homepage renders (${hp_size} bytes)" PASS
+    gate "Homepage renders (${hp_size} bytes)" PASS "" render_home
   else
-    gate "Homepage renders" FAIL "${hp_size:-0} bytes (expected >1000)"
+    gate "Homepage renders" FAIL "${hp_size:-0} bytes (expected >1000)" render_home
   fi
 
   login_size=$(dc exec elgg sh -c "curl -sL http://localhost/login | wc -c" 2>&1 | tr -d '[:space:]')
   if [[ "${login_size:-0}" -gt 1000 ]]; then
-    gate "Login page renders (${login_size} bytes)" PASS
+    gate "Login page renders (${login_size} bytes)" PASS "" render_login
   else
-    gate "Login page renders" FAIL "${login_size:-0} bytes (expected >1000)"
+    gate "Login page renders" FAIL "${login_size:-0} bytes (expected >1000)" render_login
   fi
 fi
 
@@ -122,12 +155,12 @@ error_count=$(dc exec elgg sh -c \
   "grep -cE 'PHP Fatal|PHP Error' /var/log/apache2/error.log 2>/dev/null || echo 0" 2>&1 \
   | head -1 | tr -d '[:space:]' || echo 0)
 if [[ "${error_count:-0}" -eq 0 ]]; then
-  gate "No PHP Fatal/Error in Apache error.log" PASS
+  gate "No PHP Fatal/Error in Apache error.log" PASS "" php_errors
 else
   # grab first offending line for context
   first_error=$(dc exec elgg sh -c \
     "grep -m1 -E 'PHP Fatal|PHP Error' /var/log/apache2/error.log 2>/dev/null || true" 2>&1 || true)
-  gate "No PHP Fatal/Error in Apache error.log" FAIL "$error_count error(s): $first_error"
+  gate "No PHP Fatal/Error in Apache error.log" FAIL "$error_count error(s): $first_error" php_errors
 fi
 
 # ─── gate 4: PHP_CodeSniffer ────────────────────────────────────────────────
@@ -135,11 +168,11 @@ fi
 echo ""
 echo "  ── PHP_CodeSniffer ─────────────────────────────────────────────"
 if [[ "$SKIP_PHPCS" -eq 1 ]]; then
-  gate "PHP_CodeSniffer (Elgg standard)" SKIP "--no-phpcs"
+  gate "PHP_CodeSniffer (Elgg standard)" SKIP "--no-phpcs" phpcs
 else
   phpcs_available=$(dc exec elgg sh -c "test -x vendor/bin/phpcs && echo yes || echo no" 2>&1 | tr -d '[:space:]')
   if [[ "$phpcs_available" != "yes" ]]; then
-    gate "PHP_CodeSniffer (Elgg standard)" SKIP "vendor/bin/phpcs not found — add squizlabs/php_codesniffer + elgg/sniffs to elgg-composer.json"
+    gate "PHP_CodeSniffer (Elgg standard)" SKIP "vendor/bin/phpcs not found — add squizlabs/php_codesniffer + elgg/sniffs to elgg-composer.json" phpcs
   else
     phpcs_out=$(dc exec elgg sh -c \
       "vendor/bin/phpcs --standard=Elgg mod/$PLUGIN_ID/ --ignore='*/vendor/*,*/tests/*,*/node_modules/*' 2>&1" 2>&1 || true)
@@ -147,12 +180,12 @@ else
     warning_count=$(echo "$phpcs_out" | grep -cE '^\s+[0-9]+ \| WARNING' || true)
     if [[ "${error_count:-0}" -eq 0 ]]; then
       if [[ "${warning_count:-0}" -gt 0 ]]; then
-        gate "PHP_CodeSniffer (Elgg standard, ${warning_count} warning(s))" PASS
+        gate "PHP_CodeSniffer (Elgg standard, ${warning_count} warning(s))" PASS "" phpcs
       else
-        gate "PHP_CodeSniffer (Elgg standard)" PASS
+        gate "PHP_CodeSniffer (Elgg standard)" PASS "" phpcs
       fi
     else
-      gate "PHP_CodeSniffer (Elgg standard)" FAIL "${error_count} error(s), ${warning_count} warning(s)"
+      gate "PHP_CodeSniffer (Elgg standard)" FAIL "${error_count} error(s), ${warning_count} warning(s)" phpcs
       echo ""
       echo "$phpcs_out" | grep -A2 'ERROR' | head -20 | sed 's/^/    /'
       echo ""
@@ -165,18 +198,18 @@ fi
 echo ""
 echo "  ── PHPUnit ─────────────────────────────────────────────────────"
 if [[ "$RUN_PHPUNIT" -eq 0 ]]; then
-  gate "PHPUnit integration tests" SKIP "pass --phpunit to run"
+  gate "PHPUnit integration tests" SKIP "pass --phpunit to run" phpunit
 elif [[ ! -f "$PLUGIN_DIR/tests/phpunit.xml" ]]; then
-  gate "PHPUnit integration tests" SKIP "no tests/phpunit.xml found"
+  gate "PHPUnit integration tests" SKIP "no tests/phpunit.xml found" phpunit
 else
   phpunit_out=$(dc exec elgg sh -c \
     "vendor/bin/phpunit -c mod/$PLUGIN_ID/tests/phpunit.xml 2>&1" 2>&1 || true)
   ok_line=$(echo "$phpunit_out" | grep -E "^OK( \(|,)" || true)
   if [[ -n "$ok_line" ]]; then
-    gate "PHPUnit: $ok_line" PASS
+    gate "PHPUnit: $ok_line" PASS "" phpunit
   else
     summary=$(echo "$phpunit_out" | grep -E "Tests:|ERRORS!|FAILURES!" | tail -2 | tr '\n' ' ')
-    gate "PHPUnit integration tests" FAIL "${summary:-check logs}"
+    gate "PHPUnit integration tests" FAIL "${summary:-check logs}" phpunit
     # print first failure for context
     echo ""
     echo "    --- phpunit output (tail) ---"
@@ -198,4 +231,25 @@ if [[ "${#FAIL_DETAILS[@]}" -gt 0 ]]; then
 fi
 
 echo ""
+
+# Optional structured summary — used by `elgg-migrate-run verify-fleet` to roll
+# up per-plugin gate state into an NDJSON report without re-parsing the TTY output.
+if [[ "$EMIT_JSON" -eq 1 ]]; then
+  if command -v jq >/dev/null 2>&1; then
+    gates_json="{}"
+    for id in "${!GATE_STATUS[@]}"; do
+      gates_json="$(jq -n --argjson g "$gates_json" \
+        --arg id "$id" --arg s "${GATE_STATUS[$id]}" --arg d "${GATE_DETAIL[$id]}" \
+        '$g + {($id): {status: $s, detail: $d}}')"
+    done
+    jq -nc \
+      --arg plugin "$PLUGIN_ID" \
+      --argjson pass "$PASS" --argjson fail "$FAIL" --argjson skip "$SKIP" \
+      --argjson gates "$gates_json" \
+      '{plugin: $plugin, pass: $pass, fail: $fail, skip: $skip, gates: $gates}'
+  else
+    echo "WARN: --json requested but jq not installed; omitting JSON line" >&2
+  fi
+fi
+
 [[ "$FAIL" -eq 0 ]]

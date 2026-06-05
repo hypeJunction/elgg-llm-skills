@@ -155,8 +155,8 @@ gate report. If the same plugin appears in commit histories of two
 adjacent branches with identical diffs, redo the second one properly.
 
 **Migrating site-embedded customs as if they were plugin repos.** A site
-repo (e.g. a bodyology-forum-style monorepo) holds custom plugins
-git-tracked inside `mod/`. The skill is for plugin repos — separate
+monorepo holds custom plugins git-tracked inside `mod/`. The skill is for
+plugin repos — separate
 repos with their own `docker/elgg{N}/` infra, their own `migrate/elgg-N.x`
 branches based on the previous one, their own `tests/`. Editing customs
 in-place on a site repo's `migrate/4.x` branch (which is a *site*
@@ -171,8 +171,9 @@ preserving history if useful), then run the skill there. Site repo
 just composer-includes the migrated plugin.
 
 **Treating "site activates with N plugins" as a migration success metric.**
-The fleet-level worktrees (`/tmp/bodyology-{2..6}x`) verify whether the
-site BOOTS with a given composer-resolved plugin set. They are an
+Fleet-level worktrees (one per Elgg major in the upgrade path) verify
+whether the site BOOTS with a given composer-resolved plugin set. They
+are an
 input to `elgg-site-upgrade`, not output of `elgg-migrate`. A plugin
 that boots in the site stack but has no pre-migration tests, no
 `--verify --security` pass, no PHPCS, no ARCHITECTURE.md, and no gate

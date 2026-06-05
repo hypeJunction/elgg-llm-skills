@@ -468,6 +468,57 @@ passing count must match the baseline from Part A's test phase. See
 pitfalls (hypeWall interception, foreach-by-reference crashes, OPcache
 stale code).
 
+**Anonymous page contents are stable across versions (snapshot drift gate).**
+Activation passing and homepage 200 are necessary but not sufficient: a
+silent regression can ship a page that *renders* but with completely
+different (or missing) content. Take an HTTP snapshot of a fixed set of
+anonymous-accessible pages on each version and compare against a known-good
+baseline.
+
+**The baseline is the production source version** — the actual state your
+users see today — not an intermediate migration step. For a 2.x→7.x upgrade,
+baseline 2.x; for a 3.x→7.x upgrade, baseline 3.x. The intermediate steps
+exist to satisfy Iron Law 1 (one major at a time, so each Elgg upgrade
+script runs), but the *content contract* is "the site after the upgrade
+shows the same things the site before the upgrade showed."
+
+A per-project verify-migration runner (typically in your project's
+`bin/`, e.g. `verify-migration-path.sh`) implements this gate. After the
+activation + simplecache checks, it:
+
+1. `curl`s a fixed set of URLs against the running stack (e.g. `/`,
+   `/login`, `/activity`, `/members`, `/groups/all`, plus any plugin
+   index pages you rely on) and saves each HTML response under
+   `/tmp/<project>-snapshot-<ver>/<slug>.html`.
+2. Records HTTP code, byte size, and `<title>` in `pages.tsv`.
+3. After all stacks run, walks every baseline page and reports per-version:
+
+   - HTTP code match (`200→200`, not `200→500`)
+   - Byte size within ±50% of baseline (`SNAPSHOT_DRIFT_PCT` env var to
+     override) — a 30 KB activity page collapsing to 1 KB is a regression
+     even with HTTP 200
+   - Baseline had a real `<title>` and this version says `Fatal Error.`
+
+The threshold is intentionally wide: real version differences (theme
+overrides, new features, deprecated widgets) move byte counts by 10–30%
+per step, and 2–4× across a 2.x→7.x sweep. Tight thresholds (e.g. ±5%)
+drown the report in false positives. The goal is to catch *catastrophic*
+drift, not pixel-perfect parity.
+
+Override with environment variables:
+
+```bash
+SNAPSHOT_BASELINE=3x SNAPSHOT_DRIFT_PCT=30 bin/verify-migration-path.sh
+```
+
+Default the baseline to whatever your production site runs today.
+
+Picking the URL set: anything anonymous-accessible that a logged-out
+visitor lands on. Login form, public activity feed, members and groups
+indexes if those plugins are active, and any plugin-specific index your
+users hit (news, blog, gallery, etc.). Avoid auth-gated pages — they
+need session-aware tooling, which is what Playwright covers in step 7.
+
 When any gate fails, fix it in the workspace, commit the fix, and re-run
 the failing gate. Don't mask failures by commenting tests out.
 

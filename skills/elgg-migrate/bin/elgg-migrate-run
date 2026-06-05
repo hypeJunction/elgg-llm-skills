@@ -58,7 +58,7 @@ config_set() {
   if [[ -f "$CONFIG_FILE" ]]; then
     jq --arg k "$key" --arg v "$val" '.[$k] = $v' "$CONFIG_FILE" > "$tmp"
   else
-    jq -n --arg k "$key" --arg v "$val" '{($k): $v}' > "$tmp"
+    jq -nc --arg k "$key" --arg v "$val" '{($k): $v}' > "$tmp"
   fi
   mv "$tmp" "$CONFIG_FILE"
 }
@@ -226,7 +226,14 @@ classify_dep() {
 resolve_deps() {
   local plugin_dir="$1" plugins_source="$2"
   local override="$plugin_dir/tests/deps.txt"
-  if [[ -f "$override" ]]; then
+  # The override file is opt-in: only treat it as authoritative when it
+  # actually contains at least one non-comment, non-empty line. A file
+  # that is all comments (annotating *why* there are no deps to mount)
+  # used to silently zero out the elgg-plugin.php-declared deps —
+  # plugin-order.txt would then list only the plugin under test, the
+  # install script wouldn't symlink declared-but-missing core deps,
+  # and activation would fail with "Requires plugin 'X' to be active."
+  if [[ -f "$override" ]] && grep -qE '^[^#[:space:]]' "$override"; then
     local out="[]" line stripped name lower classified source path
     while IFS= read -r line; do
       # Strip everything from a leading '#' (full-line comment) so
@@ -529,6 +536,249 @@ cmd_down() {
   echo "torn down: $jdir"
 }
 
+# Parse elgg-install.sh's activation output to determine the activation result
+# for one plugin. The install script emits "  + <id>" for each plugin that
+# activated, and "  - <id>: <error>" for each one that threw at activate() time.
+# Activation failures do NOT fail .elgg-installed, so wait_for_install returning
+# OK is not sufficient — we must parse the log.
+#
+# Reads logs on stdin so the parser is unit-testable without Docker. Outcomes:
+#   activated       — exit 0, prints nothing
+#   failed          — exit 1, prints the captured error message on stdout
+#   not_attempted   — exit 2, plugin id never appeared in activation output
+parse_activation_log() {
+  local plugin="$1"
+  local logs; logs="$(cat)"
+  if grep -qE "^[[:space:]]*\+ ${plugin}\$" <<< "$logs"; then
+    return 0
+  fi
+  local err
+  err="$(grep -E "^[[:space:]]*- ${plugin}:" <<< "$logs" \
+         | head -1 \
+         | sed -E "s/^[[:space:]]*- ${plugin}: //")"
+  if [[ -n "$err" ]]; then
+    echo "$err"
+    return 1
+  fi
+  return 2
+}
+
+# Thin wrapper: pipe the compose logs into parse_activation_log. Kept separate
+# so the docker compose dependency lives in one place and the parser stays pure.
+# --no-log-prefix strips the "elgg-1   | " service prefix so the parser's
+# start-of-line anchored regex matches the install-script output directly.
+fleet_check_activation() {
+  local project="$1" plugin="$2"
+  docker compose --project-name "$project" logs --no-color --no-log-prefix elgg 2>&1 \
+    | parse_activation_log "$plugin"
+}
+
+# Tear down a per-plugin stack by project name without relying on report.json
+# (which cmd_down requires and which doesn't exist on cmd_up failure paths).
+# Running cmd_up failures leave the db + elgg containers up, RAM accumulates,
+# and the fleet sweep eventually gets OOM-killed mid-iteration. This is the
+# hard cleanup used inside verify-fleet.
+fleet_force_down() {
+  local project="$1"
+  docker compose --project-name "$project" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+
+cmd_verify_fleet() {
+  local version="elgg7"
+  local require_branch="migrate/elgg-7.x"
+  local output=""
+  local only=""
+  local phpunit_arg=""
+  local skip_render_arg=""
+  local skip_phpcs_arg=""
+  local keep_up_on_fail=0
+  local dry_run=0
+  local resume=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version=*)        version="${1#*=}" ;;
+      --require-branch=*) require_branch="${1#*=}" ;;
+      --output=*)         output="${1#*=}" ;;
+      --only=*)           only="${1#*=}" ;;
+      --phpunit)          phpunit_arg="--phpunit" ;;
+      --no-render)        skip_render_arg="--no-render" ;;
+      --no-phpcs)         skip_phpcs_arg="--no-phpcs" ;;
+      --keep-up-on-fail)  keep_up_on_fail=1 ;;
+      --dry-run)          dry_run=1 ;;
+      --resume)           resume=1 ;;
+      *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  case "$version" in
+    elgg2|elgg3|elgg4|elgg5|elgg6|elgg7) ;;
+    *) echo "unknown --version: $version" >&2; exit 2 ;;
+  esac
+
+  local src; src="$(config_get plugins_source)"
+  [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
+  src="$(readlink -f "$src")"
+
+  : "${output:=$STATE_HOME/fleet-activation-${version}.ndjson}"
+  mkdir -p "$(dirname "$output")"
+  if (( resume )) && [[ -s "$output" ]]; then
+    echo "resume: appending to existing $output ($(wc -l < "$output") prior rows)"
+  else
+    : > "$output"  # truncate
+  fi
+
+  # When resuming, track which plugins already have a row so we can skip them.
+  local -A done_plugins=()
+  if (( resume )); then
+    while IFS= read -r p; do
+      [[ -n "$p" ]] && done_plugins["$p"]=1
+    done < <(jq -r '.plugin // empty' "$output" 2>/dev/null)
+  fi
+
+  local verify_script="$BIN_DIR/elgg-migrate-verify"
+  [[ -x "$verify_script" ]] || { echo "missing: $verify_script" >&2; exit 2; }
+
+  # Build the list of candidate plugin dirs (sibling dirs of $src that contain
+  # elgg-plugin.php or start.php — same predicate cmd_up uses).
+  local -a plugins=()
+  local d name
+  while IFS= read -r -d '' d; do
+    name="$(basename "$d")"
+    is_plugin_dir "$d" || continue
+    [[ -d "$d/.git" ]] || continue   # need git history for branch checks
+    if [[ -n "$only" ]]; then
+      case ",${only}," in *",${name},"*) ;; *) continue ;; esac
+    fi
+    plugins+=("$name")
+  done < <(find "$src" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+
+  local total=${#plugins[@]}
+  local pass=0 fail=0 skip=0 idx=0
+  echo "fleet activation gate · version=$version · branch=$require_branch · plugins=$total"
+  echo "output: $output"
+  echo ""
+
+  local plugin pdir current sha jdir project verify_rc act_status act_detail
+  for plugin in "${plugins[@]}"; do
+    idx=$(( idx + 1 ))
+    pdir="$src/$plugin"
+    printf "[%3d/%d] %-40s " "$idx" "$total" "$plugin"
+
+    # --- resume guard ---------------------------------------------------------
+    if (( resume )) && [[ -n "${done_plugins[$plugin]:-}" ]]; then
+      printf "RESUME-SKIP (already recorded)\n"
+      continue
+    fi
+
+    # --- branch guard ---------------------------------------------------------
+    current="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+    if [[ "$current" != "$require_branch" ]]; then
+      printf "SKIP (branch=%s)\n" "${current:-detached}"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg rb "$require_branch" --arg cb "$current" \
+        '{plugin:$p, version:$v, status:"skip", reason:"branch_mismatch", required_branch:$rb, current_branch:$cb}' \
+        >> "$output"
+      skip=$(( skip + 1 )); continue
+    fi
+
+    if (( dry_run )); then
+      printf "DRY-RUN (on %s)\n" "$require_branch"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" \
+        '{plugin:$p, version:$v, status:"dry_run", branch:$b}' >> "$output"
+      continue
+    fi
+
+    sha="$(job_sha "$pdir")"
+    jdir="$(job_path "$plugin" "$sha")"
+    mkdir -p "$jdir"
+    project="em-${plugin}-${sha}"
+
+    # --- up (build + install + activate) -------------------------------------
+    if ! cmd_up "$plugin" --version="$version" >> "$jdir/verify-fleet.log" 2>&1; then
+      printf "FAIL (up)\n"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+            --arg log "$jdir/verify-fleet.log" \
+        '{plugin:$p, version:$v, status:"up_failed", branch:$b, sha:$s, log:$log}' >> "$output"
+      fail=$(( fail + 1 ))
+      (( keep_up_on_fail )) || fleet_force_down "$project"
+      continue
+    fi
+
+    # --- activation check (parse install log) --------------------------------
+    if act_detail="$(fleet_check_activation "$project" "$plugin")"; then
+      act_status="activated"
+    else
+      case $? in
+        1) act_status="activation_failed" ;;
+        2) act_status="not_attempted"; act_detail="plugin id never appeared in activation log" ;;
+      esac
+    fi
+
+    if [[ "$act_status" != "activated" ]]; then
+      printf "FAIL (%s)\n" "$act_status"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+            --arg st "$act_status" --arg d "$act_detail" --arg pj "$project" \
+        '{plugin:$p, version:$v, status:$st, branch:$b, sha:$s, project:$pj, error:$d}' >> "$output"
+      fail=$(( fail + 1 ))
+      (( keep_up_on_fail )) || fleet_force_down "$project"
+      continue
+    fi
+
+    # --- full verify gates (--json gives a structured summary) ---------------
+    local verify_json verify_tmp
+    verify_tmp="$(mktemp)"
+    set +e
+    "$verify_script" "$pdir" --project="$project" --plugin-id="$plugin" --json \
+      $phpunit_arg $skip_render_arg $skip_phpcs_arg \
+      > "$verify_tmp" 2>>"$jdir/verify-fleet.log"
+    verify_rc=$?
+    set -e
+    # Last line of stdout is the JSON summary; earlier lines are the TTY report
+    # (in case the user is watching live).
+    # Pick the last line that looks like a JSON object. tail -n1 isn't
+    # robust here: elgg-migrate-verify can emit trailing TTY noise (e.g.
+    # phpcs error summaries) after its final compact-JSON line on some
+    # gates' failure paths, and an unparseable last line then poisons
+    # the downstream --argjson call and kills the fleet sweep.
+    # Use awk (single tool, no pipeline) — grep|tail under pipefail can
+    # SIGPIPE (exit 141) when tail closes its read end after the first
+    # match, aborting verify-fleet with empty NDJSON. See bead 5gtfq.
+    verify_json="$(awk '/^\{.*\}$/ {last=$0} END {print last}' "$verify_tmp")"
+    if ! printf '%s' "$verify_json" | jq -e . >/dev/null 2>&1; then
+      verify_json='{}'
+    fi
+    cat "$verify_tmp" | sed '$d'  # echo TTY report (drop json line)
+    rm -f "$verify_tmp"
+
+    if (( verify_rc == 0 )); then
+      printf "PASS\n"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+            --arg pj "$project" --argjson g "$verify_json" \
+        '{plugin:$p, version:$v, status:"pass", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
+      pass=$(( pass + 1 ))
+      fleet_force_down "$project"
+    else
+      printf "FAIL (gates)\n"
+      jq -nc --arg p "$plugin" --arg v "$version" --arg b "$require_branch" --arg s "$sha" \
+            --arg pj "$project" --argjson g "$verify_json" \
+        '{plugin:$p, version:$v, status:"verify_failed", branch:$b, sha:$s, project:$pj, verify:$g}' >> "$output"
+      fail=$(( fail + 1 ))
+      (( keep_up_on_fail )) || fleet_force_down "$project"
+    fi
+  done
+
+  echo ""
+  echo "=== summary ==="
+  printf "  %d PASS  %d FAIL  %d SKIP  (of %d)\n" "$pass" "$fail" "$skip" "$total"
+  echo "  results: $output"
+  if (( total > 0 && skip == total )); then
+    echo ""
+    echo "  All plugins skipped — none currently on $require_branch."
+    echo "  Check out the target branch on each plugin before running this gate, e.g.:"
+    echo "    for d in $src/*/; do (cd \"\$d\" && git checkout $require_branch 2>/dev/null); done"
+  fi
+  (( fail == 0 ))
+}
+
 cmd_status() {
   if [[ $# -eq 0 ]]; then
     find "$JOBS_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort
@@ -551,6 +801,10 @@ elgg-migrate-run — isolated per-plugin migration orchestrator
   up      <plugin> [--version=elgg2|elgg3|elgg4|elgg5|elgg6|elgg7]
   down    <plugin>
   status  [<plugin>]
+  verify-fleet [--version=elgg7] [--require-branch=migrate/elgg-7.x]
+               [--only=p1,p2,...] [--output=PATH]
+               [--phpunit] [--no-render] [--no-phpcs]
+               [--keep-up-on-fail] [--dry-run]
 
 State lives under $XDG_STATE_HOME/elgg-migrate/. Config under
 $XDG_CONFIG_HOME/elgg-migrate/config.json. No host paths are baked in.
@@ -560,14 +814,19 @@ EOF
 main() {
   local sub="${1:-}"; shift || true
   case "$sub" in
-    init)    cmd_init    "$@" ;;
-    resolve) cmd_resolve "$@" ;;
-    up)      cmd_up      "$@" ;;
-    down)    cmd_down    "$@" ;;
-    status)  cmd_status  "$@" ;;
+    init)         cmd_init         "$@" ;;
+    resolve)      cmd_resolve      "$@" ;;
+    up)           cmd_up           "$@" ;;
+    down)         cmd_down         "$@" ;;
+    status)       cmd_status       "$@" ;;
+    verify-fleet) cmd_verify_fleet "$@" ;;
     ""|-h|--help|help) usage ;;
     *) echo "unknown subcommand: $sub" >&2; usage >&2; exit 2 ;;
   esac
 }
 
-main "$@"
+# Only run main when executed directly, so unit tests can source the script
+# and exercise the pure helpers (parse_activation_log, classify_dep, etc.).
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

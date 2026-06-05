@@ -157,5 +157,6 @@ phpcs scaffold complete. Next steps:
   git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
   git push
 
-See ui_tabs commit 4621ee1 in the bodyology workspace for a worked example.
+See your own plugin's git log for a worked example after running this on
+the first plugin in your workspace.
 NEXT
