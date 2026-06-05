@@ -5,7 +5,11 @@
     "false_positives_excluded": {
       "elgg_ws_expose_function": "provided by the web_services bundled plugin — not a core removal",
       "elgg_stars_get_entity_rating_values": "provided by the elgg_stars plugin",
-      "elgg_view_input": "provided by the forms_api plugin (mod/forms_api/functions.php) as a BC shim — calls work wherever forms_api is active; migrating to elgg_view_field() is optional modernization, not a fatal-fix, so it is NOT listed as removed"
+      "elgg_view_input": "provided by the forms_api plugin (mod/forms_api/functions.php) as a BC shim — calls work wherever forms_api is active; migrating to elgg_view_field() is optional modernization, not a fatal-fix, so it is NOT listed as removed",
+      "elgg_get_total_comments": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\CommentsCounter; never an Elgg core/bundled global, so not a 7.x core removal",
+      "elgg_get_total_likes": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\LikesCounter; never an Elgg core/bundled global",
+      "elgg_get_total_friends": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\FriendsCounter; never an Elgg core/bundled global",
+      "elgg_get_total_members": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\MembersCounter; never an Elgg core/bundled global"
     }
   },
   "6.x": {
@@ -58,10 +62,6 @@
     "elgg_get_logged_in_user": "elgg_get_logged_in_user_entity()",
     "elgg_new_entity": "new \\ElggObject() (then set ->subtype); was elgg_new_entity('object', $subtype)",
     "elgg_get_entities_from_relationship": "elgg_get_entities() — relationship/relationship_guid/inverse_relationship are standard options",
-    "elgg_get_total_comments": "$entity->countComments()",
-    "elgg_get_total_likes": "elgg_count_annotations / likes service count",
-    "elgg_get_total_friends": "elgg_count_entities(['relationship' => 'friend', ...])",
-    "elgg_get_total_members": "elgg_count_entities(['relationship' => 'member', ...])",
     "elgg_is_registered_viewtype": "_elgg_services()->views->isValidViewtype($viewtype)",
     "elgg_get_registered_entity_types": "elgg_entity_types_with_capability('searchable') / config registry",
     "elgg_geocode_location": "removed — no core replacement; needs a geocoding service (plugin-specific)",
