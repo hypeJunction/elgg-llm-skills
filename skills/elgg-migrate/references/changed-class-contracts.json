@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "description": "Core types whose CONTRACT changed across an Elgg major (interface -> abstract class, class -> interface, relocated, or method-signature break) such that a plugin's `implements`/`extends`/use of it that was valid below the boundary becomes a FATAL at or beyond it. Used by PostMigrationVerifier::checkChangedClassContracts() to flag the 'cannot implement X - it is not an interface' (and dual) class of boot fatals that the shape-based completeness gate AND checkRemovedFunctions() are both blind to — the type still exists, only its kind changed. Caught empirically by bin/verify-migration-chain.sh at the 5x->6x tier on 2026-06-05 (hypeDiscovery/hypeScraper/hypeSeo/hypeMaps upgrade Batch classes).",
+    "method": "Verified against the installed vendor: 6.x+ ships Elgg\\Upgrade\\Batch as `abstract class Batch`, with `abstract class AsynchronousUpgrade extends Batch` and `abstract class SystemUpgrade extends Batch` as the concrete contracts. Elgg\\Upgrade\\Locator::getBatch() only requires is_subclass_of($class, Batch::class), so `extends AsynchronousUpgrade` (or `extends Batch`) is correct; `implements Batch` fatals.",
+    "cumulative": "Treated like removed-functions.json: a contract change at 6.x still applies when targeting 7.x."
+  },
+  "6.x": {
+    "Elgg\\Upgrade\\Batch": {
+      "was": "interface",
+      "now": "abstract class",
+      "illegal_keyword": "implements",
+      "fix": "Replace `implements Batch` with `extends \\Elgg\\Upgrade\\AsynchronousUpgrade` (for admin-run upgrades) or `extends \\Elgg\\Upgrade\\SystemUpgrade`. In 3.x-5.x Batch was an interface; in 6.x it became an abstract class, so `implements Batch` fatals on boot with 'cannot implement Elgg\\Upgrade\\Batch - it is not an interface'."
+    }
+  }
+}

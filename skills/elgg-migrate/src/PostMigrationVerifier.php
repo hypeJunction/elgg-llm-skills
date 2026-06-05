@@ -200,6 +200,13 @@ final class PostMigrationVerifier
         // references/removed-functions.json.
         $violations = array_merge($violations, $this->checkRemovedFunctions($pluginPath, $targetVersion));
 
+        // Core types whose KIND changed across a major (interface -> abstract class,
+        // etc.). The type still exists, so checkRemovedFunctions() is blind to it, and
+        // the shape gate never sees it — but `implements X` fatals on boot once X is
+        // no longer an interface. Data-driven from references/changed-class-contracts.json.
+        // (bd elgg-migrate — caught by verify-migration-chain.sh at 5x->6x, 2026-06-05).
+        $violations = array_merge($violations, $this->checkChangedClassContracts($pluginPath, $targetVersion));
+
         $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
 
         return new VerificationResult(
@@ -267,6 +274,105 @@ final class PostMigrationVerifier
         }
 
         return $violations;
+    }
+
+    /**
+     * Flag classes that `implements` a core type whose KIND changed at (or
+     * before) the target major — e.g. Elgg\Upgrade\Batch, an interface in
+     * 3.x-5.x, became an abstract class in 6.x. `implements Batch` then fatals
+     * on boot ("cannot implement Elgg\Upgrade\Batch - it is not an interface"),
+     * but the type still EXISTS so checkRemovedFunctions() and the shape gate
+     * are both blind to it. Data-driven from references/changed-class-contracts.json.
+     *
+     * Detection is conservative: the file must both reference the type (a
+     * `use <FQN>;` import of its short name, or the inline FQN) AND use the
+     * illegal keyword (`implements`) against that name. This avoids flagging an
+     * unrelated local class that happens to be called `Batch`.
+     *
+     * @return array<Violation>
+     */
+    private function checkChangedClassContracts(string $pluginPath, string $targetVersion): array
+    {
+        $contracts = $this->changedContractsFor($targetVersion);
+        if (empty($contracts)) {
+            return [];
+        }
+
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $relativePath = $this->relativePath($pluginPath, $file);
+            $lines = explode("\n", $content);
+
+            foreach ($contracts as $fqn => $info) {
+                $short = ltrim((string) strrchr('\\' . $fqn, '\\'), '\\');
+                $fqnEscaped = preg_quote(ltrim($fqn, '\\'), '/');
+                $shortEscaped = preg_quote($short, '/');
+                $keyword = preg_quote((string) ($info['illegal_keyword'] ?? 'implements'), '/');
+
+                // Is the type referenced in this file by import or inline FQN?
+                $imported = (bool) preg_match('/use\s+\\\\?' . $fqnEscaped . '\s*;/', $content);
+                $usesFqnInline = (bool) preg_match('/\\\\?' . $fqnEscaped . '\b/', $content);
+                if (!$imported && !$usesFqnInline) {
+                    continue;
+                }
+
+                foreach ($lines as $lineNum => $line) {
+                    // `implements ... Batch` (short name, valid only when imported)
+                    // or `implements ... \Elgg\Upgrade\Batch` (inline FQN).
+                    $hitShort = $imported && preg_match('/\b' . $keyword . '\b[^{]*\b' . $shortEscaped . '\b/', $line);
+                    $hitFqn = preg_match('/\b' . $keyword . '\b[^{]*\\\\?' . $fqnEscaped . '\b/', $line);
+                    if ($hitShort || $hitFqn) {
+                        $violations[] = new Violation(
+                            file: $relativePath,
+                            line: $lineNum + 1,
+                            severity: 'error',
+                            message: "{$fqn} was a(n) {$info['was']} but is a(n) {$info['now']} in Elgg {$targetVersion} — {$info['fix']}",
+                            code: trim($line),
+                            category: 'changed-class-contract',
+                        );
+                    }
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Cumulative map of contract-changed core types for a target version: every
+     * data entry whose major <= the target major.
+     *
+     * @return array<string,array<string,string>>  FQN => {was, now, illegal_keyword, fix}
+     */
+    private function changedContractsFor(string $targetVersion): array
+    {
+        $path = __DIR__ . '/../references/changed-class-contracts.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data)) {
+            return [];
+        }
+        $targetMajor = (int) $targetVersion;
+        $map = [];
+        foreach ($data as $version => $entries) {
+            if (!is_array($entries) || !preg_match('/^\d/', (string) $version)) {
+                continue; // skip _meta and malformed keys
+            }
+            if ((int) $version <= $targetMajor) {
+                foreach ($entries as $fqn => $info) {
+                    if (is_array($info)) {
+                        $map[$fqn] = $info;
+                    }
+                }
+            }
+        }
+        return $map;
     }
 
     /**

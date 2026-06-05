@@ -356,6 +356,68 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    public function testCatchesImplementsBatchIn6xTarget(): void
+    {
+        // Elgg\Upgrade\Batch became an abstract class in 6.x; `implements Batch`
+        // fatals on boot. The type still exists, so removed-function + shape gates
+        // miss it — this is the verify-migration-chain.sh 5x->6x catch (2026-06-05).
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\Batch;\nuse Elgg\\Upgrade\\Result;\n\nclass EncodeSettingsAsJson implements Batch {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('changed-class-contract', $cats);
+            $joined = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('AsynchronousUpgrade', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testExtendsAsynchronousUpgradePassesIn7xTarget(): void
+    {
+        // The CORRECT 6.x+ form must not be flagged (cumulative: applies at 7.x too).
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\AsynchronousUpgrade;\nuse Elgg\\Upgrade\\Result;\n\nclass EncodeSettingsAsJson extends AsynchronousUpgrade {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            foreach ($result->errors() as $e) {
+                $this->assertNotSame('changed-class-contract', $e->category, "unexpected contract flag: {$e->message}");
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testImplementsBatchAllowedIn5xTarget(): void
+    {
+        // Below the 6.x boundary, Batch is still an interface — `implements Batch`
+        // is correct and must NOT be flagged.
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\Batch;\n\nclass EncodeSettingsAsJson implements Batch {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '5.x');
+            $cats = array_map(fn($v) => $v->category, $result->violations);
+            $this->assertNotContains('changed-class-contract', $cats);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Helpers ---
 
     private function makePluginDir(array $files): string
