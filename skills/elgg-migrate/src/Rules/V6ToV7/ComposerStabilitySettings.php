@@ -16,7 +16,11 @@ use ElggMigrate\RuleResult;
  * Elgg 7.x plugins must declare:
  *   - "minimum-stability": "dev"
  *   - "prefer-stable": true
- *   - A repository entry for https://asset-packagist.org
+ *
+ * The asset-packagist repository (https://asset-packagist.org) is added ONLY when
+ * the plugin actually requires a bower-asset/* or npm-asset/* package. Adding it
+ * unconditionally left dead-weight repo entries in plugins with no asset deps, so
+ * it is now gated on real need.
  */
 final class ComposerStabilitySettings extends AbstractRule
 {
@@ -29,7 +33,7 @@ final class ComposerStabilitySettings extends AbstractRule
 
     public function getDescription(): string
     {
-        return 'Add minimum-stability:dev + prefer-stable:true + asset-packagist to composer.json';
+        return 'Add minimum-stability:dev + prefer-stable:true (and asset-packagist only if bower/npm-asset deps exist) to composer.json';
     }
 
     public function canAutomate(): bool
@@ -89,11 +93,11 @@ final class ComposerStabilitySettings extends AbstractRule
             );
         }
 
-        if (!$this->hasAssetPackagist($data)) {
+        if ($this->needsAssetPackagist($data) && !$this->hasAssetPackagist($data)) {
             $findings[] = new Finding(
                 file: 'composer.json',
                 line: 0,
-                description: 'Missing asset-packagist repository entry (https://asset-packagist.org)',
+                description: 'Requires a bower-asset/* or npm-asset/* package but is missing the asset-packagist repository (https://asset-packagist.org)',
                 code: '',
             );
         }
@@ -154,7 +158,8 @@ final class ComposerStabilitySettings extends AbstractRule
             $modified = true;
         }
 
-        if (!$this->hasAssetPackagist($data)) {
+        $addedAssetPackagist = false;
+        if ($this->needsAssetPackagist($data) && !$this->hasAssetPackagist($data)) {
             if (!isset($data['repositories']) || !is_array($data['repositories'])) {
                 $data['repositories'] = [];
             }
@@ -163,6 +168,7 @@ final class ComposerStabilitySettings extends AbstractRule
                 'url' => self::ASSET_PACKAGIST_URL,
             ];
             $modified = true;
+            $addedAssetPackagist = true;
         }
 
         if (!$modified) {
@@ -193,11 +199,36 @@ final class ComposerStabilitySettings extends AbstractRule
                 new FileChange(
                     file: 'composer.json',
                     type: 'modified',
-                    description: 'Added minimum-stability:dev, prefer-stable:true, and asset-packagist repository',
+                    description: $addedAssetPackagist
+                        ? 'Set minimum-stability:dev + prefer-stable:true and added asset-packagist repository (plugin has bower/npm-asset deps)'
+                        : 'Set minimum-stability:dev + prefer-stable:true',
                 ),
             ],
             warnings: [],
         );
+    }
+
+    /**
+     * Whether the plugin actually needs asset-packagist: it requires at least one
+     * bower-asset/* or npm-asset/* package (the only things asset-packagist resolves).
+     *
+     * @param array<mixed> $data
+     */
+    private function needsAssetPackagist(array $data): bool
+    {
+        foreach (['require', 'require-dev'] as $section) {
+            $deps = $data[$section] ?? [];
+            if (!is_array($deps)) {
+                continue;
+            }
+            foreach (array_keys($deps) as $pkg) {
+                if (is_string($pkg) && (str_starts_with($pkg, 'bower-asset/') || str_starts_with($pkg, 'npm-asset/'))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

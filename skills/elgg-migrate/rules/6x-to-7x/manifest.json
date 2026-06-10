@@ -188,7 +188,7 @@
     },
     {
       "id": "023-composer-stability",
-      "name": "Add minimum-stability:dev + prefer-stable:true + asset-packagist to composer.json",
+      "name": "Add minimum-stability:dev + prefer-stable:true to composer.json (asset-packagist only when bower/npm-asset deps exist)",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V6ToV7\\ComposerStabilitySettings",
       "breaking_change": "Elgg 7.x requires specific composer.json stability settings",

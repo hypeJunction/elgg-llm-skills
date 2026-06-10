@@ -24,6 +24,19 @@ final class PostMigrationVerifier
      * If target is 4.x, any usage from 5.x+ boundaries is a violation.
      */
     private const VERSION_BOUNDARIES = [
+        '6.x' => [
+            // ES module loading is 6.x-only (references/version-api-boundaries.md).
+            // AMD (elgg_define_js/elgg_require_js) is the ≤5.x equivalent. Seeing these
+            // on a 3.x/4.x/5.x branch means an AMD→ESM sweep leaked a future API down —
+            // exactly the bodyology chain contamination (bd elgg-migrate-xs2g6).
+            'functions' => [
+                'elgg_import_esm',
+                'elgg_register_esm',
+            ],
+            'type_hints' => [],
+            'config_patterns' => [],
+            'forbidden_files' => [],
+        ],
         '5.x' => [
             // elgg_trigger_event_results is the only unambiguously 5.x-only function name.
             // elgg_register_event_handler / elgg_unregister_event_handler exist in 3.x and 4.x
@@ -41,7 +54,23 @@ final class PostMigrationVerifier
             'forbidden_files' => [],
         ],
         '4.x' => [
-            'functions' => [],
+            // elgg_-prefixed renames that do NOT exist in 3.x (the elgg_ prefixing
+            // initiative landed in 4.x). 3.x code must use the unprefixed forms:
+            //   elgg_get_current_language()    -> get_current_language()
+            //   elgg_register_error_message()  -> register_error()
+            //   elgg_register_success_message()-> system_message()
+            // See references/breaking-changes/overview.md "Function Renames".
+            'functions' => [
+                'elgg_get_current_language',
+                'elgg_register_error_message',
+                'elgg_register_success_message',
+                // elgg_string_to_array() lives in engine/lib/input.php from 4.x; in 3.x
+                // the equivalent is string_to_tag_array().
+                'elgg_string_to_array',
+                // The capability system (and this lookup) is 4.x+; 3.x has no
+                // 'capabilities' entity registration to query.
+                'elgg_entity_types_with_capability',
+            ],
             'type_hints' => [],
             'config_patterns' => [],
             'forbidden_files' => [
@@ -165,6 +194,19 @@ final class PostMigrationVerifier
         // promotes this to required once every plugin has been swept.
         $violations = array_merge($violations, $this->checkSmokeTestScaffold($pluginPath));
 
+        // Calls to functions REMOVED at (or before) the target version — the
+        // "undefined symbol at runtime" class that the shape-based completeness
+        // gate is blind to (bd elgg-migrate-abyju). Data-driven from
+        // references/removed-functions.json.
+        $violations = array_merge($violations, $this->checkRemovedFunctions($pluginPath, $targetVersion));
+
+        // Core types whose KIND changed across a major (interface -> abstract class,
+        // etc.). The type still exists, so checkRemovedFunctions() is blind to it, and
+        // the shape gate never sees it — but `implements X` fatals on boot once X is
+        // no longer an interface. Data-driven from references/changed-class-contracts.json.
+        // (bd elgg-migrate — caught by verify-migration-chain.sh at 5x->6x, 2026-06-05).
+        $violations = array_merge($violations, $this->checkChangedClassContracts($pluginPath, $targetVersion));
+
         $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
 
         return new VerificationResult(
@@ -172,6 +214,196 @@ final class PostMigrationVerifier
             violations: $violations,
             passed: count($errors) === 0,
         );
+    }
+
+    /**
+     * Flag calls to global functions REMOVED at (or before) the target major.
+     *
+     * This is the dual of the future-version check: where checkFunctions()
+     * catches APIs from the FUTURE leaking backward, this catches legacy APIs
+     * that were removed and would fatal with "Call to undefined function" at
+     * runtime on the target core. The shape-based completeness gate
+     * (VersionGuard::detectIncompletePatterns) is blind to this class.
+     *
+     * Data-driven from references/removed-functions.json. The map is treated
+     * cumulatively: a function removed at 4.x is still removed at 6.x.
+     *
+     * @return array<Violation>
+     */
+    private function checkRemovedFunctions(string $pluginPath, string $targetVersion): array
+    {
+        $removed = $this->removedFunctionsFor($targetVersion);
+        if (empty($removed)) {
+            return [];
+        }
+
+        $names = array_keys($removed);
+        $pattern = '/(?<![\w>$:\\\\])(' . implode('|', array_map('preg_quote', $names)) . ')\s*\(/';
+
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) continue;
+
+            $relativePath = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $lineNum => $line) {
+                $trimmed = ltrim($line);
+                // Skip comment lines (best-effort) — a removed name mentioned in
+                // a docblock or // comment is not a live call.
+                if ($trimmed === '' || $trimmed[0] === '*' || str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#')) {
+                    continue;
+                }
+                if (preg_match($pattern, $line, $m)) {
+                    $func = $m[1];
+                    // Guard against method calls / definitions the lookbehind
+                    // can't fully exclude (e.g. "function forward(").
+                    if (preg_match('/(?:->|::|function)\s*' . preg_quote($func, '/') . '\s*\(/', $line)) {
+                        continue;
+                    }
+                    $replacement = $removed[$func];
+                    $violations[] = new Violation(
+                        file: $relativePath,
+                        line: $lineNum + 1,
+                        severity: 'error',
+                        message: "{$func}() was removed in Elgg {$targetVersion} — use: {$replacement}",
+                        code: trim($line),
+                        category: 'removed-function',
+                    );
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Flag classes that `implements` a core type whose KIND changed at (or
+     * before) the target major — e.g. Elgg\Upgrade\Batch, an interface in
+     * 3.x-5.x, became an abstract class in 6.x. `implements Batch` then fatals
+     * on boot ("cannot implement Elgg\Upgrade\Batch - it is not an interface"),
+     * but the type still EXISTS so checkRemovedFunctions() and the shape gate
+     * are both blind to it. Data-driven from references/changed-class-contracts.json.
+     *
+     * Detection is conservative: the file must both reference the type (a
+     * `use <FQN>;` import of its short name, or the inline FQN) AND use the
+     * illegal keyword (`implements`) against that name. This avoids flagging an
+     * unrelated local class that happens to be called `Batch`.
+     *
+     * @return array<Violation>
+     */
+    private function checkChangedClassContracts(string $pluginPath, string $targetVersion): array
+    {
+        $contracts = $this->changedContractsFor($targetVersion);
+        if (empty($contracts)) {
+            return [];
+        }
+
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $relativePath = $this->relativePath($pluginPath, $file);
+            $lines = explode("\n", $content);
+
+            foreach ($contracts as $fqn => $info) {
+                $short = ltrim((string) strrchr('\\' . $fqn, '\\'), '\\');
+                $fqnEscaped = preg_quote(ltrim($fqn, '\\'), '/');
+                $shortEscaped = preg_quote($short, '/');
+                $keyword = preg_quote((string) ($info['illegal_keyword'] ?? 'implements'), '/');
+
+                // Is the type referenced in this file by import or inline FQN?
+                $imported = (bool) preg_match('/use\s+\\\\?' . $fqnEscaped . '\s*;/', $content);
+                $usesFqnInline = (bool) preg_match('/\\\\?' . $fqnEscaped . '\b/', $content);
+                if (!$imported && !$usesFqnInline) {
+                    continue;
+                }
+
+                foreach ($lines as $lineNum => $line) {
+                    // `implements ... Batch` (short name, valid only when imported)
+                    // or `implements ... \Elgg\Upgrade\Batch` (inline FQN).
+                    $hitShort = $imported && preg_match('/\b' . $keyword . '\b[^{]*\b' . $shortEscaped . '\b/', $line);
+                    $hitFqn = preg_match('/\b' . $keyword . '\b[^{]*\\\\?' . $fqnEscaped . '\b/', $line);
+                    if ($hitShort || $hitFqn) {
+                        $violations[] = new Violation(
+                            file: $relativePath,
+                            line: $lineNum + 1,
+                            severity: 'error',
+                            message: "{$fqn} was a(n) {$info['was']} but is a(n) {$info['now']} in Elgg {$targetVersion} — {$info['fix']}",
+                            code: trim($line),
+                            category: 'changed-class-contract',
+                        );
+                    }
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Cumulative map of contract-changed core types for a target version: every
+     * data entry whose major <= the target major.
+     *
+     * @return array<string,array<string,string>>  FQN => {was, now, illegal_keyword, fix}
+     */
+    private function changedContractsFor(string $targetVersion): array
+    {
+        $path = __DIR__ . '/../references/changed-class-contracts.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data)) {
+            return [];
+        }
+        $targetMajor = (int) $targetVersion;
+        $map = [];
+        foreach ($data as $version => $entries) {
+            if (!is_array($entries) || !preg_match('/^\d/', (string) $version)) {
+                continue; // skip _meta and malformed keys
+            }
+            if ((int) $version <= $targetMajor) {
+                foreach ($entries as $fqn => $info) {
+                    if (is_array($info)) {
+                        $map[$fqn] = $info;
+                    }
+                }
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Build the cumulative removed-function map for a target version: union of
+     * every data entry whose major version is <= the target major.
+     *
+     * @return array<string,string>  removed function name => replacement hint
+     */
+    private function removedFunctionsFor(string $targetVersion): array
+    {
+        $path = __DIR__ . '/../references/removed-functions.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data)) {
+            return [];
+        }
+        $targetMajor = (int) $targetVersion;
+        $map = [];
+        foreach ($data as $version => $entries) {
+            if (!is_array($entries) || !preg_match('/^\d/', (string) $version)) {
+                continue; // skip _meta and malformed keys
+            }
+            if ((int) $version <= $targetMajor) {
+                foreach ($entries as $fn => $replacement) {
+                    $map[$fn] = (string) $replacement;
+                }
+            }
+        }
+        return $map;
     }
 
     /**
@@ -346,10 +578,22 @@ final class PostMigrationVerifier
         // This is a structural check on elgg-plugin.php
         $lines = explode("\n", $content);
         $inEventsBlock = false;
+        // Top-level elgg-plugin.php keys that are siblings of 'events'. Hitting any
+        // of these means the 'events' array has ended — reset the flag so hook names
+        // in a later 'hooks' (or other) block are not false-flagged.
+        $siblingKeys = ['hooks', 'actions', 'routes', 'entities', 'views', 'view_extensions',
+            'view_options', 'widgets', 'group_tools', 'notifications', 'plugin', 'bootstrap', 'upgrades', 'settings'];
 
         foreach ($lines as $lineNum => $line) {
             if (preg_match("/['\"]events['\"]\s*=>/", $line)) {
                 $inEventsBlock = true;
+            } elseif ($inEventsBlock) {
+                foreach ($siblingKeys as $sk) {
+                    if (preg_match("/['\"]" . preg_quote($sk, '/') . "['\"]\s*=>/", $line)) {
+                        $inEventsBlock = false;
+                        break;
+                    }
+                }
             }
 
             if ($inEventsBlock) {

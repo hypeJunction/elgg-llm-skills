@@ -39,6 +39,63 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    public function testCatchesEsmImportIn3xTarget(): void
+    {
+        // AMD→ESM sweep leaking elgg_import_esm() (6.x) onto a 3.x branch —
+        // the bodyology chain contamination (bd elgg-migrate-xs2g6).
+        $dir = $this->makePluginDir([
+            'views/default/menu.php' => "<?php\nelgg_import_esm('navigation/menu/folders');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $this->assertFalse($result->passed);
+            $messages = array_map(fn($v) => $v->message, $result->errors());
+            $this->assertStringContainsString('elgg_import_esm', implode(' ', $messages));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testEsmImportAllowedIn6xTarget(): void
+    {
+        // ESM is valid from 6.x — must NOT be flagged when targeting 6.x.
+        $dir = $this->makePluginDir([
+            'views/default/menu.php' => "<?php\nelgg_import_esm('navigation/menu/folders');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            foreach ($result->errors() as $e) {
+                $this->assertStringNotContainsString('elgg_import_esm', $e->message);
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatches4xRenameIn3xTarget(): void
+    {
+        // elgg_-prefixed renames that don't exist in 3.x.
+        $dir = $this->makePluginDir([
+            'classes/MyPlugin/Field.php' => "<?php\nnamespace MyPlugin;\nclass Field {\n    public function lang() {\n        return elgg_get_current_language();\n    }\n    public function flags(\$v) {\n        return elgg_string_to_array(\$v);\n    }\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '3.x');
+            $this->assertFalse($result->passed);
+            $messages = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('elgg_get_current_language', $messages);
+            $this->assertStringContainsString('elgg_string_to_array', $messages);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     public function testIgnoresElggEventTypeHintIn4x(): void
     {
         // \Elgg\Event has existed since 3.x for typed event handlers.
@@ -131,6 +188,24 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    public function testHooksAfterEventsBlockNotFlagged(): void
+    {
+        // Regression: hook names under a 'hooks' block that appears AFTER the
+        // 'events' block must NOT be flagged. The inEventsBlock flag must reset
+        // when the events array ends (on the sibling 'hooks' key).
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'events' => [\n        'create' => [\n            'object' => [],\n        ],\n    ],\n    'hooks' => [\n        'register' => [\n            'menu:entity' => [],\n        ],\n        'prepare' => [\n            'notification:publish:object:foo' => [],\n        ],\n    ],\n];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '4.x');
+            $confusion = array_filter($result->violations, fn($v) => $v->category === 'hook-event-confusion');
+            $this->assertEmpty($confusion, 'register/prepare under a hooks block after events must not be flagged');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Clean plugin passes ---
 
     public function testClean4xPluginPasses(): void
@@ -209,6 +284,135 @@ final class PostMigrationVerifierTest extends TestCase
             $result = $this->verifier->verify($dir, '4.x');
             $this->assertNotEmpty($result->errors());
             $this->assertNotEmpty($result->warnings());
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    // --- removed-function check (bd elgg-migrate-abyju) ---
+
+    public function testCatchesRemovedHookTriggerIn6xTarget(): void
+    {
+        // elgg_trigger_plugin_hook was deprecated in 5.x, REMOVED in 6.x.
+        // The shape-based completeness gate is blind to this; --verify must catch it.
+        $dir = $this->makePluginDir([
+            'classes/MyPlugin/Graph.php' => "<?php\nnamespace MyPlugin;\nclass Graph {\n    public function run() {\n        return elgg_trigger_plugin_hook('aliases', 'graph', null, []);\n    }\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $messages = array_map(fn($v) => $v->message, $result->errors());
+            $joined = implode(' ', $messages);
+            $this->assertStringContainsString('elgg_trigger_plugin_hook', $joined);
+            // The replacement hint must point at the value-returning event fn,
+            // NOT elgg_trigger_event (3-arg, returns bool).
+            $this->assertStringContainsString('elgg_trigger_event_results', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatchesLegacyRemovedFunctionsIn6xTarget(): void
+    {
+        // 2.x-era functions that leaked onto a 6.x branch (the never-migrated
+        // bodyology custom-plugin backlog).
+        $dir = $this->makePluginDir([
+            'actions/save.php' => "<?php\nregister_error('nope');\nforward('/');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('removed-function', $cats);
+            $joined = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('register_error', $joined);
+            $this->assertStringContainsString('forward', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testDoesNotFlagReplacementOrCommentOrMethod(): void
+    {
+        // The correct replacements + comment mentions + method calls of the
+        // same name must NOT be flagged.
+        $dir = $this->makePluginDir([
+            'actions/save.php' => "<?php\n// register_error() was removed — using the new API\nelgg_register_error_message('ok');\n\$svc->forward('/x');\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            foreach ($result->errors() as $e) {
+                $this->assertNotSame('removed-function', $e->category, "unexpected removed-function flag: {$e->message}");
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatchesImplementsBatchIn6xTarget(): void
+    {
+        // Elgg\Upgrade\Batch became an abstract class in 6.x; `implements Batch`
+        // fatals on boot. The type still exists, so removed-function + shape gates
+        // miss it — this is the verify-migration-chain.sh 5x->6x catch (2026-06-05).
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\Batch;\nuse Elgg\\Upgrade\\Result;\n\nclass EncodeSettingsAsJson implements Batch {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $this->assertFalse($result->passed);
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('changed-class-contract', $cats);
+            $joined = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('AsynchronousUpgrade', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testExtendsAsynchronousUpgradePassesIn7xTarget(): void
+    {
+        // The CORRECT 6.x+ form must not be flagged (cumulative: applies at 7.x too).
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\AsynchronousUpgrade;\nuse Elgg\\Upgrade\\Result;\n\nclass EncodeSettingsAsJson extends AsynchronousUpgrade {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            foreach ($result->errors() as $e) {
+                $this->assertNotSame('changed-class-contract', $e->category, "unexpected contract flag: {$e->message}");
+            }
+            $this->assertTrue(true);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testImplementsBatchAllowedIn5xTarget(): void
+    {
+        // Below the 6.x boundary, Batch is still an interface — `implements Batch`
+        // is correct and must NOT be flagged.
+        $dir = $this->makePluginDir([
+            'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\Batch;\n\nclass EncodeSettingsAsJson implements Batch {\n}\n",
+            'elgg-plugin.php' => "<?php\nreturn [];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '5.x');
+            $cats = array_map(fn($v) => $v->category, $result->violations);
+            $this->assertNotContains('changed-class-contract', $cats);
         } finally {
             $this->removeDir($dir);
         }
