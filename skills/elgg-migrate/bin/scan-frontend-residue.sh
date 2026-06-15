@@ -85,6 +85,33 @@ scan_one() {
     | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
     | sed 's/^/[review-external]  /' >> "$tmp"
 
+  # --- 7. Orphaned CSS-view overrides (Elgg 7 css/ -> name.css relocation).
+  #   Elgg 7 moved cacheable CSS/JS views OUT of css/ and js/ dirs: a view that
+  #   was `css/elements/layout` is now `elements/layout.css`, and core.css.php
+  #   aggregates `elements/*.css`. A plugin/theme that overrides core element
+  #   views at the OLD path views/default/css/elements/*.css is therefore SILENTLY
+  #   ORPHANED on Elgg 7 — core's defaults win and the override never loads, so the
+  #   UI renders unstyled while pages stay HTTP 200 (exactly how bodyology_theme
+  #   lost its header-overlay/nav/fonts past every server-side gate). Flag old-path
+  #   element overrides that lack a relocated twin at views/default/elements/<name>.
+  #   Gated to plugins targeting Elgg 7 (composer elgg/elgg ~7|^7) to avoid
+  #   false-positives on 2.x–6.x where css/elements/* is the correct path.
+  if grep -qE '"elgg/elgg"[[:space:]]*:[[:space:]]*"[~^]?7' "$dir/composer.json" 2>/dev/null \
+     && [ -d "$dir/views/default/css/elements" ]; then
+    for f in "$dir"/views/default/css/elements/*.css; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f")"; stem="${base%.css}"
+      # OK if a relocated twin exists at views/default/elements/<name>, OR the
+      # view is loaded explicitly (elgg_extend_view / external_file referencing
+      # 'css/elements/<stem>'). Only a file with NEITHER is truly orphaned.
+      [ -e "$dir/views/default/elements/$base" ] && continue
+      if grep -rqE "css/elements/$stem" --include='*.php' "$dir" 2>/dev/null; then
+        continue
+      fi
+      echo "[css-view-orphaned] $f:1: Elgg 7 aggregates elements/$base (not css/elements/$base) — this core-view override has no relocated twin and is not loaded explicitly, so it never loads on Elgg 7. Relocate to views/default/elements/$base, or load it via elgg_extend_view('elgg.css', 'css/elements/$stem', 100)." >> "$tmp"
+    done
+  fi
+
   # CRITICAL findings (removed APIs / non-functional on 7.x) drive the exit code;
   # [review-*] are surfaced but do not fail the gate.
   # grep -c always prints a count (0 on no match) even when it exits 1 on an
