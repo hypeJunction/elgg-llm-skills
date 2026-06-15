@@ -309,6 +309,14 @@
       "priority": 500
     },
     {
+      "id": "034-search-rewrite",
+      "name": "Replace 2.x search-hook results pattern with elgg_search() (Elgg 3.0 rewrite)",
+      "automated": false,
+      "priority": 340,
+      "breaking_change": "Elgg 3.0 rewrote search: search_*_hook functions removed; the 'search' hook no longer returns an ['entities'=>...] array",
+      "llm_instructions": "Elgg 3.0 rewrote search to be query-based. The `search_*_hook` functions and the old `'search'` hook return-shape are GONE: the hook/event now MODIFIES the query, it does NOT return `['entities' => [...], 'count' => N]`. Any 2.x code like:\n\n  $results = elgg_trigger_plugin_hook('search', $type, $options, []);  // 5.x+: elgg_trigger_event_results\n  $entities = elgg_extract('entities', $results);\n  echo elgg_view_entity_list($entities, ...);   // $entities is NULL on 3.x+ -> TypeError\n\nis broken from 3.0 onward. It typically passes activation + homepage render and only FATALS (or silently returns nothing) when the search/listing page is actually exercised — so it survives every server-side gate and surfaces much later.\n\nFIX — use the query-based API:\n- Render a list: `echo elgg_list_entities($options, 'elgg_search');` (the `elgg_search` callback runs the search query).\n- Get entities: `$entities = elgg_search($options);` then pass to `elgg_view_entity_list($entities, ...)`. Set `$options['query']` and `$options['type']` (and `subtypes`). For a count, `elgg_search($options + ['count' => true])`.\n\nThis is NOT a 7.x-only fix — it belongs on the migrate/elgg-3.x branch and forward-merges through 4.x/5.x/6.x/7.x (Iron Law 13). The intermediate branches carry the same latent bug. Verify by actually loading the search + every listing/directory page in a browser (see the route battery in elgg-migrate-verify).\n\nDetection: `bin/scan-frontend-residue.sh` flags `[dead-search-event]`; also `grep -rn \"elgg_trigger_\\(plugin_hook\\|event_results\\)(\\s*['\\\"]search\" --include='*.php'` and check each for a following `elgg_extract('entities', ...)`.\n\nRelated 3.0 removals to refactor the same way: `members_list_*` / `members_nav_*` functions (custom members directories), and from Elgg 7 the core members routes moved from the `members:list` event / resource model to route CONTROLLERS (collection:user:user:*), so plugins that customised members via that event must re-register their own route/resource on 7.x."
+    },
+    {
       "id": "999-add-docblocks",
       "name": "Add PHPDoc blocks to functions, methods, and class properties",
       "automated": true,

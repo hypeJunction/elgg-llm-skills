@@ -112,6 +112,28 @@ scan_one() {
     done
   fi
 
+  # --- 8. Dead 2.x search-results pattern (Elgg 3.0 search rewrite).
+  #   Elgg 3.0 removed the search_*_hook functions and made search query-based:
+  #   the 'search' hook/event no longer returns an ['entities' => ...] array, it
+  #   modifies the query. Code that does
+  #     $r = elgg_trigger_plugin_hook('search', $t, ...);  // or _event_results
+  #     $entities = elgg_extract('entities', $r);
+  #     elgg_view_entity_list($entities, ...);             // null -> TypeError
+  #   has been broken since 2.x->3.0 and fatals (or silently returns nothing) on
+  #   3.x..7.x. Replace with elgg_search($options) / elgg_list_entities($options,
+  #   'elgg_search'). NOT a 7.x-only fix — belongs on the migrate/elgg-3.x branch
+  #   and forward-merges. (Found in object_sort, hypefolders, elgg_tokeninput.)
+  grep -rlnE "elgg_trigger_(plugin_hook|event_results)\(\s*['\"]search['\"]" \
+    --include='*.php' "$dir" 2>/dev/null \
+    | grep -vE '/(vendor|vendors|node_modules)/' \
+    | while IFS= read -r f; do
+        # only flag when the result feeds 'entities' extraction (the breaking use)
+        if grep -qE "elgg_extract\(\s*['\"]entities['\"]" "$f" 2>/dev/null; then
+          ln=$(grep -nE "elgg_trigger_(plugin_hook|event_results)\(\s*['\"]search['\"]" "$f" | head -1 | cut -d: -f1)
+          echo "[dead-search-event] $f:${ln:-1}: 2.x 'search' hook/event returning ['entities'] — removed by the Elgg 3.0 search rewrite. Returns null/no results now. Use elgg_search(\$options) or elgg_list_entities(\$options, 'elgg_search'). Fix belongs at migrate/elgg-3.x and forward-merges." >> "$tmp"
+        fi
+      done
+
   # CRITICAL findings (removed APIs / non-functional on 7.x) drive the exit code;
   # [review-*] are surfaced but do not fail the gate.
   # grep -c always prints a count (0 on no match) even when it exits 1 on an

@@ -131,6 +131,37 @@ else
   else
     gate "Login page renders" FAIL "${login_size:-0} bytes (expected >1000)"
   fi
+
+  # ── Route battery ──
+  # Homepage + login alone do NOT exercise the directory/listing/search code
+  # paths where a migration most often leaves a latent runtime fatal that passes
+  # activation (e.g. the Elgg-3.0 'search' rewrite null-entities TypeError, dead
+  # core-event integrations, controller-vs-resource route changes). The page can
+  # be HTTP 200 on the homepage while /members or /search return 500. Hit a
+  # battery of representative routes and FAIL on any 5xx. Override the list with
+  # ELGG_VERIFY_ROUTES="/a /b" (e.g. to add this plugin's own routes).
+  ROUTES="${ELGG_VERIFY_ROUTES:-/members /members/online /members/popular /members/search?q=a /groups/all /activity /blog/all /bookmarks/all /file/all /pages/all /search?q=a}"
+  battery_fail=""
+  for route in $ROUTES; do
+    code=$(dc exec elgg sh -c "curl -s -o /dev/null -w '%{http_code}' 'http://localhost${route}'" 2>&1 | tr -d '[:space:]')
+    case "$code" in
+      5*) battery_fail="${battery_fail}${route}(${code}) " ;;
+    esac
+  done
+  if [[ -z "$battery_fail" ]]; then
+    gate "Route battery — no 5xx ($(echo "$ROUTES" | wc -w) routes)" PASS
+  else
+    gate "Route battery — 5xx on listing/search routes" FAIL "$battery_fail"
+  fi
+
+  # Catch the silent-fatal signature directly, even on routes that 302/404 away.
+  undef=$(dc exec elgg sh -c "grep -c 'Call to undefined function' /var/log/apache2/error.log 2>/dev/null || echo 0" 2>&1 | head -1 | tr -d '[:space:]')
+  if [[ "${undef:-0}" -eq 0 ]]; then
+    gate "No 'Call to undefined function' in log" PASS
+  else
+    first=$(dc exec elgg sh -c "grep -m1 'Call to undefined function' /var/log/apache2/error.log 2>/dev/null" 2>&1 || true)
+    gate "No 'Call to undefined function' in log" FAIL "${undef}×: ${first}"
+  fi
 fi
 
 # ─── gate 3: PHP errors ─────────────────────────────────────────────────────
