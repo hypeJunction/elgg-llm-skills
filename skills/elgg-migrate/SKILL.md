@@ -80,6 +80,55 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 11. **COMPOSER CONSTRAINTS ARE NON-NEGOTIABLE** — Set `elgg/elgg` and `php` per the version table in "Composer Requirements Per Migration Branch" below. Wrong constraints are silent bugs that only surface when someone tries to install the plugin.
 12. **EVERY MIGRATE BRANCH NEEDS DOCKER INFRA** — Copy the template from `<skill-infra>/infra/elgg{N}/` to `docker/` on every migrate branch. Without Docker infra, the branch cannot be tested.
 13. **EACH BRANCH MUST BE BASED ON THE PREVIOUS** — `migrate/elgg-N.x` must be based on `migrate/elgg-(N-1).x`. Create it with `git checkout migrate/elgg-(N-1).x && git checkout -b migrate/elgg-N.x` or merge it in before starting migration work.
+14. **FIX BUGS AT THEIR ORIGIN VERSION, THEN FORWARD-PORT** — When you find a defect on a migrated branch, NEVER just patch the branch you found it on. Bisect to the earliest version where the breaking change occurred and fix it there, then propagate up the chain. A bug found on 7.x is almost never 7.x-only — it is usually latent on every branch since the API broke. See "Retrospective bug fixing" below.
+
+---
+
+## Retrospective bug fixing (fix-at-origin, forward-port)
+
+Most migration bugs surface late — on the latest branch, in a code path no gate
+exercised — but they were *introduced* at the version where some core API
+changed. The members directory + search fatals (Elgg-3.0 search rewrite) sat
+latent on 3.x–6.x and only showed on 7.x because 7.x was the first branch anyone
+opened `/members` and `/search` on. Patching only 7.x leaves 3.x–6.x shipping
+broken code and silently re-introduces the bug whenever someone re-cuts a branch
+from an earlier base (Iron Law 13). So the fix procedure is always:
+
+1. **Bisect to origin.** Find the earliest `migrate/elgg-N.x` branch where the
+   bug exists. Use the breaking-changes references to identify the version that
+   removed/changed the API (e.g. `search_*_hook` + `members_list_*` removed in
+   2.x→3.0; hooks→events in 4.x→5.x), and confirm by checking each branch's code
+   for the bug signature: `for b in 3 4 5 6 7; do git show migrate/elgg-$b.x:<file> | grep -c '<signature>'; done`.
+
+2. **Fix at origin.** Apply the version-appropriate fix on that earliest branch
+   (the API form differs by version — e.g. `elgg_trigger_plugin_hook` on 3.x/4.x
+   vs `elgg_trigger_event_results` on 5.x+; `\Elgg\Hook $hook->getType()` on 4.x
+   vs `\Elgg\Event $event->getType()` on 5.x+). Commit `fix({N}.x): …` and run
+   the gates on that version's Docker stack.
+
+3. **Forward-port up the chain**, N.x → N+1.x → … → 7.x:
+   - **cherry-pick** the fix commit where the surrounding code form is unchanged
+     between adjacent branches (clean, one command);
+   - **direct-edit + commit** on a branch where the code diverged (the API form
+     changed) — the cherry-pick will conflict; apply the version-appropriate fix
+     directly instead.
+   - **NEVER `git merge` whole branches to carry a fix forward.** Per-version
+     branches legitimately differ in composer/docker/README/tests, so a full
+     merge conflicts on everything unrelated. Cherry-pick or direct-edit only.
+
+4. **Verify the fix landed on every branch ref** (not a dangling commit):
+   `for b in 3 4 5 6 7; do git show migrate/elgg-$b.x:<file> | grep -c '<bug-signature>'; done`
+   — all must be 0. **Gotcha:** after `git cherry-pick --abort` you can be left on
+   a *detached HEAD*; a commit then lands on a dangling ref, not the branch. Always
+   confirm `git rev-parse --abbrev-ref HEAD` shows a real branch before committing,
+   and re-run the per-branch audit after multi-branch work.
+
+5. **Push every touched branch**, and re-run the relevant gate (route battery /
+   render / scan) on each version's stack to confirm green.
+
+A fix that only exists on the top branch is an INCOMPLETE fix — redo it from the
+origin version. `bin/forward-port-fix.sh` automates steps 3–4 (cherry-pick up the
+chain, fall back to flagging branches that need a manual direct-edit, audit each).
 
 ---
 
