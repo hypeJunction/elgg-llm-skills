@@ -134,26 +134,56 @@ scan_one() {
         fi
       done
 
-  # --- 9. elgg_view_page() called with an unassigned $title var (Elgg 7 strict
-  #   string signature). Elgg 7 typed elgg_view_page(string $title, ...). A
-  #   resource that passes a $var which is NEVER assigned in the file sends null
-  #   -> TypeError -> 500. Latent/lenient pre-7.x (undefined-var notice + empty
-  #   <title>, HTTP 200), HARD FATAL on 7.x. Recurring across many resources and
-  #   only fatals when that page is actually rendered (often authenticated), so it
-  #   slips past activation + homepage render. Pass a real string (entity/
-  #   collection display name, or elgg_echo('<title>')).
-  for f in $(grep -rlE 'elgg_view_page\(\$[a-zA-Z_]' "$dir/views" --include='*.php' 2>/dev/null | grep -vE '/(vendor|vendors|node_modules)/'); do
+  # --- 9. Null/undefined title passed to a typed-string title param (Elgg 7).
+  #   Elgg 7 typed both elgg_view_page(string $title, ...) AND
+  #   elgg_view_module(string $name, string $title, ...). A view that passes a
+  #   $var NEVER assigned in the file sends null -> TypeError -> 500. Lenient
+  #   pre-7.x (empty title, HTTP 200), HARD FATAL on 7.x, and only when the page
+  #   actually renders (often AUTHENTICATED) so it slips past activation +
+  #   homepage render. Covers elgg_view_page(<var> as 1st arg) and
+  #   elgg_view_module(<x>, <var> as 2nd arg). Pass a real string (entity/owner/
+  #   collection display name, or elgg_echo('...')).
+  null_title_var_unassigned() { # $1=file $2=var(with $)
+    local f="$1" name="${2#\$}"
+    grep -qE "\\\$${name}[[:space:]]*=" "$f" 2>/dev/null && return 1
+    grep -qE "as[[:space:]]+\\\$${name}\b|function[^)]*\\\$${name}\b|\\\$${name}[[:space:]]*=>" "$f" 2>/dev/null && return 1
+    return 0
+  }
+  for f in $(grep -rlE 'elgg_view_(page|module)\(' "$dir/views" --include='*.php' 2>/dev/null | grep -vE '/(vendor|vendors|node_modules)/'); do
+    # elgg_view_page(<var>, ...)  — title is the 1st arg
     var=$(grep -oE 'elgg_view_page\(\$[a-zA-Z_][a-zA-Z0-9_]*' "$f" | grep -oE '\$[a-zA-Z_][a-zA-Z0-9_]*' | head -1)
-    [ -z "$var" ] && continue
-    name="${var#\$}"
-    # assigned in the file?  (\$name = ...)   foreach-as / function-param count too
-    if grep -qE "\\\$${name}[[:space:]]*=" "$f" 2>/dev/null \
-       || grep -qE "as[[:space:]]+\\\$${name}\b|function[^)]*\\\$${name}\b|\\\$${name}[[:space:]]*=>" "$f" 2>/dev/null; then
-      continue
+    if [ -n "$var" ] && null_title_var_unassigned "$f" "$var"; then
+      ln=$(grep -nF "elgg_view_page($var" "$f" | head -1 | cut -d: -f1)
+      echo "[viewpage-null-title] $f:${ln:-1}: elgg_view_page($var, ...) but $var is never assigned in this file -> null title -> TypeError on Elgg 7's strict elgg_view_page(string \$title). Pass a real string." >> "$tmp"
     fi
-    ln=$(grep -nF "elgg_view_page($var" "$f" | head -1 | cut -d: -f1)
-    echo "[viewpage-null-title] $f:${ln:-1}: elgg_view_page($var, ...) but $var is never assigned in this file -> null title -> TypeError on Elgg 7's strict elgg_view_page(string \$title). Pass a real string (entity/collection display name, or elgg_echo('...'))." >> "$tmp"
+    # elgg_view_module(<name>, <var>, ...) — title is the 2nd arg
+    mvar=$(grep -oE "elgg_view_module\([^,]+,[[:space:]]*\\\$[a-zA-Z_][a-zA-Z0-9_]*" "$f" | grep -oE '\$[a-zA-Z_][a-zA-Z0-9_]*' | head -1)
+    if [ -n "$mvar" ] && null_title_var_unassigned "$f" "$mvar"; then
+      ln=$(grep -nE "elgg_view_module\([^,]+,[[:space:]]*\\${mvar}" "$f" | head -1 | cut -d: -f1)
+      echo "[viewmodule-null-title] $f:${ln:-1}: elgg_view_module(..., $mvar, ...) but $mvar is never assigned in this file -> null title -> TypeError on Elgg 7's strict elgg_view_module(string \$name, string \$title). Pass a real string." >> "$tmp"
+    fi
+    # literal null in the title position: elgg_view_page(null, ...) / elgg_view_module(<x>, null, ...)
+    if grep -qE "elgg_view_page\([[:space:]]*null\b" "$f" 2>/dev/null; then
+      ln=$(grep -nE "elgg_view_page\([[:space:]]*null\b" "$f" | head -1 | cut -d: -f1)
+      echo "[viewpage-null-title] $f:${ln:-1}: elgg_view_page(null, ...) — literal null to Elgg 7's strict string \$title -> TypeError. Pass a real string." >> "$tmp"
+    fi
+    if grep -qE "elgg_view_module\([^,]+,[[:space:]]*null\b" "$f" 2>/dev/null; then
+      ln=$(grep -nE "elgg_view_module\([^,]+,[[:space:]]*null\b" "$f" | head -1 | cut -d: -f1)
+      echo "[viewmodule-null-title] $f:${ln:-1}: elgg_view_module(..., null, ...) — literal null to Elgg 7's strict string \$title -> TypeError. Pass a real string (or '')." >> "$tmp"
+    fi
   done
+
+  # --- 10. Legacy 2.x language file format (add_translation() removed in Elgg 5.0).
+  #   2.x lang files did:  $lang = array(...); add_translation('xx', $lang);
+  #   add_translation() was removed in Elgg 5.0 -> Call to undefined function at
+  #   BOOT for that language (often surfaces only when a non-default locale loads,
+  #   e.g. a user with fr/es). 3.x+ lang files must `return [ ... ];`.
+  grep -rlnE '(^|[^A-Za-z_])add_translation[[:space:]]*\(' "$dir/languages" --include='*.php' 2>/dev/null \
+    | grep -vE '/(vendor|vendors|node_modules)/' \
+    | while IFS= read -r f; do
+        ln=$(grep -nE '(^|[^A-Za-z_])add_translation[[:space:]]*\(' "$f" | head -1 | cut -d: -f1)
+        echo "[legacy-language-file] $f:${ln:-1}: uses add_translation() — removed in Elgg 5.0. Convert to a top-level 'return [ ... ];' array. Fatals at boot when this locale loads." >> "$tmp"
+      done
 
   # CRITICAL findings (removed APIs / non-functional on 7.x) drive the exit code;
   # [review-*] are surfaced but do not fail the gate.
