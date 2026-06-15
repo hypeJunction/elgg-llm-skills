@@ -306,7 +306,7 @@ is the load-bearing part.
 | Pre-migration tests adapted and passing on TARGET version | The regression safety net only works if it's *run* against the new code |
 | Plugin activates in Docker | Activation is the first real integration test — catches serialization, DI, and missing-dep issues |
 | Site renders (homepage AND login, >1000 bytes) | Activation-without-render means a hook crashed on page load; both pages are needed because the login flow has its own code path |
-| Frontend residue gate clean (`bin/scan-frontend-residue.sh`) | The render gate only proves the page returns *bytes* — a plugin can still ship 2.x client JS (AMD `require()`/`define`, global jQuery, Foundation, `elgg_require_js`) that never runs on Elgg 7, **and** CSS-view overrides orphaned by the Elgg-7 `css/` → `name.css` relocation (`css/elements/X` → `elements/X.css`; flagged `[css-view-orphaned]`) that never load — either way the UI renders **unstyled/wrong while pages stay >1000 bytes** (exactly how bodyology_theme shipped a broken layout past every server-side check). See rules `025`/`026`. Wired into `elgg-migrate-verify` as `[frontend]`. HTTP 200 ≠ visually correct — also open the plugin in a browser and diff against the pre-migration render. |
+| Frontend residue gate clean (`bin/scan-frontend-residue.sh`) | The render gate only proves the page returns *bytes* — a plugin can still ship 2.x client JS (AMD `require()`/`define`, global jQuery, Foundation, `elgg_require_js`) that never runs on Elgg 7, **and** CSS-view overrides orphaned by the Elgg-7 `css/` → `name.css` relocation (`css/elements/X` → `elements/X.css`; flagged `[css-view-orphaned]`) that never load — either way the UI renders **unstyled/wrong while pages stay >1000 bytes** (exactly how a theme can ship a broken layout past every server-side check). See rules `025`/`026`. Wired into `elgg-migrate-verify` as `[frontend]`. HTTP 200 ≠ visually correct — also open the plugin in a browser and diff against the pre-migration render. |
 | PHP_CodeSniffer passes for target version | Style regressions accumulate and make future migrations harder |
 | ARCHITECTURE.md generated | The knowledge of what the plugin *is* at this version is the second-most valuable migration output after the code itself |
 | CHANGELOG.md updated | Downstream consumers need to know what changed |
@@ -343,6 +343,29 @@ and outputs a structured PASS/FAIL report:
 
 Gates covered: PHP syntax (excl. vendor/tests), homepage render (>1000 bytes),
 login render (>1000 bytes), PHP Fatal/Error count in Apache log, PHPUnit suite.
+`elgg-migrate-verify` also runs a **route battery** (members/groups/activity/
+each content type/search) and fails on any 5xx — homepage+login alone never
+exercise the listing/directory/search code paths where latent migration fatals
+hide. Override the list with `ELGG_VERIFY_ROUTES`.
+
+### Exhaustive route coverage (deepest completeness check)
+
+`bin/verify-route-coverage.sh` is the most thorough render gate: it enumerates
+**every** registered GET route from the live container's route collection,
+fills parameterized routes (`{guid}`, `{username}`, `{segments}`) with REAL
+values pulled from the DB, crawls them all anonymously (and authenticated with
+`--user/--pass`), and FAILs on any 5xx or any new `PHP Fatal`/`Call to undefined
+function` in the log. Path-agnostic — point it at any stack:
+
+```bash
+ELGG_CONTAINER=<your-elgg-container> bin/verify-route-coverage.sh \
+  [--base http://localhost] [--user <admin> --pass <pw>]
+```
+
+Run it at the end of **every** version step and diff the green-route set against
+the previous version. A route that worked on N-1 and 5xxes on N is a regression.
+This is the gate that catches the bugs activation + homepage render cannot —
+there is no static substitute for actually rendering every page.
 
 ---
 

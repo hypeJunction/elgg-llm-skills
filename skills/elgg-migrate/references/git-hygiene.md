@@ -122,7 +122,7 @@ Never commit:
 # upstream plugins come from composer, not git
 /mod/*
 # ...but keep the custom, site-owned plugins:
-!/mod/bodyology_*
+!/mod/<your-vendor>_*
 !/mod/<your-site-prefix>_*
 !/mod/.gitkeep
 

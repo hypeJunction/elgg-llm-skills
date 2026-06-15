@@ -42,7 +42,7 @@ final class PostMigrationVerifierTest extends TestCase
     public function testCatchesEsmImportIn3xTarget(): void
     {
         // AMD→ESM sweep leaking elgg_import_esm() (6.x) onto a 3.x branch —
-        // the bodyology chain contamination (bd elgg-migrate-xs2g6).
+        // a real chain-contamination case (bd elgg-migrate-xs2g6).
         $dir = $this->makePluginDir([
             'views/default/menu.php' => "<?php\nelgg_import_esm('navigation/menu/folders');\n",
             'elgg-plugin.php' => "<?php\nreturn [];",
@@ -317,7 +317,7 @@ final class PostMigrationVerifierTest extends TestCase
     public function testCatchesLegacyRemovedFunctionsIn6xTarget(): void
     {
         // 2.x-era functions that leaked onto a 6.x branch (the never-migrated
-        // bodyology custom-plugin backlog).
+        // a real custom-plugin backlog).
         $dir = $this->makePluginDir([
             'actions/save.php' => "<?php\nregister_error('nope');\nforward('/');\n",
             'elgg-plugin.php' => "<?php\nreturn [];",

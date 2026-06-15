@@ -248,7 +248,7 @@ final class VersionGuard
 
     /**
      * Detector: calls to functions removed in Elgg 4.x. Conservative list
-     * derived from real bodyology snapshot-test findings (2026-05-26) plus
+     * derived from real-world snapshot-test findings (2026-05-26) plus
      * a small set of high-signal removals. Add more as new gaps surface.
      */
     private const REMOVED_IN_4X = [

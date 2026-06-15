@@ -21,7 +21,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         file_put_contents($workDir . '/bootstrap.php', <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             use Elgg\DefaultPluginBootstrap;
             class FeedbackBootstrap extends DefaultPluginBootstrap {
                 public function init(): void {
@@ -65,7 +65,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         file_put_contents($workDir . '/correct.php', <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             \elgg_register_admin_menu_item('administer', 'feedback', 'admin');
             \elgg_register_widget_type('feedback', \elgg_echo('feedback:title'), '');
             PHP);
@@ -83,7 +83,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         file_put_contents($workDir . '/imported.php', <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             use function elgg_register_admin_menu_item;
             use function elgg_echo as t;
             elgg_register_admin_menu_item('administer', 'feedback', 'admin');
@@ -103,7 +103,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         file_put_contents($workDir . '/local-fn.php', <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             function elgg_helper(): void { /* namespaced helper, NOT global */ }
             elgg_helper();
             elgg_register_admin_menu_item('a', 'b', 'c');
@@ -125,7 +125,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $file = $workDir . '/Bootstrap.php';
         file_put_contents($file, <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             class FeedbackBootstrap {
                 public function init(): void {
                     elgg_register_admin_menu_item('administer', 'feedback', 'admin');
@@ -159,7 +159,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
              * Bootstrap with bespoke formatting that must round-trip.
              */
 
-            namespace Bodyology;
+            namespace Acme;
 
             use Elgg\DefaultPluginBootstrap;
 
@@ -217,7 +217,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         $original = <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             \elgg_register_admin_menu_item('a', 'b', 'c');
             PHP;
         $file = $workDir . '/already-fixed.php';
@@ -239,7 +239,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $file = $workDir . '/uses-underscore.php';
         file_put_contents($file, <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             _elgg_services()->session;
             _elgg_cache_views();
             PHP);
@@ -261,15 +261,15 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $workDir = $this->workDir();
         mkdir($workDir . '/vendor/some-lib', 0755, true);
         mkdir($workDir . '/node_modules/foo', 0755, true);
-        mkdir($workDir . '/classes/Bodyology', 0755, true);
+        mkdir($workDir . '/classes/Acme', 0755, true);
 
         $vendorContent = "<?php\nnamespace Vendor\\Lib;\nelgg_helper_from_vendor();\n";
         $nodeContent = "<?php\nnamespace Node\\Mod;\nelgg_helper_from_node();\n";
-        $ownContent = "<?php\nnamespace Bodyology;\nelgg_register_admin_menu_item('a', 'b', 'c');\n";
+        $ownContent = "<?php\nnamespace Acme;\nelgg_register_admin_menu_item('a', 'b', 'c');\n";
 
         file_put_contents($workDir . '/vendor/some-lib/code.php', $vendorContent);
         file_put_contents($workDir . '/node_modules/foo/code.php', $nodeContent);
-        file_put_contents($workDir . '/classes/Bodyology/Boot.php', $ownContent);
+        file_put_contents($workDir . '/classes/Acme/Boot.php', $ownContent);
 
         try {
             $result = $this->rule->apply($workDir);
@@ -283,7 +283,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
             $this->assertSame($nodeContent, file_get_contents($workDir . '/node_modules/foo/code.php'));
 
             // Our file got prefixed
-            $this->assertStringContainsString('\elgg_register_admin_menu_item', file_get_contents($workDir . '/classes/Bodyology/Boot.php'));
+            $this->assertStringContainsString('\elgg_register_admin_menu_item', file_get_contents($workDir . '/classes/Acme/Boot.php'));
         } finally {
             $this->removeDir($workDir);
         }
@@ -295,7 +295,7 @@ final class NamespacedGlobalElggHelpersTest extends TestCase
         $file = $workDir . '/methods.php';
         $original = <<<'PHP'
             <?php
-            namespace Bodyology;
+            namespace Acme;
             $obj->elgg_method('not a function');
             self::elgg_static('not a function');
             Foo::elgg_static('not a function');

@@ -28,7 +28,7 @@ final class PostMigrationVerifier
             // ES module loading is 6.x-only (references/version-api-boundaries.md).
             // AMD (elgg_define_js/elgg_require_js) is the ≤5.x equivalent. Seeing these
             // on a 3.x/4.x/5.x branch means an AMD→ESM sweep leaked a future API down —
-            // exactly the bodyology chain contamination (bd elgg-migrate-xs2g6).
+            // exactly the chain-contamination case (bd elgg-migrate-xs2g6).
             'functions' => [
                 'elgg_import_esm',
                 'elgg_register_esm',

@@ -91,8 +91,8 @@ scan_one() {
   #   aggregates `elements/*.css`. A plugin/theme that overrides core element
   #   views at the OLD path views/default/css/elements/*.css is therefore SILENTLY
   #   ORPHANED on Elgg 7 — core's defaults win and the override never loads, so the
-  #   UI renders unstyled while pages stay HTTP 200 (exactly how bodyology_theme
-  #   lost its header-overlay/nav/fonts past every server-side gate). Flag old-path
+  #   UI renders unstyled while pages stay HTTP 200 (exactly how a theme can
+  #   silently lose its header-overlay/nav/fonts past every server-side gate). Flag old-path
   #   element overrides that lack a relocated twin at views/default/elements/<name>.
   #   Gated to plugins targeting Elgg 7 (composer elgg/elgg ~7|^7) to avoid
   #   false-positives on 2.x–6.x where css/elements/* is the correct path.
