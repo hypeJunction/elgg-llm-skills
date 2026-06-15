@@ -62,6 +62,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 | `references/llm-security-review.md` | During the LLM security review step — second-stage workflow |
 | `references/post-migration-documentation.md` | When writing ARCHITECTURE.md — template |
 | `references/git-hygiene.md` | Before every commit — what belongs (and doesn't) in plugin and site repos |
+| `references/migration-lessons.md` | **Once before any multi-version migration** — the synthesis of past failures: why "renders 200" ≠ done, the bug taxonomy (each class → signature → fix → gate), fix-at-origin/forward-port, and the real definition of done |
 
 **Linear knowledge rule**: When migrating from version N to N+1, only read the sections of these docs relevant to N and N+1. Do NOT read sections about versions beyond N+1 — that knowledge will leak into your migration and cause version drift.
 
