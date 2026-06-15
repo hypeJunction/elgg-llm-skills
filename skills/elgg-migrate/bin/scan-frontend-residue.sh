@@ -22,6 +22,22 @@ QUIET=0
 # the plugin must REPLACE or re-wrap, not edit line-by-line.
 TOTAL=0
 
+# Normalize a PHP parameter string to a comma-joined list of "type $name" tokens
+# with default values stripped, so an override's arity+types can be compared
+# against a canonical core signature regardless of default values / spacing.
+norm_params() {
+  local in="$1" out="" p
+  in="${in//$'\n'/ }"
+  local IFS=,
+  for p in $in; do
+    p="${p%%=*}"                                   # drop "= default"
+    p="$(printf '%s' "$p" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+    [ -n "$p" ] || continue
+    out="${out:+$out, }$p"
+  done
+  printf '%s' "$out"
+}
+
 scan_one() {
   local dir="$1" name; name="$(basename "$dir")"
   [ -d "$dir" ] || { echo "  ! not a dir: $dir" >&2; return; }
@@ -178,10 +194,13 @@ scan_one() {
   #   add_translation() was removed in Elgg 5.0 -> Call to undefined function at
   #   BOOT for that language (often surfaces only when a non-default locale loads,
   #   e.g. a user with fr/es). 3.x+ lang files must `return [ ... ];`.
-  grep -rlnE '(^|[^A-Za-z_])add_translation[[:space:]]*\(' "$dir/languages" --include='*.php' 2>/dev/null \
+  # Comment-aware: a docblock/comment that merely *mentions* add_translation()
+  # ("no add_translation()") is not a call. Match the call, drop comment lines.
+  grep -rnE '(^|[^A-Za-z_])add_translation[[:space:]]*\(' "$dir/languages" --include='*.php' 2>/dev/null \
     | grep -vE '/(vendor|vendors|node_modules)/' \
-    | while IFS= read -r f; do
-        ln=$(grep -nE '(^|[^A-Za-z_])add_translation[[:space:]]*\(' "$f" | head -1 | cut -d: -f1)
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
+    | awk -F: '!seen[$1]++ {print $1":"$2}' \
+    | while IFS=: read -r f ln; do
         echo "[legacy-language-file] $f:${ln:-1}: uses add_translation() — removed in Elgg 5.0. Convert to a top-level 'return [ ... ];' array. Fatals at boot when this locale loads." >> "$tmp"
       done
 
@@ -189,6 +208,46 @@ scan_one() {
   # [review-*] are surfaced but do not fail the gate.
   # grep -c always prints a count (0 on no match) even when it exits 1 on an
   # empty file — do NOT append `|| echo 0` (that yields "0\n0" -> arithmetic error).
+  # ── [signature-incompat] — a plugin class overrides a core ElggEntity method
+  # with an incompatible signature (wrong arity / missing types). Elgg 7.0 typed
+  # these core methods; a 2.x-era untyped or extra-arg override fatals at class
+  # load with "Declaration of X::m() must be compatible with ElggY::m()".
+  # bug-007 (Comment::canComment + $default), bug-013 (canComment), bug-017-adjacent.
+  if grep -qE '"elgg/elgg"[[:space:]]*:[[:space:]]*"[~^]?7' "$dir/composer.json" 2>/dev/null; then
+    declare -A CORE_SIG
+    CORE_SIG[canComment]='int $user_guid'
+    CORE_SIG[canWriteToContainer]='int $user_guid, string $type, string $subtype'
+    CORE_SIG[canEdit]='int $user_guid'
+    CORE_SIG[canDelete]='int $user_guid'
+    CORE_SIG[canAnnotate]='int $user_guid, string $annotation_name'
+    while IFS= read -r f; do
+      case "$f" in */vendor/*|*/vendors/*) continue;; esac
+      grep -qE 'extends[[:space:]]+\\?(ElggEntity|ElggObject|ElggComment|ElggGroup|ElggUser|ElggSite)\b' "$f" 2>/dev/null || continue
+      for m in canComment canWriteToContainer canEdit canDelete canAnnotate; do
+        local decl ln raw params norm want
+        decl=$(grep -nE "function[[:space:]]+${m}[[:space:]]*\(" "$f" 2>/dev/null | head -1)
+        [ -n "$decl" ] || continue
+        ln=${decl%%:*}
+        raw=${decl#*:}
+        params=$(printf '%s' "$raw" | sed -E "s/.*function[[:space:]]+${m}[[:space:]]*\(//; s/\).*//")
+        norm=$(norm_params "$params")
+        want="${CORE_SIG[$m]}"
+        if [ "$norm" != "$want" ]; then
+          echo "[signature-incompat] $f:$ln: ${m}(${norm}) override is incompatible with Elgg 7 core ${m}(${want} = …): bool — fatals at class load. Match the core signature (types + arity)." >> "$tmp"
+        fi
+      done
+    done < <(find "$dir/classes" -name '*.php' 2>/dev/null)
+  fi
+
+  # ── [removed-instance-method] — calls to ElggPlugin instance methods deleted
+  # in 4.x/5.x. getManifest() is gone; $plugin->get/setUserSetting() moved to the
+  # procedural elgg_get_plugin_user_setting() family. Fatals: Call to undefined method.
+  grep -rnE --include='*.php' -e '->getManifest[[:space:]]*\(|\$plugin->(get|set)UserSetting[[:space:]]*\(' \
+    "$dir" 2>/dev/null \
+    | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
+    | sed 's/^/[removed-instance-method] /;s/$/ -- removed ElggPlugin method (getManifest\/getUserSetting); use elgg_get_plugin_from_id()->getDisplayName() or elgg_get_plugin_user_setting()/' >> "$tmp"
+
   local n crit
   n=$(grep -c '' "$tmp" 2>/dev/null); n=${n:-0}
   crit=$(grep -cvE '^\[review-' "$tmp" 2>/dev/null); crit=${crit:-0}
