@@ -28,15 +28,17 @@ scan_one() {
 
   local tmp; tmp="$(mktemp)"
 
-  # --- 1. AMD module loading in JS (require([...]) / define([...])) — removed ---
-  grep -rnE '(^|[^A-Za-z0-9_.$])(require|define)[[:space:]]*\([[:space:]]*\[' \
+  # --- 1. AMD module loading in JS — removed. Matches both the array form
+  #         require([...])/define([...]) AND the simplified-CommonJS wrapper
+  #         define(function(){...}) / define(function(require){...}). ---
+  grep -rnE '(^|[^A-Za-z0-9_.$])(require[[:space:]]*\([[:space:]]*\[|define[[:space:]]*\([[:space:]]*(\[|function))' \
     --include='*.js' --include='*.mjs' "$dir" 2>/dev/null \
     | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
     | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
     | sed 's/^/[amd-require-js]   /' >> "$tmp"
 
-  # AMD require([...]) embedded in PHP views (inline <script> strings)
-  grep -rnE '(require|define)[[:space:]]*\([[:space:]]*\[' \
+  # AMD require([...]) / define(...) embedded in PHP views (inline <script>)
+  grep -rnE '(require[[:space:]]*\([[:space:]]*\[|define[[:space:]]*\([[:space:]]*(\[|function))' \
     --include='*.php' "$dir/views" 2>/dev/null \
     | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
     | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
@@ -50,17 +52,26 @@ scan_one() {
     | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
     | sed 's/^/[removed-amd-api]  /' >> "$tmp"
 
-  # --- 4. Foundation / known 2.x front-end frameworks bundled in the theme ---
-  grep -rilE 'foundation(\.min)?\.js|zurb|foundation\.(topbar|reveal|orbit)' \
+  # --- 4. (REVIEW) Foundation / 2.x front-end frameworks referenced by the
+  #         plugin's OWN code (vendored library files excluded). Not a hard
+  #         breaker on its own — Foundation can keep working IF the plugin
+  #         provides a window.jQuery global (ESM shim) and loads it correctly —
+  #         but it MUST be verified in a browser, so it is surfaced for review. ---
+  grep -rilE 'zurb|[Ff]oundation\.(topbar|reveal|orbit|libs|init)|elgg_(load|register)_external_file[^)]*foundation' \
     --include='*.js' --include='*.php' "$dir" 2>/dev/null \
-    | sed "s|^|[foundation-fw]    |;s|$| (2.x frontend framework — replace or re-wrap as ESM)|" >> "$tmp"
+    | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
+    | sed "s|^|[review-foundation] |;s|$| (uses Foundation — verify a window.jQuery global is provided + nav/grid render in a browser)|" >> "$tmp"
 
-  # --- 5. Global-jQuery classic scripts: a .js (not .mjs) that uses jQuery/$
-  #         but has no ESM import/export — i.e. expects a window.jQuery global ---
+  # --- 5/5b. Per-.js-file classification (skip vendored / minified) ---
+  #   5  global-jquery : classic .js using jQuery/$ with no ESM import (needs window.jQuery)
+  #   5b esm-wrong-ext : .js file written as an ES module (import/export). Elgg's
+  #      ESMService only registers *.mjs views in the importmap, so an import-using
+  #      .js never loads (the agent must rename it to .mjs and re-point the loader).
   while IFS= read -r f; do
     case "$f" in */vendor/*|*/vendors/*|*/bower_components/*|*/node_modules/*|*.min.js) continue;; esac
-    if grep -qE '(^|[^A-Za-z0-9_.$])(jQuery|\$)[[:space:]]*\(' "$f" 2>/dev/null \
-       && ! grep -qE '^[[:space:]]*(import|export)[[:space:]]' "$f" 2>/dev/null; then
+    if grep -qE '^[[:space:]]*(import|export)[[:space:]]' "$f" 2>/dev/null; then
+      echo "[esm-wrong-ext]    $f:1: ES module saved as .js — Elgg only registers .mjs in the importmap, so this never loads. Rename to .mjs + repoint elgg_import_esm." >> "$tmp"
+    elif grep -qE '(^|[^A-Za-z0-9_.$])(jQuery|\$)[[:space:]]*\(' "$f" 2>/dev/null; then
       echo "[global-jquery]    $f:1: classic script uses jQuery/\$ with no ESM import (needs window.jQuery — removed in Elgg 7)" >> "$tmp"
     fi
   done < <(find "$dir" -name '*.js' 2>/dev/null)
@@ -76,9 +87,12 @@ scan_one() {
 
   # CRITICAL findings (removed APIs / non-functional on 7.x) drive the exit code;
   # [review-*] are surfaced but do not fail the gate.
+  # grep -c always prints a count (0 on no match) even when it exits 1 on an
+  # empty file — do NOT append `|| echo 0` (that yields "0\n0" -> arithmetic error).
   local n crit
-  n=$(grep -c '' "$tmp" 2>/dev/null || echo 0)
-  crit=$(grep -cvE '^\[review-' "$tmp" 2>/dev/null || echo 0)
+  n=$(grep -c '' "$tmp" 2>/dev/null); n=${n:-0}
+  crit=$(grep -cvE '^\[review-' "$tmp" 2>/dev/null); crit=${crit:-0}
+  [ -s "$tmp" ] || crit=0
   TOTAL=$((TOTAL + crit))
 
   if [ "$n" -gt 0 ]; then
