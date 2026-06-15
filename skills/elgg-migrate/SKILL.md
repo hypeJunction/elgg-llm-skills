@@ -257,6 +257,7 @@ is the load-bearing part.
 | Pre-migration tests adapted and passing on TARGET version | The regression safety net only works if it's *run* against the new code |
 | Plugin activates in Docker | Activation is the first real integration test — catches serialization, DI, and missing-dep issues |
 | Site renders (homepage AND login, >1000 bytes) | Activation-without-render means a hook crashed on page load; both pages are needed because the login flow has its own code path |
+| Frontend residue gate clean (`bin/scan-frontend-residue.sh`) | The render gate only proves the page returns *bytes* — a plugin can still ship 2.x client JS (AMD `require()`/`define`, global jQuery, Foundation, `elgg_require_js`) that never runs on Elgg 7, so the UI loads **unstyled/inert while pages stay >1000 bytes** (exactly how bodyology_theme shipped a broken layout past every server-side check). Wired into `elgg-migrate-verify` as `[frontend]`. HTTP 200 ≠ visually correct — also open the plugin in a browser. |
 | PHP_CodeSniffer passes for target version | Style regressions accumulate and make future migrations harder |
 | ARCHITECTURE.md generated | The knowledge of what the plugin *is* at this version is the second-most valuable migration output after the code itself |
 | CHANGELOG.md updated | Downstream consumers need to know what changed |

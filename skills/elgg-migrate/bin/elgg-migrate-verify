@@ -91,6 +91,25 @@ else
   gate "PHP syntax clean (excl. vendor, tests)" FAIL "$(echo "$syntax_errors" | head -3)"
 fi
 
+# ─── gate 1b: frontend (client JS) residue ──────────────────────────────────
+# HTTP render (gate 2) only proves the PAGE returns bytes — a plugin can still
+# ship 2.x-era client JS (AMD require()/define, global jQuery, Foundation,
+# elgg_require_js) that never runs on Elgg 7, so the UI loads unstyled/inert
+# while the page is still >1000 bytes. This static scan catches that.
+echo ""
+echo "  ── frontend (client JS) ────────────────────────────────────────"
+SCAN="$(dirname "$(readlink -f "$0")")/scan-frontend-residue.sh"
+if [[ -f "$SCAN" ]]; then
+  if bash "$SCAN" --quiet "$PLUGIN_DIR" >/dev/null 2>&1; then
+    gate "No Elgg-7 frontend residue (AMD/jQuery-global/Foundation)" PASS
+  else
+    gate "No Elgg-7 frontend residue (AMD/jQuery-global/Foundation)" FAIL \
+      "$(bash "$SCAN" --quiet "$PLUGIN_DIR" 2>/dev/null | grep -E 'crit=[1-9]' | head -1)"
+  fi
+else
+  gate "Frontend residue scan" SKIP "scan-frontend-residue.sh not found"
+fi
+
 # ─── gate 2: HTTP render ────────────────────────────────────────────────────
 
 echo ""
