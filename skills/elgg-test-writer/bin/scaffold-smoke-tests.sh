@@ -128,6 +128,27 @@ awk -v actions="$action_rows" -v entities="$entity_rows" '
 ' "$dst.tmp" > "$dst"
 rm -f "$dst.tmp"
 
+# --- RegressionTest: static source-scan guard for recurring runtime-fatal
+# bug classes (signature-incompat, null-title, legacy-language, removed
+# instance method, css-orphan). Pure source scan → no Elgg boot, runs as a
+# plain unit test without the Docker stack. ---
+reg_template="$SKILL_ROOT/templates/RegressionTest.php.template"
+reg_dst_dir="$plugin_dir/tests/phpunit/unit"
+reg_dst="$reg_dst_dir/RegressionTest.php"
+reg_written=""
+if [ -f "$reg_template" ]; then
+    if [ -e "$reg_dst" ] && [ "$force" -ne 1 ]; then
+        echo "skip (exists): ${reg_dst#$plugin_dir/} — use --force to overwrite"
+    else
+        mkdir -p "$reg_dst_dir"
+        sed \
+            -e "s|__PLUGIN_ID__|$plugin_id|g" \
+            -e "s|__PLUGIN_NAMESPACE__|$plugin_ns|g" \
+            "$reg_template" > "$reg_dst"
+        reg_written="${reg_dst#$plugin_dir/}"
+    fi
+fi
+
 action_count="$(printf '%s' "$action_rows" | grep -c '^' || true)"
 entity_count="$(printf '%s' "$entity_rows" | grep -c '^' || true)"
 [ -z "$action_rows" ] && action_count=0
@@ -139,12 +160,15 @@ namespace    = $plugin_ns
 actions      = $action_count
 entities     = $entity_count
 wrote        = ${dst#$plugin_dir/}
+regression   = ${reg_written:-"(skipped)"}
 
 Next steps:
   cd "$plugin_dir"
-  # Run inside the docker test stack (scaffold-docker.sh first if needed):
+  # RegressionTest is a static source scan — runs WITHOUT the docker stack:
+  vendor/bin/phpunit tests/phpunit/unit/RegressionTest.php
+  # SmokeTest boots Elgg, so run it inside the docker test stack:
   docker compose -f docker/docker-compose.yml run --rm elgg \\
       vendor/bin/phpunit tests/phpunit/integration/SmokeTest.php
-  git add tests/phpunit/integration/SmokeTest.php
-  git commit -m "test: add baseline smoke tests"
+  git add tests/phpunit
+  git commit -m "test: add baseline smoke + regression tests"
 NEXT

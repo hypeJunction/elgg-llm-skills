@@ -33,6 +33,7 @@ does not depend on the elgg-migrate skill for infrastructure. After
       bin/scaffold-docker.sh    # copy docker/ into a plugin
       bin/scaffold-ci.sh        # copy .github/workflows/ into a plugin
       bin/scaffold-phpcs.sh     # backfill phpcs into existing docker stack
+      bin/scaffold-smoke-tests.sh # emit baseline SmokeTest + RegressionTest
       src/                      # ElggMigrate\ PHP namespace
       rules/{2..6}x-to-{3..7}x/ # per-version rule manifests
       composer.json             # nikic/php-parser dep + PSR-4 autoload
@@ -40,8 +41,11 @@ does not depend on the elgg-migrate skill for infrastructure. After
       tests/                    # PHPUnit tests for src/
       formulas/                 # plugin-test-scaffold beads formula
       templates/elgg{N}/        # per-target Elgg test stack (N = 2..7)
+      templates/SmokeTest.php.template      # baseline integration smoke test
+      templates/RegressionTest.php.template # static guard for recurring fatals
       templates/DEVELOPMENT.md  # plugin-level testing docs template
       references/ci/            # GitHub Actions workflow templates
+      references/regression-classes.md      # bug-class → assertion map
 
 Each `templates/elgg{N}/` directory holds a self-contained docker stack
 — `Dockerfile`, `docker-compose.yml`, `elgg-install.sh`,
@@ -152,16 +156,38 @@ $SKILL/bin/scaffold-smoke-tests.sh --plugin-dir=/abs/path/to/plugin
 ```
 
 The script statically parses `elgg-plugin.php` (no Elgg bootstrap needed) and
-writes `tests/phpunit/integration/SmokeTest.php` covering:
+writes two files:
+
+`tests/phpunit/integration/SmokeTest.php` (boots Elgg in the docker stack) covers:
 
 - plugin is registered (`elgg_get_plugin_from_id`)
 - plugin activates without throwing
 - every action declared in `elgg-plugin.php`'s `actions` array is registered at runtime
 - every (type, subtype) entry in `entities` resolves to a loadable class
 
+`tests/phpunit/unit/RegressionTest.php` (static source scan — **no Elgg boot**,
+runs without the docker stack) guards the recurring runtime-fatal bug classes
+from the 2.x→7.x fleet migration that a smoke test misses because they only
+fatal on a specific page render or at class load:
+
+- **signature-incompat** — a class overrides a typed Elgg 7 core method
+  (`canComment`/`canWriteToContainer`/…) with the wrong arity or types
+- **null-title** — `elgg_view_page`/`elgg_view_module` with a literal `null` or
+  never-assigned `$var` title (Elgg 7 typed `string $title`)
+- **legacy-language-file** — `add_translation()` (removed in 5.0)
+- **removed-instance-method** — `->getManifest()` / `$plugin->getUserSetting()`
+- **css-view-orphaned** — `views/default/css/elements/*.css` with no relocated
+  twin (Elgg 7 only)
+
+See `references/regression-classes.md` for the bug-class→assertion map and how
+to extend `CORE_SIG` when a new major retypes a core method. The detector
+mirrors `elgg-migrate/bin/scan-frontend-residue.sh` so the guard travels with
+the plugin.
+
 This baseline is **deterministic** — no LLM judgment, no plugin code execution.
 It catches the most common post-migration regressions: missing class bindings,
-typo'd action keys, plugins that fail activation due to constructor errors.
+typo'd action keys, plugins that fail activation due to constructor errors, and
+the page-render fatals above.
 
 The LLM-driven phases below add richer per-feature coverage (action 200/403
 paths, route reachability, view rendering, UI flows) on top of this file.
