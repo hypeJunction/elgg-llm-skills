@@ -134,6 +134,27 @@ scan_one() {
         fi
       done
 
+  # --- 9. elgg_view_page() called with an unassigned $title var (Elgg 7 strict
+  #   string signature). Elgg 7 typed elgg_view_page(string $title, ...). A
+  #   resource that passes a $var which is NEVER assigned in the file sends null
+  #   -> TypeError -> 500. Latent/lenient pre-7.x (undefined-var notice + empty
+  #   <title>, HTTP 200), HARD FATAL on 7.x. Recurring across many resources and
+  #   only fatals when that page is actually rendered (often authenticated), so it
+  #   slips past activation + homepage render. Pass a real string (entity/
+  #   collection display name, or elgg_echo('<title>')).
+  for f in $(grep -rlE 'elgg_view_page\(\$[a-zA-Z_]' "$dir/views" --include='*.php' 2>/dev/null | grep -vE '/(vendor|vendors|node_modules)/'); do
+    var=$(grep -oE 'elgg_view_page\(\$[a-zA-Z_][a-zA-Z0-9_]*' "$f" | grep -oE '\$[a-zA-Z_][a-zA-Z0-9_]*' | head -1)
+    [ -z "$var" ] && continue
+    name="${var#\$}"
+    # assigned in the file?  (\$name = ...)   foreach-as / function-param count too
+    if grep -qE "\\\$${name}[[:space:]]*=" "$f" 2>/dev/null \
+       || grep -qE "as[[:space:]]+\\\$${name}\b|function[^)]*\\\$${name}\b|\\\$${name}[[:space:]]*=>" "$f" 2>/dev/null; then
+      continue
+    fi
+    ln=$(grep -nF "elgg_view_page($var" "$f" | head -1 | cut -d: -f1)
+    echo "[viewpage-null-title] $f:${ln:-1}: elgg_view_page($var, ...) but $var is never assigned in this file -> null title -> TypeError on Elgg 7's strict elgg_view_page(string \$title). Pass a real string (entity/collection display name, or elgg_echo('...'))." >> "$tmp"
+  done
+
   # CRITICAL findings (removed APIs / non-functional on 7.x) drive the exit code;
   # [review-*] are surfaced but do not fail the gate.
   # grep -c always prints a count (0 on no match) even when it exits 1 on an
