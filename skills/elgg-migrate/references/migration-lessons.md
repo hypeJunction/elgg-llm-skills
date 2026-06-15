@@ -104,6 +104,7 @@ Every class below was found in this migration. Grep your fleet for each.
 
 A version step is complete only when ALL hold, on that version's Docker stack:
 
+- [ ] **Render golden master captured against the working baseline (N-1) AND diffed at this version** — `bin/baseline-golden-master.sh`. Unit tests are NOT enough; the render layer is where the bugs hide. ZERO route may regress 2xx/3xx → 5xx vs the baseline.
 - [ ] All acceptance gates pass (see SKILL.md "Acceptance Gates").
 - [ ] `bin/scan-frontend-residue.sh` clean (no critical findings).
 - [ ] `bin/verify-route-coverage.sh` — **0 × 5xx** across every route, anonymous AND
