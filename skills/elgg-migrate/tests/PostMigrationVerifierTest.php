@@ -418,6 +418,97 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
+    // --- dangling upgrade-class check (bd elgg-migrate-kg3kb) ---
+
+    public function testCatchesDanglingUpgradeClass(): void
+    {
+        // Forward-port deleted the class but left the registration. A bare
+        // Foo::class doesn't autoload, so pages render — but elgg-cli upgrade
+        // aborts ("Upgrade class … was not found"). Real bodyology 7x case.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        \\Bodyology\\Upgrades\\MigrateSwitchSettings::class,\n    ],\n];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            $this->assertFalse($result->passed);
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('dangling-upgrade-class', $cats);
+            $joined = implode(' ', array_map(fn($v) => $v->message, $result->errors()));
+            $this->assertStringContainsString('MigrateSwitchSettings', $joined);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testCatchesDanglingUpgradeClassStringLiteral(): void
+    {
+        // Same gap registered as a quoted string instead of ::class.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        'Acme\\\\Upgrades\\\\GoneAway',\n    ],\n];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '6.x');
+            $cats = array_map(fn($v) => $v->category, $result->errors());
+            $this->assertContains('dangling-upgrade-class', $cats);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testResolvedUpgradeClassNotFlagged(): void
+    {
+        // The class exists at its canonical classes/ path — must NOT be flagged.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        \\Acme\\Upgrades\\EncodeAsJson::class,\n    ],\n];",
+            'classes/Acme/Upgrades/EncodeAsJson.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\nuse Elgg\\Upgrade\\AsynchronousUpgrade;\nclass EncodeAsJson extends AsynchronousUpgrade {\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            $cats = array_map(fn($v) => $v->category, $result->violations);
+            $this->assertNotContains('dangling-upgrade-class', $cats);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testRelocatedUpgradeClassNotFlagged(): void
+    {
+        // Class lives off the canonical path (custom composer PSR-4 prefix) but a
+        // declaration exists — conservative resolver must accept it.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        \\Acme\\Upgrades\\Moved::class,\n    ],\n];",
+            'src/Upgrades/Moved.php' =>
+                "<?php\nnamespace Acme\\Upgrades;\nclass Moved {\n}\n",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            $cats = array_map(fn($v) => $v->category, $result->violations);
+            $this->assertNotContains('dangling-upgrade-class', $cats);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testNoUpgradesKeyIsClean(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn [\n    'hooks' => [\n        'register' => ['menu:entity' => []],\n    ],\n];",
+        ]);
+
+        try {
+            $result = $this->verifier->verify($dir, '7.x');
+            $cats = array_map(fn($v) => $v->category, $result->violations);
+            $this->assertNotContains('dangling-upgrade-class', $cats);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     // --- Helpers ---
 
     private function makePluginDir(array $files): string

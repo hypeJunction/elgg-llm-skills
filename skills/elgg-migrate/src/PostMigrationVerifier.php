@@ -207,6 +207,15 @@ final class PostMigrationVerifier
         // (bd elgg-migrate — caught by verify-migration-chain.sh at 5x->6x, 2026-06-05).
         $violations = array_merge($violations, $this->checkChangedClassContracts($pluginPath, $targetVersion));
 
+        // Upgrade classes registered under elgg-plugin.php 'upgrades' => [...]
+        // whose class no longer resolves to a file. A bare `Foo::class` on an
+        // undefined class does NOT autoload, so the registration loads cleanly and
+        // pages render — but `elgg-cli upgrade` aborts non-zero ("Upgrade class …
+        // was not found", Locator.php). A forward-port that deleted the class but
+        // left the registration is the canonical trigger.
+        // (bd elgg-migrate-kg3kb; version-agnostic — checked at every target.)
+        $violations = array_merge($violations, $this->checkDanglingUpgradeClasses($pluginPath));
+
         $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
 
         return new VerificationResult(
@@ -702,6 +711,145 @@ final class PostMigrationVerifier
         }
 
         return [];
+    }
+
+    /**
+     * Flag upgrade classes registered under elgg-plugin.php 'upgrades' => [...]
+     * that no longer resolve to a file in the plugin.
+     *
+     * Elgg loads the registration (a class-string) lazily; `\Foo::class` on an
+     * undefined class is just a string literal and does NOT trigger autoloading.
+     * So a stale registration looks fine — pages render — until `elgg-cli upgrade`
+     * runs and the Locator fails to resolve the class ("Upgrade class … was not
+     * found"), aborting non-zero. This catches the whole class of forward-port
+     * gaps where a class was deleted/renamed but the registration stayed.
+     *
+     * Conservative resolution: a class is considered present if EITHER the
+     * canonical Elgg classes/ path exists OR a declaration of its short name is
+     * found anywhere in the plugin's PHP (covers composer PSR-4 with a custom
+     * prefix or a relocated file). Only when neither holds do we flag it.
+     *
+     * @return array<Violation>
+     */
+    private function checkDanglingUpgradeClasses(string $pluginPath): array
+    {
+        $pluginPhp = $pluginPath . '/elgg-plugin.php';
+        if (!is_file($pluginPhp)) {
+            return [];
+        }
+        $content = file_get_contents($pluginPhp);
+        if ($content === false) {
+            return [];
+        }
+
+        $violations = [];
+        foreach ($this->extractUpgradeClassRefs($content) as [$class, $lineNum]) {
+            if ($this->classResolvesInPlugin($pluginPath, $class)) {
+                continue;
+            }
+            $violations[] = new Violation(
+                file: 'elgg-plugin.php',
+                line: $lineNum,
+                severity: 'error',
+                message: "Registered upgrade class {$class} cannot be resolved to a file — `elgg-cli upgrade` aborts non-zero (\"Upgrade class … was not found\"). Remove the stale registration or restore/rename the class.",
+                code: $class,
+                category: 'dangling-upgrade-class',
+            );
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Extract the class-strings registered under the 'upgrades' key of
+     * elgg-plugin.php, with the 1-based line each was found on. Tracks bracket
+     * depth from the opening `'upgrades' => [` so nested arrays don't end the
+     * block early.
+     *
+     * @return array<array{0:string,1:int}>
+     */
+    private function extractUpgradeClassRefs(string $content): array
+    {
+        $lines = explode("\n", $content);
+        $refs = [];
+        $inBlock = false;
+        $depth = 0;
+
+        foreach ($lines as $i => $line) {
+            if (!$inBlock) {
+                if (!preg_match("/['\"]upgrades['\"]\s*=>\s*\[/", $line)) {
+                    continue;
+                }
+                $inBlock = true;
+                $depth = 0;
+            }
+
+            $depth += substr_count($line, '[') - substr_count($line, ']');
+            foreach ($this->classRefsOnLine($line) as $class) {
+                $refs[] = [$class, $i + 1];
+            }
+            if ($depth <= 0) {
+                $inBlock = false;
+            }
+        }
+
+        return $refs;
+    }
+
+    /**
+     * Pull namespaced class references out of a single source line: both
+     * `\Foo\Bar::class` constants and `'Foo\Bar'` / "Foo\\Bar" string literals.
+     * A namespace separator is required, so plain array keys aren't matched.
+     *
+     * @return array<string>
+     */
+    private function classRefsOnLine(string $line): array
+    {
+        // Collapse runs of backslashes to one so double-quoted ("Foo\\Bar") and
+        // single-quoted ('Foo\Bar') source forms normalize identically.
+        $norm = preg_replace('/\\\\+/', '\\', $line);
+
+        $classes = [];
+        if (preg_match_all('/\\\\?([A-Za-z_]\w*(?:\\\\[A-Za-z_]\w*)+)::class/', $norm, $m)) {
+            $classes = array_merge($classes, $m[1]);
+        }
+        if (preg_match_all('/[\'"]\\\\?([A-Za-z_]\w*(?:\\\\[A-Za-z_]\w*)+)[\'"]/', $norm, $m2)) {
+            $classes = array_merge($classes, $m2[1]);
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
+     * Conservatively decide whether a class-string resolves to a file shipped by
+     * the plugin (canonical classes/ path, or any matching class declaration).
+     */
+    private function classResolvesInPlugin(string $pluginPath, string $class): bool
+    {
+        $class = ltrim($class, '\\');
+
+        // Canonical Elgg autoload location: classes/<Ns/Path>.php
+        $canonical = $pluginPath . '/classes/' . str_replace('\\', '/', $class) . '.php';
+        if (is_file($canonical)) {
+            return true;
+        }
+
+        // Fallback: a declaration of the short name anywhere in the plugin (a
+        // composer custom PSR-4 prefix or a relocated file). Keeps false positives
+        // near zero at the cost of not catching a same-named class in a wrong ns.
+        $short = ltrim((string) strrchr('\\' . $class, '\\'), '\\');
+        $declPattern = '/\b(?:abstract\s+|final\s+)?class\s+' . preg_quote($short, '/') . '\b/';
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            if (preg_match($declPattern, $content)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
