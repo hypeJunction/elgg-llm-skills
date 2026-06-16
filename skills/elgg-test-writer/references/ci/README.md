@@ -21,7 +21,7 @@ merge to the default branch.
 | File | Purpose | Triggers |
 |------|---------|----------|
 | `tests.yml` | Boots `<plugin>/docker/docker-compose.yml`, runs PHPUnit, runs Playwright | push to main/master, pull_request |
-| `lint.yml` | `php -l` matrix, `composer validate`, JSON parse, workflow YAML parse | push to main/master, pull_request |
+| `lint.yml` | `php -l` matrix, `composer validate`, JSON parse, workflow YAML parse, merge-conflict-marker scan | push to main/master, pull_request |
 
 ## Design
 
@@ -45,7 +45,7 @@ install path to maintain.
   with `npm ci && npx playwright test`. Uploads the HTML report as an
   artifact.
 
-`lint.yml` has four independent jobs:
+`lint.yml` has five independent jobs:
 
 - **php-syntax** — `php -l` matrix across PHP 7.4 / 8.1 / 8.3 on every
   tracked `.php` file outside `vendor/` and `node_modules/`. Drop rows
@@ -54,6 +54,12 @@ install path to maintain.
   --no-check-publish` against `composer.json`.
 - **json** — every tracked `.json` file parses.
 - **workflow-yaml** — every workflow YAML file parses.
+- **merge-conflict-markers** — fails if any tracked file outside
+  `vendor/` / `node_modules/` contains an unresolved Git conflict
+  marker (`<<<<<<<`, `|||||||`, `=======`, `>>>>>>>`). Forward-porting
+  a plugin across major versions repeatedly re-merges branches; a
+  botched merge can commit markers to the default branch while the
+  deployed tags stay clean (elgg-migrate-aoy99).
 
 ## PLUGIN_ID resolution
 

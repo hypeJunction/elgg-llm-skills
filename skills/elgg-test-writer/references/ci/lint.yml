@@ -87,3 +87,24 @@ jobs:
             fi
           done
           exit $ec
+
+  merge-conflict-markers:
+    name: Merge conflict markers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject committed conflict markers
+        run: |
+          # A committed '<<<<<<<', '|||||||', '=======' or '>>>>>>>' line
+          # means an unresolved merge was committed (e.g. the default
+          # branch of a forward-ported plugin). Catch it before it ships.
+          marker='^(<{7}|>{7}|\|{7}|={7})( |$)'
+          ec=0
+          while IFS= read -r f; do
+            if grep -nE "$marker" "$f" >/dev/null 2>&1; then
+              echo "CONFLICT MARKERS: $f"
+              grep -nE "$marker" "$f"
+              ec=1
+            fi
+          done < <(git ls-files | grep -Ev '^(vendor|node_modules)/')
+          exit $ec
