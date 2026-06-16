@@ -446,6 +446,31 @@ else { foreach (\$failed as \$f) echo 'FAIL: ' . \$f . PHP_EOL; }
 "
 ```
 
+**Seeding from a production dump? Restore the prod active set with
+`bin/restore-active-plugins.sh`.** When the stage DB is overlaid from an
+(anonymized) production dump rather than freshly installed, the `.plugin-order.txt`
+loop above is not enough: Elgg <4.x keeps camelCase plugin titles
+(`hypePrototyper`), but the captured prod active list is lowercase, so a naive
+case-sensitive match silently skips every camelCase plugin — leaving active
+lowercase dependents calling into a *disabled* dependency (fatal "Call to
+undefined function hypePrototyper()"). The script matches on `LOWER(title)` and
+activates the **intersection** of (prod-active TSV) ∩ (plugins on disk this
+stage), so intentionally-dropped plugins with a stale `enabled='yes'` entity but
+no directory are left inactive. It also runs `generateEntities()` and enables
+`enabled='no'` entities first, and is idempotent.
+
+```bash
+skills/elgg-site-upgrade/bin/restore-active-plugins.sh \
+  --tsv snapshots/prod-active-plugins.tsv \
+  --db-container <site>${N}x-db-1 \
+  --app-container <site>${N}x-app-1 \
+  [--mod-path /var/www/html/mod] [--db elgg] [--dry-run]
+```
+
+Capture the TSV at "Record the current plugin activation order" above
+(`<plugin_id>\t<priority>` per line). Use `--dry-run` first to preview the
+would-activate / dropped sets, then flush caches and restart the app container.
+
 **Site renders.** `curl -sL http://localhost/ | grep -oP '<title>[^<]*</title>'`
 must return a real title, not "Fatal Error".
 
