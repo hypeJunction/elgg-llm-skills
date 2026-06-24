@@ -68,6 +68,23 @@ scan_one() {
     | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
     | sed 's/^/[removed-amd-api]  /' >> "$tmp"
 
+  # --- 2b. Vendored JS lib registered via a '.js' (NOT '.mjs') 'views' key, or
+  #         elgg_register_esm() routed through elgg_get_simplecache_url('*.js').
+  #         Elgg 7's ESMService adds only *.mjs views to the importmap, so neither
+  #         form produces an importmap entry — a bare `import '<spec>'` then fails
+  #         to resolve at runtime (the whole module aborts; the page still 200s).
+  #         Fix: elgg_register_esm('<spec>', elgg_normalize_url('mod/<p>/vendors/<lib>.js'))
+  #         + vendor the file under vendors/ + expose window.jQuery for UMD plugins. ---
+  grep -rnE "['\"][A-Za-z0-9_./-]+\.js['\"][[:space:]]*=>[[:space:]]*.*(vendor|vendors|/dist/|\.min\.js)" \
+    --include='elgg-plugin.php' "$dir" 2>/dev/null \
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
+    | sed 's/^/[esm-js-views-reg]   /' >> "$tmp"
+  grep -rnE 'elgg_register_esm\([^)]*elgg_get_simplecache_url\([^)]*\.js' \
+    --include='*.php' "$dir" 2>/dev/null \
+    | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
+    | sed 's/^/[esm-simplecache-js] /' >> "$tmp"
+
   # --- 4. (REVIEW) Foundation / 2.x front-end frameworks referenced by the
   #         plugin's OWN code (vendored library files excluded). Not a hard
   #         breaker on its own — Foundation can keep working IF the plugin
