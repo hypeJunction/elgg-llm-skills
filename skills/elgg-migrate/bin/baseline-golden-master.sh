@@ -119,6 +119,10 @@ foreach (_elgg_services()->routes->all() as $name=>$r) {
   $method = empty($methods) ? "GET" : "GET";
   $path = $r->getPath();
   if (strpos($path, "/action/") === 0) continue;
+  // Skip endpoints that require a signed/MAC URL — crawling them raw trips the
+  // UpgradeGatekeeper (security_protect_upgrade) and renders a benign 500 that
+  // is NOT a migration defect. They are exercised via their own signed flow.
+  if (strpos($path, "/upgrade") === 0) continue;
 
   // resolve owning plugin via resource view file, then controller/handler/file
   $d = $r->getDefaults();
@@ -169,9 +173,14 @@ crawl() {
 }
 crawl anon ''
 if [ \"\$DO_AUTH\" = '1' ]; then
-  TOK=\$(curl -s -c /tmp/gm.cj \"\$BASE/login\" | grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2)
-  TS=\$(curl -s -b /tmp/gm.cj \"\$BASE/login\" | grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' | grep -oE '[0-9]+' | head -1)
-  curl -s -b /tmp/gm.cj -c /tmp/gm.cj -o /dev/null -d \"username=\$LUSER&password=\$LPASS&__elgg_token=\$TOK&__elgg_ts=\$TS\" \"\$BASE/action/login\" >/dev/null 2>&1
+  # Fetch /login ONCE — __elgg_token is an HMAC over __elgg_ts, so they MUST
+  # come from the same page load or CSRF validation rejects the login.
+  curl -s -c /tmp/gm.cj \"\$BASE/login\" > /tmp/gm_login.html
+  TOK=\$(grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' /tmp/gm_login.html | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2)
+  TS=\$(grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' /tmp/gm_login.html | grep -oE '[0-9]+' | head -1)
+  curl -s -b /tmp/gm.cj -c /tmp/gm.cj -o /dev/null --data-urlencode \"username=\$LUSER\" --data-urlencode \"password=\$LPASS\" --data-urlencode \"__elgg_token=\$TOK\" --data-urlencode \"__elgg_ts=\$TS\" \"\$BASE/action/login\" >/dev/null 2>&1
+  AUTHCHK=\$(curl -s -b /tmp/gm.cj -o /dev/null -w '%{http_code}' \"\$BASE/dashboard\")
+  [ \"\$AUTHCHK\" = '200' ] || echo \"  WARN: auth login FAILED (dashboard=\$AUTHCHK) — auth crawl mirrors anon; check creds/username\" >&2
   crawl auth '-b /tmp/gm.cj'
 fi" | LC_ALL=C sort > "$OUT"
 
