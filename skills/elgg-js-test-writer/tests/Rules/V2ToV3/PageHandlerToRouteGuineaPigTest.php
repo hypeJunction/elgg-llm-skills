@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * These tests verify the rule works on diverse real-world code, not just fixtures.
  *
  * Guinea pigs:
- *   - hypeJunction/hypeWall (class callback, constants, PSR-0)
+ *   - a class-callback plugin (class callback, constants, PSR-0)
  *   - RangeeGmbH/elgg-forum (4 page handlers, library, function callbacks)
  *   - Elgg/community_plugins (namespaced callbacks, complex hooks)
  */
@@ -92,7 +92,7 @@ final class PageHandlerToRouteGuineaPigTest extends TestCase
     public static function guineaPigProvider(): array
     {
         return [
-            'hypeWall' => ['hypeWall', 1],
+            'class-callback-plugin' => ['class-callback-plugin', 1],
             'elgg-forum' => ['elgg-forum', 4],
             'community_plugins' => ['community_plugins', 1],
         ];

@@ -404,8 +404,8 @@ same way.
 `composer show <vendor>/<plugin> --all`. Also check https://elgg.org/plugins
 and https://packagist.org/packages/<vendor>/<plugin>.
 
-**Version-prefixed repos.** Some orgs (notably hypeJunction) publish
-per-version repos like `Elgg3-hypeDropzone` or `Elgg4-hypeDropzone`:
+**Version-prefixed repos.** Some orgs publish per-version repos like
+`Elgg3-<plugin>` or `Elgg4-<plugin>`:
 `gh search repos --owner <org> "Elgg4-<plugin>"`.
 
 How to decide what to do with what you find:
@@ -625,11 +625,11 @@ The shape of the composer change depends on which step you're on:
   `manifest.xml` and translating fields one-for-one. Each
   `<requires><type>plugin</type><name>X</name></requires>` becomes a composer
   `require` entry (resolve `<vendor>/<name>` from the known plugin map —
-  hypeJunction plugins use vendor `hypejunction`, ColdTrick uses `coldtrick`,
+  each publisher uses its own vendor prefix, e.g. ColdTrick uses `coldtrick`,
   core plugins use `elgg`). Keep `manifest.xml` in place; 3.x still reads it.
 
 - **3.x → 4.x**: the most invasive step. Lowercase the `name` field, rename
-  the plugin directory to match (`hypeBlog` → `hypeblog`), bump constraints,
+  the plugin directory to match (`MyBlog` → `myblog`), bump constraints,
   add the `config.allow-plugins` block, verify every plugin dependency that
   was in `manifest.xml` is mirrored in `require` (missing ones cause silent
   activation failures), then `git rm manifest.xml`. After this commit,
@@ -959,10 +959,10 @@ Commit: `git commit -m "docs: add plugin architecture summary for Elgg {TARGET}.
 
 #### Update README and plugin docs
 
-After documenting the architecture, update the public-facing docs to the hypeJunction standard:
+After documenting the architecture, update the public-facing docs to a consistent project standard (the author/domain/org values come from `config/plugin-docs.local.json` — see `config/plugin-docs.example.json`):
 
-1. **Audit:** `bin/audit-plugin-docs.sh <plugin-path>` — review all flagged issues (badge version, donation CTAs, hypejunction.com refs, missing description).
-2. **Auto-fix:** `bin/fix-plugin-docs.sh <plugin-path> --apply` — rewrites badge, strips CTAs, replaces hypejunction.com URLs.
+1. **Audit:** `bin/audit-plugin-docs.sh <plugin-path>` — review all flagged issues (badge version, donation CTAs, old-domain refs, missing description).
+2. **Auto-fix:** `bin/fix-plugin-docs.sh <plugin-path> --apply` — rewrites badge, strips CTAs, replaces old-domain URLs (from config).
 3. **Rewrite README.md** from `templates/README.md.tpl` — fill in NAME, ELGG_VERSION (from `elgg/elgg` constraint), REPO_SLUG, a fresh 1-2 sentence tagline, FEATURES, LICENSE. Drop all legacy stacked badges and donation/sponsor blocks.
 3b. **Update compatibility table** — after rewriting README.md, update the `## Compatibility` section:
     - Read the `elgg/elgg` constraint from `composer.json` to derive the target Elgg major version (e.g. `~7.0.0` → `7.x`).
@@ -970,7 +970,7 @@ After documenting the architecture, update the public-facing docs to the hypeJun
     - If the README already has `## Compatibility`, prepend a new row for the current target version (`| current | <derived-version> |`) above existing rows.
     - Table header must always be: `| Plugin version | Elgg version |`
 4. **Sync metadata:** update `composer.json` `"description"` and (if present) `manifest.xml` `<description>` / `elgg-plugin.php` `'description'` to the same tagline.
-5. **GitHub:** `gh repo edit hypeJunction/<repo> --description "<tagline>"` — uses the actual remote URL from `git remote get-url origin`.
+5. **GitHub:** `gh repo edit <org>/<repo> --description "<tagline>"` — uses the actual remote URL from `git remote get-url origin`.
 6. Commit: `git commit -m "docs: standardize README and plugin docs"`.
 
 The audit script exits non-zero on any remaining issue — run it last as a gate before closing the beads sub-issue.
@@ -1017,18 +1017,18 @@ Both scripts are path-agnostic and take a plugin directory as the only required 
 - `## Compatibility` section present in README.md
 - `composer.json` description non-empty, `elgg/elgg` in `require`
 - `manifest.xml` `<description>` non-empty (if manifest exists)
-- `hypejunction.com` references (excluding vendor/, node_modules/, .git/)
+- old-domain references (from config `domains.old`, excluding vendor/, node_modules/, .git/)
 - Donation/sponsor CTAs (`paypal.me`, `patreon.com`, `ko-fi.com`, `buymeacoffee`, "Support the development", "Buy me a")
 
 Exits non-zero when any issue is found — suitable for gating per-plugin PRs in CI.
 
 ```bash
-bin/audit-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"
+bin/audit-plugin-docs.sh "$PLUGINS_SOURCE/myplugin"
 ```
 
 **`bin/fix-plugin-docs.sh <plugin-path> [--apply]`** — semi-auto fixer. Dry-run by default.
 - Derives correct badge from `elgg/elgg` constraint
-- Replaces `hypejunction.com` URLs → `https://github.com/hypeJunction/<repo-slug>`
+- Replaces old-domain URLs → `https://github.com/<github_org>/<repo-slug>` (both from config)
 - Strips donation/sponsor CTAs
 - Collapses duplicate/stale Elgg badges to the single correct one
 - Appends a starter `## Compatibility` section if one is missing (uses derived Elgg version)
@@ -1036,8 +1036,8 @@ bin/audit-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"
 Does **not** generate the tagline, features, or full compatibility history — those require human input.
 
 ```bash
-bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps"          # preview
-bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/hypemaps" --apply  # write
+bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/myplugin"          # preview
+bin/fix-plugin-docs.sh "$PLUGINS_SOURCE/myplugin" --apply  # write
 ```
 
 ## Reference material

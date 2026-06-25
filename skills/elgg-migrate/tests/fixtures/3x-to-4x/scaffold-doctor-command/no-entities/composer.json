@@ -1,5 +1,5 @@
 {
-    "name": "hypejunction/hypesimple",
+    "name": "acme/simple",
     "description": "Simple plugin for Elgg",
     "type": "elgg-plugin",
     "require": {
@@ -7,10 +7,10 @@
     },
     "autoload": {
         "psr-4": {
-            "HypeSimple\\": "classes/HypeSimple/"
+            "Simple\\": "classes/Simple/"
         }
     },
     "extra": {
-        "installer-name": "hypesimple"
+        "installer-name": "simple"
     }
 }

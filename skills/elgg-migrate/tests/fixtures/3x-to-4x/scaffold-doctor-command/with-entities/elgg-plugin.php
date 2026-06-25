@@ -2,23 +2,23 @@
 
 return [
     'plugin' => [
-        'name' => 'Hype Notes',
-        'id' => 'hypenotes',
+        'name' => 'Notes',
+        'id' => 'notes',
     ],
     'entities' => [
         [
             'type' => 'object',
             'subtype' => 'note',
-            'class' => 'HypeNotes\Note',
+            'class' => 'Notes\Note',
         ],
         [
             'type' => 'object',
             'subtype' => 'note_album',
-            'class' => 'HypeNotes\NoteAlbum',
+            'class' => 'Notes\NoteAlbum',
         ],
     ],
     'actions' => [
-        'hypenotes/save' => [],
-        'hypenotes/delete' => [],
+        'notes/save' => [],
+        'notes/delete' => [],
     ],
 ];

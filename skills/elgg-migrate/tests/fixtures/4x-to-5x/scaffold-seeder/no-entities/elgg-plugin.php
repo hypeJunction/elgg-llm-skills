@@ -2,8 +2,8 @@
 
 return [
     'plugin' => [
-        'name' => 'Hype Utility',
-        'id' => 'hypeutility',
+        'name' => 'Utility',
+        'id' => 'utility',
     ],
     'events' => [],
 ];

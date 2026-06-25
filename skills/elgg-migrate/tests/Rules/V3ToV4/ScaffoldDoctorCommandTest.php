@@ -122,7 +122,7 @@ final class ScaffoldDoctorCommandTest extends TestCase
             $this->assertNotNull($doctorPath, 'DoctorCommand.php must have been created');
 
             $content = file_get_contents($doctorPath);
-            $this->assertStringContainsString('namespace HypeNotes\\Cli;', $content);
+            $this->assertStringContainsString('namespace Notes\\Cli;', $content);
         } finally {
             $this->removeDir($workDir);
         }
@@ -139,8 +139,8 @@ final class ScaffoldDoctorCommandTest extends TestCase
             $this->assertNotNull($doctorPath);
 
             $content = file_get_contents($doctorPath);
-            // Plugin id is 'hypenotes', so command name must be 'hypenotes:doctor'
-            $this->assertStringContainsString("'hypenotes:doctor'", $content);
+            // Plugin id is 'notes', so command name must be 'notes:doctor'
+            $this->assertStringContainsString("'notes:doctor'", $content);
         } finally {
             $this->removeDir($workDir);
         }

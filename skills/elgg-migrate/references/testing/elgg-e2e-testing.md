@@ -318,11 +318,11 @@ This prevents fresh containers from starting with slow uncached responses.
 
 ---
 
-## Known Bugs (Elgg 3.x + hype plugins)
+## Known Bugs (Elgg 3.x + third-party plugins)
 
-### hypeEmbed: Iterator foreach-by-reference
+### Iterator foreach-by-reference
 
-**File:** `hypeEmbed/classes/hypeJunction/Embed/Menus.php`
+**File:** e.g. `<plugin>/classes/<Vendor>/Embed/Menus.php`
 **Error:** `An iterator cannot be used with foreach by reference`
 **Cause:** `foreach ($return as &$item)` where `$return` is `Elgg\Menu\MenuItems` (implements Iterator)
 **Fix:** Remove the `&` — objects are passed by reference in PHP anyway:

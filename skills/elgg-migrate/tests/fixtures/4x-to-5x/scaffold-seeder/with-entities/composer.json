@@ -1,5 +1,5 @@
 {
-    "name": "hypejunction/hypetracker",
+    "name": "acme/tracker",
     "description": "Issue tracker for Elgg",
     "type": "elgg-plugin",
     "require": {
@@ -7,10 +7,10 @@
     },
     "autoload": {
         "psr-4": {
-            "HypeTracker\\": "classes/HypeTracker/"
+            "Tracker\\": "classes/Tracker/"
         }
     },
     "extra": {
-        "installer-name": "hypetracker"
+        "installer-name": "tracker"
     }
 }

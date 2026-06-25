@@ -117,7 +117,7 @@ Source: /plugins/myplugin/composer.lock
   Link: https://...
 
 Abandoned packages:
-  ⚠ hypejunction/elgg_tokeninput
+  ⚠ acme/elgg_tokeninput
 
 2 advisory(ies) (1 critical, 1 medium), 1 abandoned package(s)
 ```
@@ -126,9 +126,9 @@ Exit code: `5` (critical/high CVE found)
 
 ## Real-World Validation
 
-During the initial validation against 14 high-priority hypeJunction plugins:
-- **3 plugins** flagged abandoned `hypejunction/elgg_tokeninput` dependency (filed as `elgg-migrate-rhwp`)
-- **1 plugin** (hypeGeo) had a composer config issue blocking the audit (filed as `elgg-migrate-3t4t`)
+During an initial validation against 14 high-priority plugins:
+- **3 plugins** flagged an abandoned `elgg_tokeninput` dependency
+- **1 plugin** had a composer config issue blocking the audit
 - **No critical/high CVEs** found in the audited plugins
 - Several plugins had no `composer.lock` (skipped cleanly)
 

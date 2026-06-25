@@ -424,9 +424,9 @@ final class PostMigrationVerifierTest extends TestCase
     {
         // Forward-port deleted the class but left the registration. A bare
         // Foo::class doesn't autoload, so pages render — but elgg-cli upgrade
-        // aborts ("Upgrade class … was not found"). Real bodyology 7x case.
+        // aborts ("Upgrade class … was not found"). Real-world 7x case.
         $dir = $this->makePluginDir([
-            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        \\Bodyology\\Upgrades\\MigrateSwitchSettings::class,\n    ],\n];",
+            'elgg-plugin.php' => "<?php\nreturn [\n    'upgrades' => [\n        \\Acme\\Upgrades\\MigrateSwitchSettings::class,\n    ],\n];",
         ]);
 
         try {

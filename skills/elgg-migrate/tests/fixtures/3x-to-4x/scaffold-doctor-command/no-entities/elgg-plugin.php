@@ -2,10 +2,10 @@
 
 return [
     'plugin' => [
-        'name' => 'Hype Simple',
-        'id' => 'hypesimple',
+        'name' => 'Simple',
+        'id' => 'simple',
     ],
     'actions' => [
-        'hypesimple/do' => [],
+        'simple/do' => [],
     ],
 ];

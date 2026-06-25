@@ -122,8 +122,8 @@ fi
 # Step 3: generate phpcs.xml at plugin root -----------------------------------
 #
 # */vendors/* (trailing s) is required alongside */vendor/* — some legacy
-# hypeJunction plugins ship 3rd-party libraries under vendors/ (e.g. WideImage
-# in hypefilestore/hypegallery). Without it phpcbf rewrites those files.
+# plugins ship 3rd-party libraries under vendors/ (e.g. WideImage in an
+# image/gallery plugin). Without it phpcbf rewrites those files.
 
 phpcs_xml="$plugin_dir/phpcs.xml"
 if [ -f "$phpcs_xml" ]; then
@@ -157,5 +157,5 @@ phpcs scaffold complete. Next steps:
   git commit -m "style: add phpcs to docker stack and fix Elgg coding standard violations"
   git push
 
-See ui_tabs commit 4621ee1 in the bodyology workspace for a worked example.
+See the git history of an already-migrated plugin for a worked example.
 NEXT

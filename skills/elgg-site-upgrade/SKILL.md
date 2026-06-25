@@ -537,8 +537,8 @@ block requires the global-namespace `\` prefix, or PHP resolves it as
 `Foo\Bar\function_name()` and throws `Call to undefined function`.
 
 ```php
-// Wrong inside namespace hypeJunction\DBExplorer
-$locale = get_current_language();        // → hypeJunction\DBExplorer\get_current_language() — FATAL
+// Wrong inside namespace Acme\DBExplorer
+$locale = get_current_language();        // → Acme\DBExplorer\get_current_language() — FATAL
 
 // Correct
 $locale = \get_current_language();
@@ -597,9 +597,9 @@ done
 
 # Then update composer.json to use ^N.0 constraints
 "require": {
-  "hypejunction/hypewall":     "^6.0",
-  "hypejunction/hypeinteractions": "^6.0",
-  "hypejunction/hypelists":    "^6.0"
+  "acme/wall":     "^6.0",
+  "acme/interactions": "^6.0",
+  "acme/lists":    "^6.0"
 }
 ```
 
@@ -611,7 +611,7 @@ reproducible, standard, and forward-compatible within the major. Do NOT use
 migration branches were tagged, a workaround was to add inline aliases:
 
 ```json
-"hypejunction/forms_api": "dev-migrate/elgg-3.x as 1.2.1"
+"acme/forms_api": "dev-migrate/elgg-3.x as 1.2.1"
 ```
 
 This told Composer to treat the branch as version 1.2.1 so inter-plugin
@@ -633,7 +633,7 @@ for line in sys.stdin:
     except Exception:
         continue
     for pkg, ver in d.get('require', {}).items():
-        if pkg.startswith('hypejunction/'):
+        if pkg.startswith('acme/'):  # your project's vendor prefix
             print(d['name'], '->', pkg, ver)
 "
 ```
@@ -715,9 +715,9 @@ Also `replace` the three abandoned sort packages that `site_search` depends on
 ```json
 "replace": {
     "elgg/login_as":              "2.1.0",
-    "hypejunction/user_sort":     "1.1.1",
-    "hypejunction/group_sort":    "1.1.2",
-    "hypejunction/object_sort":   "1.1.3"
+    "acme/user_sort":     "1.1.1",
+    "acme/group_sort":    "1.1.2",
+    "acme/object_sort":   "1.1.3"
 }
 ```
 
@@ -751,14 +751,14 @@ docker compose build --build-arg GITHUB_TOKEN=$(gh auth token)
 ```
 
 **Installer-name casing mismatches.** Some plugins have a lowercase `installer-name`
-in their `extra` section (e.g., `hypemaps` → `installer-name: "hypemaps"`) but
+in their `extra` section (e.g., `mymaps` → `installer-name: "mymaps"`) but
 the site's `.plugin-order.txt` and database use the original camelCase ID
-(e.g., `hypeMaps`). Fix with `installer-paths` in the ROOT `composer.json`:
+(e.g., `MyMaps`). Fix with `installer-paths` in the ROOT `composer.json`:
 
 ```json
 "extra": {
   "installer-paths": {
-    "mod/hypeMaps": ["hypejunction/hypemaps"]
+    "mod/MyMaps": ["acme/mymaps"]
   }
 }
 ```

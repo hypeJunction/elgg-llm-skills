@@ -6,10 +6,10 @@
       "elgg_ws_expose_function": "provided by the web_services bundled plugin — not a core removal",
       "elgg_stars_get_entity_rating_values": "provided by the elgg_stars plugin",
       "elgg_view_input": "provided by the forms_api plugin (mod/forms_api/functions.php) as a BC shim — calls work wherever forms_api is active; migrating to elgg_view_field() is optional modernization, not a fatal-fix, so it is NOT listed as removed",
-      "elgg_get_total_comments": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\CommentsCounter; never an Elgg core/bundled global, so not a 7.x core removal",
-      "elgg_get_total_likes": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\LikesCounter; never an Elgg core/bundled global",
-      "elgg_get_total_friends": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\FriendsCounter; never an Elgg core/bundled global",
-      "elgg_get_total_members": "provided by the hypestash plugin (lib/functions.php) — delegates to hypeJunction\\Stash\\MembersCounter; never an Elgg core/bundled global"
+      "elgg_get_total_comments": "provided by a third-party counters plugin (lib/functions.php), not Elgg core/bundled; never a 7.x core removal",
+      "elgg_get_total_likes": "provided by a third-party counters plugin (lib/functions.php), not an Elgg core/bundled global",
+      "elgg_get_total_friends": "provided by a third-party counters plugin (lib/functions.php), not an Elgg core/bundled global",
+      "elgg_get_total_members": "provided by a third-party counters plugin (lib/functions.php), not an Elgg core/bundled global"
     }
   },
   "6.x": {

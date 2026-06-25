@@ -22,7 +22,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
         $analysis = $this->rule->analyze($dir);
 
         $this->assertTrue($analysis->applicable);
-        // hypeDirectory×3, HypeDirectory×1, hypeSeo×1 = 5 findings
+        // myDirectory×3, MyDirectory×1, mySeo×1 = 5 findings
         $this->assertCount(5, $analysis->findings);
     }
 
@@ -30,7 +30,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
         mkdir($workDir, 0755, true);
-        file_put_contents($workDir . '/clean.php', "<?php\nelgg_get_plugin_from_id('hypedirectory');\nelgg_get_plugin_setting('k', 'hypedirectory');\n");
+        file_put_contents($workDir . '/clean.php', "<?php\nelgg_get_plugin_from_id('mydirectory');\nelgg_get_plugin_setting('k', 'mydirectory');\n");
 
         try {
             $analysis = $this->rule->analyze($workDir);
@@ -58,7 +58,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
         mkdir($workDir, 0755, true);
-        file_put_contents($workDir . '/plugin.php', "<?php\n\$p = elgg_get_plugin_from_id('hypeDirectory');\n\$s = elgg_get_plugin_setting('key', 'hypeDirectory');\n\$u = elgg_get_plugin_user_setting('key', 0, 'hypeDirectory');\n");
+        file_put_contents($workDir . '/plugin.php', "<?php\n\$p = elgg_get_plugin_from_id('myDirectory');\n\$s = elgg_get_plugin_setting('key', 'myDirectory');\n\$u = elgg_get_plugin_user_setting('key', 0, 'myDirectory');\n");
 
         try {
             $result = $this->rule->apply($workDir);
@@ -67,8 +67,8 @@ final class LowercasePluginIdCallsitesTest extends TestCase
             $this->assertCount(1, $result->changes);
 
             $output = file_get_contents($workDir . '/plugin.php');
-            $this->assertStringContainsString("'hypedirectory'", $output);
-            $this->assertStringNotContainsString("'hypeDirectory'", $output);
+            $this->assertStringContainsString("'mydirectory'", $output);
+            $this->assertStringNotContainsString("'myDirectory'", $output);
         } finally {
             $this->removeDir($workDir);
         }
@@ -94,7 +94,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
              * lines, and a short summary that should round-trip exactly.
              */
 
-            namespace HypeJunction\Theme;
+            namespace Acme\Theme;
 
 
             class Fonts
@@ -104,7 +104,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
                     // Read from plugin settings — the ID must be lowercased.
                     $families = elgg_get_plugin_setting(
                         'font_families',
-                        'hypeTheme',
+                        'myTheme',
                         ['Inter', 'Roboto', 'Helvetica']
                     );
 
@@ -125,13 +125,13 @@ final class LowercasePluginIdCallsitesTest extends TestCase
             $modified = file_get_contents($file);
 
             // The targeted change happened.
-            $this->assertStringContainsString("'hypetheme'", $modified);
-            $this->assertStringNotContainsString("'hypeTheme'", $modified);
+            $this->assertStringContainsString("'mytheme'", $modified);
+            $this->assertStringNotContainsString("'myTheme'", $modified);
 
             // Everything else round-tripped byte-for-byte. Replacing only
             // the changed token in the original yields exactly the modified
             // file — no whitespace, comments, or array layout drift.
-            $expected = str_replace("'hypeTheme'", "'hypetheme'", $original);
+            $expected = str_replace("'myTheme'", "'mytheme'", $original);
             $this->assertSame($expected, $modified);
         } finally {
             $this->removeDir($workDir);
@@ -142,7 +142,7 @@ final class LowercasePluginIdCallsitesTest extends TestCase
     {
         $workDir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();
         mkdir($workDir, 0755, true);
-        $original = "<?php\nelgg_get_plugin_from_id('hypedirectory');\n";
+        $original = "<?php\nelgg_get_plugin_from_id('mydirectory');\n";
         file_put_contents($workDir . '/clean.php', $original);
 
         try {

@@ -167,8 +167,8 @@ final class ScaffoldSeederTest extends TestCase
             $this->assertNotNull($seederPath);
 
             $content = file_get_contents($seederPath);
-            // Plugin id from elgg-plugin.php is 'hypetracker'
-            $this->assertStringContainsString("return 'hypetracker'", $content);
+            // Plugin id from elgg-plugin.php is 'tracker'
+            $this->assertStringContainsString("return 'tracker'", $content);
         } finally {
             $this->removeDir($workDir);
         }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace HypeTracker;
+namespace Tracker;
 
 use Elgg\Plugins\BootstrapInterface;
 

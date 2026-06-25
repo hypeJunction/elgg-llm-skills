@@ -2,14 +2,14 @@
 
 return [
     'plugin' => [
-        'name' => 'Hype Tracker',
-        'id' => 'hypetracker',
+        'name' => 'Tracker',
+        'id' => 'tracker',
     ],
     'entities' => [
         [
             'type' => 'object',
             'subtype' => 'tracker_item',
-            'class' => 'HypeTracker\TrackerItem',
+            'class' => 'Tracker\TrackerItem',
             'capabilities' => [
                 'commentable' => true,
             ],
@@ -17,7 +17,7 @@ return [
         [
             'type' => 'object',
             'subtype' => 'tracker_list',
-            'class' => 'HypeTracker\TrackerList',
+            'class' => 'Tracker\TrackerList',
         ],
     ],
     'events' => [],

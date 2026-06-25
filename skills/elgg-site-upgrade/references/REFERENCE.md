@@ -166,8 +166,8 @@ Use a two-service Docker Compose stack:
 ### Plugin Loading via Symlinks
 
 Plugins come from two sources:
-1. **Git-tracked plugins** (custom plugins like `bodyology_*`) — COPY'd into the image via Dockerfile
-2. **Composer-installed plugins** (upstream like `hype*`) — exist as symlinks in `mod/` pointing to `$PLUGINS_SOURCE/<name>` (resolved at runtime; never hard-coded)
+1. **Git-tracked plugins** (custom plugins like `myproject_*`) — COPY'd into the image via Dockerfile
+2. **Composer-installed plugins** (upstream like `vendor/*`) — exist as symlinks in `mod/` pointing to `$PLUGINS_SOURCE/<name>` (resolved at runtime; never hard-coded)
 
 **Problem:** Symlinks use absolute host paths that don't resolve inside the container.
 **Solution:** Mount the plugin source directory at the same absolute path inside the container:
@@ -280,7 +280,7 @@ If any check fails, the branch history has diverged — rebase before proceeding
 
 ### Verify plugin branch consistency per step
 
-For each migration branch, every `hypejunction/*` package should reference `dev-migrate/elgg-X.x` (where X matches the branch). Check this per branch with:
+For each migration branch, every project-vendor (`acme/*`) package should reference `dev-migrate/elgg-X.x` (where X matches the branch). Check this per branch with:
 
 ```bash
 for b in elgg-3.x migrate/4.x migrate/5.x migrate/6.x migrate/7.x; do
@@ -294,13 +294,13 @@ m = re.search(r'(\d+)', branch)
 expected = 'elgg-' + m.group(1) + '.x' if m else '?'
 anomalies = []
 for k, v in d.get('require', {}).items():
-    if 'hypejunction' in k and 'dev-migrate/' not in str(v):
+    if 'acme' in k and 'dev-migrate/' not in str(v):
         anomalies.append(f'{k}: {v}')
 if anomalies:
     print('ANOMALIES:')
     for a in anomalies: print(' ', a)
 else:
-    print(f'All hypejunction packages on dev-migrate/{expected} ✓')
+    print(f'All project packages on dev-migrate/{expected} ✓')
 "
 done
 ```
@@ -412,7 +412,7 @@ The symptom is a fatal "function not defined" on every page because the plugin's
 Confirm by checking `vendor/composer/installed.json`:
 ```bash
 # 2.x (broken with Composer 2): install-path stays in vendor/
-"install-path": "../hypejunction/menus_api"
+"install-path": "../acme/menus_api"
 # 3.x+ (correct): install-path goes to mod/
 "install-path": "../../mod/menus_api"
 ```
@@ -543,7 +543,7 @@ docker compose version   # should show Docker Compose version v5.x.x
 
 ## 5.x → 6.x specific: breaking API changes found during linear migration validation
 
-The following were found during sequential 2x→3x→4x→5x→6x DB migration validation on the bodyology project (May 2026).
+The following were found during sequential 2x→3x→4x→5x→6x DB migration validation on a production project (May 2026).
 
 ### `Elgg\Lifecycle\BootstrapInterface` renamed and moved
 
@@ -772,7 +772,7 @@ If `composer install` fails due to missing platform extensions or platform-versi
 
 ### Validation test (2026-05-13)
 
-Tested via `docker exec` inside the bodyology 5x container against the live production-like DB:
+Tested via `docker exec` inside the 5x container against the live production-like DB:
 - Input: Elgg 5.1.x site, 5x DB with carried-forward data from 2x→3x→4x→5x chain
 - `git checkout migrate/6.x` pulled latest branch (commit `164bc3a`)
 - Composer installed with `--ignore-platform-reqs` (PHP 8.2 + MariaDB client)
@@ -843,7 +843,7 @@ git push origin 5.0.0 --force
 
 Scan all migration-branch `composer.json` files before tagging:
 ```bash
-for dir in ~/Data/hypejunction/bodyology/plugins/*/; do
+for dir in "$PLUGINS_SOURCE"/*/; do
   f="$dir/composer.json"
   [ -f "$f" ] && python3 -c "import json,sys; d=json.load(open('$f')); print('$f:', d.get('version','OK — no version field'))" 2>/dev/null
 done | grep -v 'OK'
@@ -928,7 +928,7 @@ git -C "$PROJECT" reset --hard HEAD --quiet 2>/dev/null || true
 git -C "$PROJECT" clean -fd --quiet
 ```
 
-### Known migration branch issues (bodyology)
+### Known migration branch issues
 
 | Branch | Issue | Status |
 |--------|-------|--------|
@@ -936,7 +936,7 @@ git -C "$PROJECT" clean -fd --quiet
 
 ## 6.x → 7.x specific: breaking API changes found during linear migration validation
 
-The following were found during sequential 2x→3x→4x→5x→6x→7x DB migration validation on the bodyology project (May 2026).
+The following were found during sequential 2x→3x→4x→5x→6x→7x DB migration validation on a production project (May 2026).
 
 ### `add_translation()` removed in 7.x
 
@@ -987,7 +987,7 @@ migrated.
 
 ### Validation test (2026-05-14)
 
-Tested via Docker 7x stack (PHP 8.3, `bodyology7x-app-1`), seeded with 6x DB dump:
+Tested via Docker 7x stack (PHP 8.3, the 7x app container), seeded with 6x DB dump:
 - Phinx migration `20250904095834 UpdateSystemLog` ran successfully
 - `elgg-cli upgrade async` exit code: 0
 - Additional fixes required beyond what the 5→6 step needed (see above)

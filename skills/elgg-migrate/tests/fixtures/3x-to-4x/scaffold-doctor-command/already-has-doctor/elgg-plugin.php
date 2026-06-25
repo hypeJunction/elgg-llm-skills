@@ -2,19 +2,19 @@
 
 return [
     'plugin' => [
-        'name' => 'Hype Notes',
-        'id' => 'hypenotes',
+        'name' => 'Notes',
+        'id' => 'notes',
     ],
     'entities' => [
         [
             'type' => 'object',
             'subtype' => 'note',
-            'class' => 'HypeNotes\Note',
+            'class' => 'Notes\Note',
         ],
     ],
     'cli' => [
         'commands' => [
-            \HypeNotes\Cli\DoctorCommand::class,
+            \Notes\Cli\DoctorCommand::class,
         ],
     ],
 ];

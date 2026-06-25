@@ -1,18 +1,18 @@
 <?php
 
 // These all use camelCase plugin IDs — should be flagged and rewritten
-$plugin = elgg_get_plugin_from_id('hypeDirectory');
-$setting = elgg_get_plugin_setting('key', 'hypeDirectory');
-$userSetting = elgg_get_plugin_user_setting('key', 0, 'hypeDirectory');
+$plugin = elgg_get_plugin_from_id('myDirectory');
+$setting = elgg_get_plugin_setting('key', 'myDirectory');
+$userSetting = elgg_get_plugin_user_setting('key', 0, 'myDirectory');
 
 // Mixed-case variants
-elgg_get_plugin_from_id('HypeDirectory');
-elgg_get_plugin_setting('timeout', 'hypeSeo');
+elgg_get_plugin_from_id('MyDirectory');
+elgg_get_plugin_setting('timeout', 'mySeo');
 
 // These are already lowercase — should NOT be flagged
-elgg_get_plugin_from_id('hypedirectory');
-elgg_get_plugin_setting('key', 'hypedirectory');
-elgg_get_plugin_user_setting('key', 0, 'hypedirectory');
+elgg_get_plugin_from_id('mydirectory');
+elgg_get_plugin_setting('key', 'mydirectory');
+elgg_get_plugin_user_setting('key', 0, 'mydirectory');
 
 // Dynamic variable — cannot be rewritten, should NOT be flagged
 elgg_get_plugin_from_id($plugin_id);

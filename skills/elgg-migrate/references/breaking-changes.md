@@ -115,7 +115,7 @@ Same structure as 4.x with these changes:
 |---------|-------------|
 | `add_translation('en', $arr)` (in `languages/*.php`) | `return [...]` from the language file; Elgg auto-discovers the return value. **4.x accepts both formats — migrate everything during 3→4 to avoid a 5.x sweep.** |
 | `elgg_ws_expose_function('foo', ...)` | Declare REST methods in `elgg-plugin.php` under `'webservices'` key, or as `\Elgg\WebServices\ApiMethods\*` classes. Plugins not yet refactored: guard with `if (!function_exists('elgg_ws_expose_function')) return;` so they no-op cleanly. |
-| `elgg_get_total_comments()` previously provided by hypestash | If a plugin depends on hypestash for this helper, the dependency must be declared in `composer.json` (`hypejunction/hypestash`) AND in `.plugin-order.txt` before the consumer — Elgg-core didn't absorb this one, hypestash still owns it. |
+| `elgg_get_total_comments()` was never an Elgg-core global — some installs got it from a third-party counters plugin | If a plugin relies on such a helper, the providing plugin must be declared as a dependency in `composer.json` AND ordered before the consumer in `.plugin-order.txt` — Elgg-core never absorbed these helpers, the third-party plugin still owns them. |
 | `\Elgg\Hook` interface | Renamed to `\Elgg\Event` in 5.x. All hook handler signatures must change type hint from `\Elgg\Hook $hook` → `\Elgg\Event $event`; bodies that called `$hook->getValue()` / `getParam()` / `getType()` keep the same method names on the new object. The `'hooks'` key in `elgg-plugin.php` is removed — everything goes under `'events'`. |
 
 ### Elgg 6.x — ES Modules Era

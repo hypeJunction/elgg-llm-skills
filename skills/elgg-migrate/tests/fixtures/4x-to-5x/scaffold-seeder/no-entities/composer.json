@@ -1,5 +1,5 @@
 {
-    "name": "hypejunction/hypeutility",
+    "name": "acme/utility",
     "description": "Pure utility plugin with no entity ownership",
     "type": "elgg-plugin",
     "require": {
@@ -7,10 +7,10 @@
     },
     "autoload": {
         "psr-4": {
-            "HypeUtility\\": "classes/HypeUtility/"
+            "Utility\\": "classes/Utility/"
         }
     },
     "extra": {
-        "installer-name": "hypeutility"
+        "installer-name": "utility"
     }
 }

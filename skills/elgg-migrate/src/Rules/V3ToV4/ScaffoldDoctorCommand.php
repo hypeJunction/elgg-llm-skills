@@ -370,7 +370,7 @@ final class ScaffoldDoctorCommand extends AbstractRule
 
     /**
      * Return the relative path for the generated DoctorCommand class.
-     * e.g. "HypeNotes\\" → "classes/HypeNotes/Cli/DoctorCommand.php"
+     * e.g. "Notes\\" → "classes/Notes/Cli/DoctorCommand.php"
      */
     private function doctorCommandRelativePath(string $namespace): string
     {

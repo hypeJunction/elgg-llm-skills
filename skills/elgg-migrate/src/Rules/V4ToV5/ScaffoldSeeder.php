@@ -457,7 +457,7 @@ final class ScaffoldSeeder extends AbstractRule
 
     /**
      * Return the relative path for the generated Seeder class.
-     * e.g. "HypeTracker\\" → "classes/HypeTracker/Database/Seeds/Seeder.php"
+     * e.g. "Tracker\\" → "classes/Tracker/Database/Seeds/Seeder.php"
      */
     private function seederRelativePath(string $namespace): string
     {

@@ -541,7 +541,7 @@ Same as 5.x but:
 
 ## Migration Pitfalls: Lessons from 2.x → 3.x (April 2026)
 
-These are hard-won lessons from migrating 45 hypeJunction plugins. Each pitfall caused a runtime failure that `php -l` syntax checking could not detect.
+These are hard-won lessons from migrating 45 production plugins. Each pitfall caused a runtime failure that `php -l` syntax checking could not detect.
 
 ### QueryBuilder Closures
 
@@ -577,11 +577,11 @@ $options['wheres'][] = function($qb, $alias) use ($user_guid) {
 
 ```php
 // WRONG — SUBTYPE constant triggers autoload before classes/ is registered
-'subtype' => hjAlbum::SUBTYPE,
+'subtype' => Album::SUBTYPE,
 
 // CORRECT — string literals for values, ::class is OK (resolved at compile time)
-'subtype' => 'hjalbum',
-'class' => \hypeJunction\Gallery\hjAlbum::class,  // ::class is fine
+'subtype' => 'album',
+'class' => \Acme\Gallery\Album::class,  // ::class is fine
 ```
 
 ### Function Renames (Not Caught by AST Rules)

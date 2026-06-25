@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace HypeLegacy;
+namespace Legacy;
 
 use Elgg\Plugins\BootstrapInterface;
 

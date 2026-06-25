@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Regression lock for bin/scan-frontend-residue.sh.
  *
- * Each of the recurring runtime-fatal bug classes from the bodyology
- * migration (signature-incompat, viewpage/viewmodule-null-title,
+ * Each of the recurring runtime-fatal bug classes seen in real-world
+ * migrations (signature-incompat, viewpage/viewmodule-null-title,
  * css-view-orphaned, legacy-language-file, removed-instance-method) has a
  * minimal reproducing fixture under tests/fixtures/scan-frontend-residue/.
  * The scanner must keep flagging each one, and must stay silent on the

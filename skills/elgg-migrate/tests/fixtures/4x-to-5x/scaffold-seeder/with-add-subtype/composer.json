@@ -1,5 +1,5 @@
 {
-    "name": "hypejunction/hypelegacy",
+    "name": "acme/legacy",
     "description": "Legacy plugin with add_subtype",
     "type": "elgg-plugin",
     "require": {
@@ -7,10 +7,10 @@
     },
     "autoload": {
         "psr-4": {
-            "HypeLegacy\\": "classes/HypeLegacy/"
+            "Legacy\\": "classes/Legacy/"
         }
     },
     "extra": {
-        "installer-name": "hypelegacy"
+        "installer-name": "legacy"
     }
 }

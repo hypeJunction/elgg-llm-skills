@@ -1,5 +1,5 @@
 {
-    "name": "hypejunction/hypenotes",
+    "name": "acme/notes",
     "description": "Notes plugin for Elgg",
     "type": "elgg-plugin",
     "require": {
@@ -7,10 +7,10 @@
     },
     "autoload": {
         "psr-4": {
-            "HypeNotes\\": "classes/HypeNotes/"
+            "Notes\\": "classes/Notes/"
         }
     },
     "extra": {
-        "installer-name": "hypenotes"
+        "installer-name": "notes"
     }
 }
