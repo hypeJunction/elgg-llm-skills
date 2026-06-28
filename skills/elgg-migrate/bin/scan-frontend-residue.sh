@@ -109,6 +109,41 @@ scan_one() {
     fi
   done < <(find "$dir" -name '*.js' 2>/dev/null)
 
+  # --- 5c. ESM importmap specifier MISMATCH — elgg_import_esm('<spec>') where the
+  #         plugin ships a *.mjs with the SAME basename but a DIFFERENT view path.
+  #         Elgg's importmap key is the FULL view path minus '.mjs' (ESMService:
+  #         getImportMapData() does str_replace('.mjs','', $viewname)) — there is NO
+  #         'js/' auto-prefix like the old AMD loader. So import_esm('modal_info')
+  #         does NOT resolve view 'js/modal_info.mjs' (key 'js/modal_info'). The
+  #         .mjs exists, so [esm-wrong-ext] stays silent, yet the browser throws
+  #         "Failed to resolve module specifier" and the whole module aborts (page
+  #         still 200s). This bit modal_info, hypeprototyper, hypelists during the
+  #         bodyology 7.x preview. Fix: make the specifier EQUAL the .mjs view key. ---
+  # importmap key of every local .mjs = path after views/<type>/ minus .mjs
+  local_mjs_keys="$(find "$dir/views" -name '*.mjs' 2>/dev/null | sed -E 's#.*/views/[^/]+/##; s#\.mjs$##')"
+  while IFS= read -r line; do
+    file="${line%%:*}"; rest="${line#*:}"; lno="${rest%%:*}"
+    spec="$(printf '%s\n' "$line" | sed -nE "s/.*elgg_import_esm\([[:space:]]*['\"]([^'\"]+)['\"].*/\1/p")"
+    [ -n "$spec" ] || continue
+    # spec matches a local .mjs key EXACTLY? -> resolves, OK (could also be core/registered)
+    printf '%s\n' "$local_mjs_keys" | grep -qxF "$spec" && continue
+    base="${spec##*/}"
+    cand="$(find "$dir/views" -name "$base.mjs" 2>/dev/null | head -1)"
+    if [ -n "$cand" ]; then
+      key="$(printf '%s\n' "$cand" | sed -E 's#.*/views/[^/]+/##; s#\.mjs$##')"
+      echo "[esm-importmap-mismatch] $file:$lno: elgg_import_esm('$spec') has no matching view, but '$cand' exists (importmap key '$key'). Elgg importmap key = full view path minus .mjs, NO js/ auto-prefix — change the specifier to '$key'." >> "$tmp"
+    fi
+  done < <(grep -rnE "elgg_import_esm\([[:space:]]*['\"]" --include='*.php' "$dir" 2>/dev/null \
+    | grep -vE '/(vendor|vendors|bower_components|node_modules)/' \
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)')
+
+  # --- 5d. Removed CORE AMD modules imported by spec — gone from the Elgg 7
+  #         importmap (renamed core ESM views). Known map below; extend as found. ---
+  grep -rnE "elgg_import_esm\([[:space:]]*['\"](elgg/upgrades|elgg/groups/edit)['\"]" \
+    --include='*.php' "$dir" 2>/dev/null \
+    | grep -vE ':[0-9]+:[[:space:]]*(//|\*|#|/\*)' \
+    | sed -E "s#^#[esm-removed-core-module] #; s#\$#  (Elgg 7 core renamed: elgg/upgrades -> admin/upgrades, elgg/groups/edit -> groups/edit/access)#" >> "$tmp"
+
   # --- 6. (REVIEW, non-failing) classic external JS — elgg_load/register_external_file
   #         still EXISTS in 7.x, but is commonly used to load global-jQuery libs
   #         (jquery.*, foundation, etc.) that no longer have a jQuery global ---

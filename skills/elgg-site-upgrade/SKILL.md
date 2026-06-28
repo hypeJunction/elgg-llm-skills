@@ -208,6 +208,44 @@ that are reliable:
 | AMD `define()/require()` in JS | ≤5.x |
 | ES module `import/export` in JS | 6.x+ |
 
+**Deployed version ≠ migrated version (release-lag).** A plugin's `migrate/*` branch
+can be fully fixed while the site's `composer.lock` still pins a *pre-fix* tag — so
+the built site ships broken plugin code even though the branch is green. When the
+site loads from tags (the deploy contract), audit the **locked** version against the
+latest released tag, not the branch tip:
+
+```bash
+# for each hypejunction plugin: locked vs latest remote tag
+composer show 'hypejunction/*' --locked --format=json | …    # locked version
+git ls-remote --tags <repo> | sort -V | tail -1              # latest released tag
+```
+
+Whole-fleet release-lag is one root cause, not N bugs. Tag the fixes, then a single
+`composer update "<vendor>/*" --ignore-platform-reqs` + rebuild clears most of it.
+
+---
+
+## Staging preview before cutover (real data, isolated)
+
+Stand up the migrated site beside the live one **before** DNS cutover, populated with
+real prod data, to eyeball it. Reusable patterns (see `bodyology/bin/preview-7x/`):
+
+- **The migration chain migrates the DB only.** The Elgg dataroot (avatars/uploads)
+  is GUID-bucketed and version-stable across 2.x→7.x, so deploy the **prod dataroot
+  directly** (`tar --strip-components=1` to drop the `elgg-data/` wrapper) — don't
+  expect the chain to carry it. After loading, rewrite the `__site_secret_wwwroot`/
+  `path` datalists to the preview URL/dataroot path.
+- **EOL host with no native PHP 8?** Ship a single Docker container (code baked into
+  the image, dataroot bind-mounted), bound to `127.0.0.1:<port>`, fronted by the
+  existing nginx. Never `rm -rf` a bind-mounted path from inside the container.
+- **Serve at a subpath** (`/forum-7.x/`) via an nginx **strip-prefix reverse proxy**:
+  `location ^~ /forum-7.x/ { proxy_pass http://127.0.0.1:<port>/; }` (trailing slash
+  strips the prefix), forward the real `Host` so Elgg's host-check passes and it
+  emits `/forum-7.x/`-prefixed URLs from `wwwroot`. Basic-auth the location for PII.
+- **Smoke it in a real browser, not just curl.** HTTP 200 hides JS/importmap failures
+  (see `elgg-migrate/references/migration-lessons.md`). Assert `console.error` +
+  `pageerror` empty per page type. Walled-garden sites need a login to reach content.
+
 ---
 
 ## Set up the workspace

@@ -546,6 +546,57 @@ export async function loginAsAdmin(page: Page) {
 
 ---
 
+### Pattern 0: Console / pageerror smoke gate (MANDATORY for every page type)
+
+This is the single most important JS test and the one most often missing or inert.
+HTTP-status gates (curl, render golden-master) return **200 even when JS throws** —
+an Elgg 7 importmap specifier that fails to resolve, or a `jQuery is not defined`,
+aborts the module in the browser while the page still serves. A smoke spec that only
+asserts the page loaded (or that never reads the console) catches none of it.
+
+Every page type (home, listing, profile, profile-edit, group, admin, each form) gets
+one spec that captures **both** `console` errors and uncaught `pageerror`, waits for
+deferred modules to run, and asserts the real-error set is empty against an explicit
+allow-list of known-benign external noise.
+
+```typescript
+// tests/playwright/tests/smoke.spec.ts
+import { test, expect } from '@playwright/test';
+
+// Known-benign noise NOT caused by the migration (external tags, PWA-manifest-under-
+// basic-auth, blocked third-party requests). Keep this list short and justified.
+const IGNORE = [
+  /www\.googletagmanager\.com/, /web-share/, /www-widgetapi/, /youtube/,
+  /1Password/, /ERR_BLOCKED_BY_CLIENT/, /manifest\.json.*40[13]/, /net::ERR_/,
+];
+
+for (const path of ['/', '/activity', '/members', '/groups/all', '/blog/all']) {
+  test(`no console/page errors on ${path}`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', (e) => errors.push(String(e)));        // uncaught throws / module-resolution
+
+    await page.goto(path);
+    await page.waitForTimeout(1500);                            // let deferred ES modules execute
+
+    const real = errors.filter((e) => !IGNORE.some((re) => re.test(e)));
+    expect(real, `console/page errors on ${path}:\n${real.join('\n')}`).toEqual([]);
+  });
+}
+```
+
+Gotchas that make this gate silently pass when it shouldn't:
+- **Forgetting `pageerror`.** "Failed to resolve module specifier …" arrives as a
+  `pageerror`, not always a `console` message. Capture both.
+- **No wait.** ES modules are deferred; assert after a `waitForTimeout`/`waitForLoadState`
+  or the page reports clean before any module ran.
+- **Over-broad allow-list.** A regex like `/.*/` or `/elgg/` neuters the gate. Each
+  entry must name a specific external/benign source.
+- **Walled-garden sites** 404 most content anonymously — log in (helper below) so the
+  authenticated page types are actually exercised.
+
+---
+
 ### Pattern A: State class transitions
 
 When JS adds/removes CSS classes in response to events, test the class directly.

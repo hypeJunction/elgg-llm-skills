@@ -97,6 +97,26 @@ Every class below was found in this migration. Grep your fleet for each.
   priority** (`setPriority('last')`), or a later-loading core plugin (e.g.
   `activity`'s `resources/index`) overrides its views — pages stay 200 but render
   core defaults.
+- **A committed fix is not a deployed fix (release-lag).** A plugin's `migrate/*`
+  branch can carry the JS/`.mjs` fix while the *consuming site's* `composer.lock`
+  still pins a pre-fix tag — so the built/deployed artifact stays broken even
+  though the source scans clean. Verify the **locked/installed** version, not the
+  branch tip. Remedy: tag the fix on the plugin repo, then `composer update
+  "<vendor>/*" --ignore-platform-reqs` and re-deploy. Whole-fleet release-lag is
+  one root cause, not N independent bugs — a single broad update clears most of it.
+  *Tell:* the browser surfaces **one new module error per reload** as you fix them
+  — ES-module resolution aborts the page on the *first* failing specifier, hiding
+  every later one, so each fix "reveals" the next. Don't treat that as endless
+  whack-a-mole; scan all `elgg_import_esm()` specifiers at once
+  (`bin/scan-frontend-residue.sh` `[esm-importmap-mismatch]`/`[esm-removed-core-module]`).
+- **JS console errors are invisible to HTTP-status gates.** curl batteries and the
+  render golden-master only see status codes; an importmap specifier failure (or a
+  `jQuery is not defined`) throws in the *browser* while the page still returns 200.
+  A version step is not done until a real browser pass (Playwright) asserts
+  `console.error` + `pageerror` are empty (minus a benign allow-list). The Elgg 7
+  importmap key is the **full view path minus `.mjs`** — there is NO `js/`
+  auto-prefix like the old AMD loader, so `elgg_import_esm('modal_info')` does
+  **not** resolve view `js/modal_info.mjs`; the specifier must equal the view key.
 
 ---
 
@@ -106,7 +126,11 @@ A version step is complete only when ALL hold, on that version's Docker stack:
 
 - [ ] **Render golden master captured against the working baseline (N-1) AND diffed at this version** — `bin/baseline-golden-master.sh`. Unit tests are NOT enough; the render layer is where the bugs hide. ZERO route may regress 2xx/3xx → 5xx vs the baseline.
 - [ ] All acceptance gates pass (see SKILL.md "Acceptance Gates").
-- [ ] `bin/scan-frontend-residue.sh` clean (no critical findings).
+- [ ] `bin/scan-frontend-residue.sh` clean (no critical findings) — run against the
+      **deployed/locked** plugin versions, not just the source branches (release-lag).
+- [ ] **Browser console clean** on the deployed build (Playwright): `console.error`
+      and `pageerror` empty across page types (minus a documented allow-list). HTTP
+      200 does not catch importmap/JS failures.
 - [ ] `bin/verify-route-coverage.sh` — **0 × 5xx** across every route, anonymous AND
       `--user/--pass` authenticated; error log free of `PHP Fatal` / `Call to undefined`.
 - [ ] An action/form battery exercised (POST), not just GET routes.
