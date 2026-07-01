@@ -6,6 +6,12 @@
 # the page loads unstyled / non-interactive. This scanner greps the patterns that
 # must be GONE by Elgg 7 and exits non-zero when any are found.
 #
+# BLIND SPOT: this greps plugin SOURCE, but the deployed site runs the
+# composer.lock-pinned ref. If a pinned tag pre-dates the source fix
+# (release-lag), source is green while the deployed vendor/ is still broken.
+# Pair this with bin/check-release-lag.sh (composer.lock vs source branch tip)
+# to gate what actually deploys.
+#
 # Usage:
 #   scan-frontend-residue.sh <plugin-dir> [<plugin-dir> ...]
 #   scan-frontend-residue.sh --quiet <plugin-dir>     # summary line only
