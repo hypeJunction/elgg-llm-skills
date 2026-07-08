@@ -51,6 +51,14 @@
       "priority": 50
     },
     {
+      "id": "006a-notification-handler-renames-auto",
+      "name": "Auto-rewrite notification handler/event class FQNs",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\NotificationHandlerRenames",
+      "breaking_change": "The 8 exact 1:1 FQN renames in references/class-renames.json['7.x'] (Elgg\\Notifications\\*EventHandler → Elgg\\Notifications\\{Handlers,Events}\\*) are rewritten automatically. The 006 entry below still covers the accompanying API/signature changes (elgg_register_notification_event array→string $action) that a rename cannot fix.",
+      "priority": 59
+    },
+    {
       "id": "006-notification-handler-renames",
       "name": "Update notification handler class references",
       "automated": false,
