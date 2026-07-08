@@ -1,11 +1,25 @@
 # Regression bug classes → test assertions
 
-Every migrated plugin gets a `tests/phpunit/unit/RegressionTest.php`
-(scaffolded by `bin/scaffold-smoke-tests.sh` from
-`templates/RegressionTest.php.template`). It is a **static source scan** — no
-Elgg boot — because most of these classes fatal *at class load or page render*,
-so a booted test crashes before it can assert. Catch the pattern in the source
-instead.
+`bin/scaffold-smoke-tests.sh` emits **two** static source-scan guards (no Elgg
+boot — most of these classes fatal *at class load or page render*, so a booted
+test crashes before it can assert; catch the pattern in the source instead):
+
+- `tests/phpunit/unit/RegressionTest.php` (from `templates/RegressionTest.php.template`)
+  — the **standing** guard, hard-wired to the Elgg 7.x fatal classes. Runs on
+  every plugin as a permanent CI net.
+- `tests/phpunit/unit/MigrationRegressionTest.php` (from
+  `templates/MigrationRegressionTest.php.template`) — the **tests-first**
+  guard, parameterized by `const TARGET_MAJOR`. It is the RED-before /
+  GREEN-after gate for a specific migration step and covers the full
+  target-gated catalog (removed functions/constants/`detectMimeType`, changed
+  class contracts, forbidden/required bootstrap files, camelCase plugin-id
+  callsites, hook/event confusion, Seed/`Batch` shape, `add_translation`,
+  unsafe `unserialize`, `route:rewrite@init`, non-literal manifest entities,
+  incompatible core overrides, menu `->add()`, orphaned css). Its embedded maps
+  mirror `elgg-migrate/references/{removed-functions.json,changed-class-contracts.json,migration-failure-catalog.md}`
+  — keep them in lock-step when a new removal or contract change lands.
+
+The table below documents the **standing 7.x guard** (`RegressionTest`).
 
 Each row below is a runtime-fatal class observed during the Elgg 2.x→7.x fleet
 migration that a normal "activates + HTTP 200" smoke test missed. The canonical

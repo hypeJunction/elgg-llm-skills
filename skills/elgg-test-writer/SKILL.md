@@ -17,6 +17,7 @@ Generate PHPUnit test suites for Elgg plugins, adapted to the target version's t
 3. **MATCH THE ELGG VERSION** — Use the correct base classes and session API for the target version.
 4. **RUN IN DOCKER** — ALL operations (PHPUnit, Playwright, npm) run inside containers. Nothing executes on the host.
 5. **UI TESTS ARE MANDATORY** — Every plugin with user-facing features MUST have Playwright tests that assert both UI state and database state.
+6. **TESTS FIRST FOR MIGRATIONS** — When a plugin is about to be migrated to a new major, generate and run the `BaselineTest` + `MigrationRegressionTest` **before** editing a single line of plugin code. `MigrationRegressionTest` MUST be RED first (it proves the failure classes are present); a migration that never showed RED never proved it fixed anything.
 
 ---
 
@@ -41,8 +42,10 @@ does not depend on the elgg-migrate skill for infrastructure. After
       tests/                    # PHPUnit tests for src/
       formulas/                 # plugin-test-scaffold beads formula
       templates/elgg{N}/        # per-target Elgg test stack (N = 2..7)
-      templates/SmokeTest.php.template      # baseline integration smoke test
-      templates/RegressionTest.php.template # static guard for recurring fatals
+      templates/SmokeTest.php.template      # post-migration integration smoke test
+      templates/BaselineTest.php.template   # tests-first: GREEN before + after (behavior net)
+      templates/RegressionTest.php.template # static guard for recurring 7.x fatals
+      templates/MigrationRegressionTest.php.template # tests-first: RED before, GREEN after (per-target failure classes)
       templates/DEVELOPMENT.md  # plugin-level testing docs template
       references/ci/            # GitHub Actions workflow templates
       references/regression-classes.md      # bug-class → assertion map
@@ -144,53 +147,85 @@ docker compose -f docker/docker-compose.yml build --no-cache
 
 ---
 
-## Phase 0.5: Scaffold the baseline smoke test
+## Phase 0.5: Scaffold the tests-first suite (BEFORE any plugin code change)
 
-After the docker stack is in place but **before** writing any custom tests,
-generate the baseline smoke test:
+After the docker stack is in place but **before** writing any custom tests —
+and, for a migration, **before touching a single line of plugin code** —
+generate the deterministic suite:
 
 ```bash
 $SKILL/bin/scaffold-smoke-tests.sh
 # or, from outside the plugin dir:
 $SKILL/bin/scaffold-smoke-tests.sh --plugin-dir=/abs/path/to/plugin
+# pin the migration target if composer.json is ambiguous (default = current major + 1):
+$SKILL/bin/scaffold-smoke-tests.sh --target-version=elgg7
 ```
 
-The script statically parses `elgg-plugin.php` (no Elgg bootstrap needed) and
-writes two files:
+The script statically parses `elgg-plugin.php` (no Elgg bootstrap needed),
+infers the **current** major from the `elgg/elgg` composer constraint and the
+**target** major (current + 1, or `--target-version`), and writes four files:
 
-`tests/phpunit/integration/SmokeTest.php` (boots Elgg in the docker stack) covers:
+| File | Boot? | Role in the RED→GREEN cycle |
+|------|-------|-----------------------------|
+| `tests/phpunit/unit/MigrationRegressionTest.php` | no (static scan) | **RED before migration, GREEN after.** Asserts every statically-detectable failure class for the **target** major is absent. |
+| `tests/phpunit/integration/BaselineTest.php` | yes (current stack) | **GREEN before AND after.** Captures the observable behavior the migration must preserve. |
+| `tests/phpunit/unit/RegressionTest.php` | no (static scan) | Standing 7.x fatal guard (signature-incompat, null-title, add_translation, removed instance method, orphaned css). |
+| `tests/phpunit/integration/SmokeTest.php` | yes (target stack) | Post-migration proof: registered, activates, actions registered, entity classes bind. |
 
-- plugin is registered (`elgg_get_plugin_from_id`)
-- plugin activates without throwing
-- every action declared in `elgg-plugin.php`'s `actions` array is registered at runtime
-- every (type, subtype) entry in `entities` resolves to a loadable class
+### The tests-first cycle (mandatory for migrations)
 
-`tests/phpunit/unit/RegressionTest.php` (static source scan — **no Elgg boot**,
-runs without the docker stack) guards the recurring runtime-fatal bug classes
-from the 2.x→7.x fleet migration that a smoke test misses because they only
-fatal on a specific page render or at class load:
+1. **Scaffold** the suite on the un-migrated plugin (above).
+2. **Prove RED.** Run `MigrationRegressionTest` on the un-migrated source — it
+   MUST fail (the target major's removed symbols, forbidden `start.php`,
+   camelCase plugin-id callsites, wrong Seed/Batch shape, orphaned css, etc.
+   are all still present). It runs **without** the docker stack:
+   ```bash
+   vendor/bin/phpunit tests/phpunit/unit/MigrationRegressionTest.php   # expect FAILURES
+   ```
+   If it is already GREEN, either the plugin is already migrated or the target
+   was mis-detected — do not proceed until you have seen it RED.
+3. **Capture the baseline.** Boot the **current-version** docker stack and run
+   `BaselineTest` — it MUST be GREEN. This is the behavior net.
+   ```bash
+   docker compose -f docker/docker-compose.yml run --rm elgg \
+     vendor/bin/phpunit tests/phpunit/integration/BaselineTest.php     # expect OK
+   ```
+4. **Migrate** the plugin (via the `elgg-migrate` skill — one major at a time).
+5. **Prove GREEN.** Re-run `MigrationRegressionTest` (now GREEN — every failure
+   class fixed) and re-run `BaselineTest` on the **target-version** stack (still
+   GREEN — nothing that worked broke). Then run `SmokeTest` on the target stack.
 
-- **signature-incompat** — a class overrides a typed Elgg 7 core method
-  (`canComment`/`canWriteToContainer`/…) with the wrong arity or types
-- **null-title** — `elgg_view_page`/`elgg_view_module` with a literal `null` or
-  never-assigned `$var` title (Elgg 7 typed `string $title`)
-- **legacy-language-file** — `add_translation()` (removed in 5.0)
-- **removed-instance-method** — `->getManifest()` / `$plugin->getUserSetting()`
-- **css-view-orphaned** — `views/default/css/elements/*.css` with no relocated
-  twin (Elgg 7 only)
+`MigrationRegressionTest` is a **static source scan** on purpose: most catalog
+classes fatal at class-load or page-render on the target version, so a booted
+test crashes before it can assert — the signature has to be caught in the
+source. It is parameterized by the target major (`const TARGET_MAJOR`) and
+version-gates each check, so the same template guards a 3.x→4.x or a 6.x→7.x
+step. Its embedded maps mirror the engine-side detectors — keep them in
+lock-step:
 
-See `references/regression-classes.md` for the bug-class→assertion map and how
-to extend `CORE_SIG` when a new major retypes a core method. The detector
-mirrors `elgg-migrate/bin/scan-frontend-residue.sh` so the guard travels with
-the plugin.
+- `skills/elgg-migrate/references/removed-functions.json` (removed symbols)
+- `skills/elgg-migrate/references/changed-class-contracts.json` (interface⇄class)
+- `skills/elgg-migrate/references/migration-failure-catalog.md` (the full class list)
+- `skills/elgg-migrate/bin/scan-frontend-residue.sh` (`CORE_SIG`)
 
-This baseline is **deterministic** — no LLM judgment, no plugin code execution.
-It catches the most common post-migration regressions: missing class bindings,
-typo'd action keys, plugins that fail activation due to constructor errors, and
-the page-render fatals above.
+Failure classes it asserts absent (target-gated): removed core functions +
+constants + `ElggFile::detectMimeType`; changed class contracts (`Hook`,
+`Batch`, `ServiceFacade`, `NotificationEvent`); forbidden `start.php` /
+`activate.php` / `deactivate.php` (and `start.php` **required** at 3.x);
+camelCase plugin-id callsites; hook/event confusion in `elgg-plugin.php`; Seed
+subclass missing `getType()`/`getCountOptions()`; `implements Batch`;
+`add_translation()`; unsafe `unserialize()`; `route:rewrite` registered at
+init; `::class`/`::CONST` in the entities block; incompatible core-method
+overrides; menu `->add()` on 7.x; orphaned `css/elements/*` overrides.
 
-The LLM-driven phases below add richer per-feature coverage (action 200/403
-paths, route reachability, view rendering, UI flows) on top of this file.
+See `references/regression-classes.md` for the standing 7.x guard's
+bug-class→assertion map and how to extend `CORE_SIG` when a new major retypes a
+core method.
+
+The whole suite is **deterministic** — no LLM judgment, no plugin code
+execution in the static scans. The LLM-driven phases below add richer
+per-feature coverage (action 200/403 paths, route reachability, view rendering,
+UI flows) on top of these files.
 
 The post-migration verifier in `skills/elgg-migrate/src/PostMigrationVerifier.php`
 emits a warning for plugins missing this scaffold.
