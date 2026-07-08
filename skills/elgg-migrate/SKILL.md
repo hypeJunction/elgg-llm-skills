@@ -86,6 +86,97 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 
 ---
 
+## Tests-first (mandatory gate)
+
+**No plugin code is migrated before tests exist and pass a baseline.** This is
+Iron Law 4 made executable: `bin/migrate.php` runs a TESTS-FIRST gate *before it
+mutates a single file*, and refuses (exit code **7**) if the safety net is not in
+place. The gate is ON by default (`--require-tests`); the only way past it is the
+loudly-logged `--no-tests` escape hatch.
+
+Why this gate is non-negotiable: a migration transform is an irreversible
+mutation. Without a **passing baseline on the CURRENT code**, a later red test is
+ambiguous — you cannot tell whether the migration introduced the regression or
+whether the behavior was already broken and got carried forward. The baseline is
+the only thing that turns every downstream gate (activation, render, route
+battery) from theater into proof.
+
+Run these five steps **in order**, per version step:
+
+1. **Generate/adopt the plugin test suite + `MigrationRegressionTest`.** If
+   `tests/phpunit.xml` already exists, assess it against the Phase 1.8 rubric and
+   add what's missing. Otherwise scaffold it with the `elgg-test-writer` skill:
+
+   ```bash
+   skills/elgg-test-writer/bin/scaffold-smoke-tests.sh \
+     --plugin-dir="$PLUGINS_SOURCE/<plugin>" --target-version=elgg<TARGET>
+   ```
+
+   This writes `BaselineTest` (GREEN-before / GREEN-after — behavior that must be
+   preserved) and `MigrationRegressionTest` (RED-before / GREEN-after — one
+   assertion per statically-detectable failure class). The regression guard is a
+   direct mirror of [`references/migration-failure-catalog.md`](references/migration-failure-catalog.md):
+   every `FC-*` class with a static signature has a corresponding test, so the
+   guard travels *with the plugin* and fails its own CI.
+
+2. **Run the baseline — it MUST pass on the current code.** Boot the
+   CURRENT-version Docker stack (the version you are migrating *from*) and run the
+   suite. `BaselineTest` must be GREEN; `MigrationRegressionTest` is expected RED
+   at this point (the un-migrated plugin still trips the target-version classes).
+   If `BaselineTest` is red against working code, that is a real bug in the
+   current plugin — fix it *before* migrating, or it gets masked/carried forward.
+
+   Record the passing baseline so the gate can see it (never written into the
+   skill dir; `tests/.migration-baseline.json` travels with the plugin):
+
+   ```bash
+   cat > "$PLUGINS_SOURCE/<plugin>/tests/.migration-baseline.json" <<JSON
+   {
+     "status": "pass",
+     "target_major": <TARGET>,
+     "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+     "git_sha": "$(git -C "$PLUGINS_SOURCE/<plugin>" rev-parse --short HEAD)",
+     "phpunit": { "tests": <N>, "assertions": <M>, "failures": 0, "errors": 0 }
+   }
+   JSON
+   ```
+
+   The gate accepts the record only when `status` is `pass`/`green`, `failures`
+   and `errors` are both `0`, and (if present) `target_major` matches this step.
+   A record for a different step is rejected — re-capture per version.
+
+3. **Migrate one version step.** With the baseline in place the gate passes and
+   `bin/migrate.php` applies the AST rules:
+
+   ```bash
+   docker compose run --rm migrate bin/migrate.php \
+     rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security
+   ```
+
+   If you have a legitimate reason the plugin cannot carry tests (pure
+   views/CSS/JS with zero PHP logic — see the Phase 1.8 exception), and only
+   then, `--no-tests` bypasses the gate. The bypass is logged to stderr and to
+   `$ELGG_MIGRATE_STATE/tests-bypass.log`; document the reason in the commit.
+
+4. **Re-run the suite — it MUST stay green.** On the TARGET-version stack,
+   `BaselineTest` must remain GREEN (nothing that worked may break) and
+   `MigrationRegressionTest` must flip GREEN (every target-version failure class
+   is now fixed). That RED→GREEN transition on the regression guard, with
+   `BaselineTest` never regressing, is the proof the migration actually landed.
+   Adapt tests for the new API where needed (see Phase 2 "Adapt and run tests"),
+   but the passing count must match the baseline.
+
+5. **Then the existing Docker gates.** Only after the suite is green do the
+   activation / render / route-battery / security / completeness gates carry
+   meaning. Run them as documented under "Acceptance Gates" and Phase 2.
+
+The tests-first gate is enforced by the tool; the render baseline and the
+Docker gates are enforced by `elgg-migrate-verify`. Neither replaces the other —
+unit-green with a broken render, or a green render with no regression baseline,
+are both incomplete migrations.
+
+---
+
 ## Retrospective bug fixing (fix-at-origin, forward-port)
 
 Most migration bugs surface late — on the latest branch, in a code path no gate
@@ -275,6 +366,9 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
 | `--audit` | Run `composer audit` for dependency CVEs |
 | `--no-guard` | Skip version guard validation (not recommended) |
+| `--require-tests` | **Default ON.** Tests-first gate — refuse to apply any transform unless the plugin ships a test suite (incl. `MigrationRegressionTest`) AND a passing baseline record exists. Exit **7** if missing. See "Tests-first (mandatory gate)" below. |
+| `--no-tests` | Escape hatch — skip the tests-first gate. **Logged loudly** to stderr (and to `$ELGG_MIGRATE_STATE/tests-bypass.log` if a state dir is set). Unsafe: there is no RED→GREEN proof the migration preserved behavior. |
+| `--baseline=<path>` | Explicit path to the baseline JSON record. Auto-discovered otherwise at `tests/.migration-baseline.json`, `.migration-baseline.json`, or `$ELGG_MIGRATE_BASELINE`. |
 
 ### Exit Codes
 
@@ -286,6 +380,8 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | 3 | Post-migration verification failed (future-version APIs OR a catalogued FC-* failure class detected) |
 | 4 | Security sweep found critical issues |
 | 5 | Dependency audit found critical/high CVEs |
+| 6 | Incomplete-migration check (`--check`) or `--strict-completeness` found leftover prior-version patterns |
+| 7 | **Tests-first gate failed** — no test suite / no `MigrationRegressionTest` / no passing baseline record. Migration refused before any file was touched. |
 
 ---
 
@@ -298,7 +394,7 @@ is the load-bearing part.
 
 | Gate | Why it exists |
 |------|--------------|
-| Pre-migration tests pass on CURRENT version | Without a baseline, you cannot tell whether the migration broke behavior or whether the behavior was already broken |
+| Pre-migration tests pass on CURRENT version | Without a baseline, you cannot tell whether the migration broke behavior or whether the behavior was already broken. **Enforced** — `bin/migrate.php` refuses to apply transforms (exit 7) until a test suite + passing baseline record exist; see "Tests-first (mandatory gate)". |
 | Migration branch named `migrate/elgg-{TARGET}.x` | Consistent naming is how the fleet workflow finds prior migration work |
 | Automated rules applied with `--verify --security` | These flags catch future-version API leakage and critical security regressions — the two most common silent failures |
 | LLM-guided manual fixes applied | Rules can't handle every case; the LLM report lists what needs hand attention |
