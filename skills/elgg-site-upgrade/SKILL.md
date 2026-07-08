@@ -510,7 +510,41 @@ Capture the TSV at "Record the current plugin activation order" above
 would-activate / dropped sets, then flush caches and restart the app container.
 
 **Site renders.** `curl -sL http://localhost/ | grep -oP '<title>[^<]*</title>'`
-must return a real title, not "Fatal Error".
+must return a real title, not "Fatal Error". This is a necessary FIRST check —
+but it is NOT the definition of done. An anonymous homepage-title check passes
+while every authenticated page 500s, which on a walled-garden community is
+almost the whole site. The real bar is render parity, below.
+
+**Render parity (the executable definition of "done").** A site upgrade is
+finished only when the migrated site renders what the old one did. Prove it
+with a route-render golden master — every registered GET route, crawled
+anonymously AND authenticated, HTTP status per route — captured before the
+step and diffed forward. Any route that was 2xx/3xx and is now 5xx/unreachable
+fails the gate. This is `bin/verify-parity.sh` (wrapping the shared
+`baseline-golden-master.sh` engine); baselines live in the SITE repo
+(`GM_BASELINE_DIR`) so they are versioned with the code.
+
+```bash
+# BEFORE upgrading, on the current-version stack — snapshot the oracle.
+# --user/--pass are REQUIRED for a walled-garden site or the auth crawl is blind.
+skills/elgg-site-upgrade/bin/verify-parity.sh capture {from} \
+  --baseline-dir snapshots/parity --user <admin> --pass <pass>
+
+# AFTER upgrading + booting the target stack — capture {to} and gate vs {from}.
+skills/elgg-site-upgrade/bin/verify-parity.sh check {from} {to} \
+  --baseline-dir snapshots/parity --user <admin> --pass <pass>
+# exit 0 = parity; exit 1 = a route regressed with no whitelist entry.
+```
+
+Intended, reviewed changes (a route deliberately removed/redirected) go one
+key per line in `snapshots/parity/parity-whitelist.tsv` (format matches the
+golden file's column 1: `<anon|auth> <METHOD> <path>`) — so the gate stays
+meaningful instead of being switched off. Re-evaluate after editing the
+whitelist without re-crawling: `verify-parity.sh diff {from} {to}`. Capture one
+golden master per version step and diff each step forward; a clean forward-diff
+at every tier is what "pixel-perfect across 2.x→7.x" actually means here.
+Status parity is the floor — still open the site in a browser and diff against
+the pre-migration render for visual/CSS drift the status code can't see.
 
 **Simplecache CSS is non-empty.** css-crush v2.4 silently fails on certain
 CSS patterns, leaving the stylesheet empty. The site "works" but looks

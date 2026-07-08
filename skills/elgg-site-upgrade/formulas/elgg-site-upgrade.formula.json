@@ -46,12 +46,20 @@
       "depends_on": ["setup-workspace"]
     },
     {
+      "id": "capture-parity-baseline",
+      "title": "Capture render-parity golden master on {{from}}",
+      "description": "GATE PREREQUISITE: before migrating, on the still-running {{from}} stack, capture the route-render golden master (the parity oracle): skills/elgg-site-upgrade/bin/verify-parity.sh capture {{from}} --baseline-dir snapshots/parity --user <admin> --pass <pass>. For a walled-garden site the --user/--pass authenticated crawl is REQUIRED or the baseline is blind to the logged-in surface. Commit snapshots/parity/golden-routes-{{from}}.tsv so the target-version diff has an oracle.",
+      "type": "task",
+      "priority": 1,
+      "depends_on": ["test-baseline"]
+    },
+    {
       "id": "migrate-ast",
       "title": "Migrate: run automated AST transformations for {{from}} → {{to}}",
       "description": "Run: php bin/migrate.php rules/{{from}}-to-{{to}}/manifest.json <plugin> for each plugin. Commit: migrate({{to}}): automated AST transformations.",
       "type": "task",
       "priority": 1,
-      "depends_on": ["test-baseline"]
+      "depends_on": ["capture-parity-baseline"]
     },
     {
       "id": "migrate-llm",
@@ -94,12 +102,20 @@
       "depends_on": ["verify-docker"]
     },
     {
+      "id": "verify-parity",
+      "title": "GATE: render parity {{from}} → {{to}} (no route regressed)",
+      "description": "GATE (the definition of done): on the booted {{to}} stack, capture its golden master and diff FORWARD against the {{from}} baseline: skills/elgg-site-upgrade/bin/verify-parity.sh check {{from}} {{to}} --baseline-dir snapshots/parity --user <admin> --pass <pass>. Exit 0 = parity; exit 1 = a route that was 2xx/3xx on {{from}} is now 5xx/unreachable. Fix each regression; only intended, reviewed route changes go in snapshots/parity/parity-whitelist.tsv (never blanket-whitelist to make the gate pass). Status parity is the floor — also open the site in a browser and diff against the pre-migration render for CSS/visual drift the status code can't catch.",
+      "type": "task",
+      "priority": 0,
+      "depends_on": ["verify-docker"]
+    },
+    {
       "id": "fix-issues",
-      "title": "Fix failures from Docker/PHPUnit/E2E verification",
+      "title": "Fix failures from Docker/PHPUnit/E2E/parity verification",
       "description": "Iterate: fix each failure, commit the fix, re-run the failing gate. Repeat until all gates pass.",
       "type": "task",
       "priority": 1,
-      "depends_on": ["run-phpunit", "run-e2e"]
+      "depends_on": ["run-phpunit", "run-e2e", "verify-parity"]
     },
     {
       "id": "expand-coverage",
