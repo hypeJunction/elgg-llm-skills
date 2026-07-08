@@ -536,6 +536,22 @@ skills/elgg-site-upgrade/bin/verify-parity.sh check {from} {to} \
 # exit 0 = parity; exit 1 = a route regressed with no whitelist entry.
 ```
 
+**Write paths (the other half of "done").** Parity is GET-only and never runs
+action/CRUD/data-layer code, where the nastiest 6→7 breaks hide (insert/delete
+data + relationship signature drift, DBAL `:`-prefixed param keys, an entity
+`save()` contract mismatch, `canWriteToContainer(null)`). `bin/verify-write-paths.sh`
+logs in and actually POSTs core journeys (create group, edit user settings) with
+DB-delta verification, then GET-sweeps every create/edit form for 5xx (form-build
+code == submit code). Point it at your plugins' own add/edit routes:
+
+```bash
+skills/elgg-site-upgrade/bin/verify-write-paths.sh \
+  --base http://localhost:{{port}} --user <admin> --pass <pw> \
+  --db-container <db-container> --forms-file snapshots/plugin-forms.txt
+# forms file: one route per line, {guid} expands to the logged-in user, e.g.
+#   /myplugin/add/{guid}
+```
+
 Intended, reviewed changes (a route deliberately removed/redirected) go one
 key per line in `snapshots/parity/parity-whitelist.tsv` (format matches the
 golden file's column 1: `<anon|auth> <METHOD> <path>`) — so the gate stays

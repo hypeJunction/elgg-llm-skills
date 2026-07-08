@@ -110,12 +110,20 @@
       "depends_on": ["verify-docker"]
     },
     {
+      "id": "verify-write-paths",
+      "title": "GATE: authenticated write-paths work on {{to}}",
+      "description": "GATE: render/parity gating is GET-only and never reaches action/CRUD code — write-path breaks (insert/delete_data + relationship signature drift, DBAL ':' param keys, entity save() contract, canWriteToContainer(null)) are latent until an action runs. On the booted {{to}} stack run skills/elgg-site-upgrade/bin/verify-write-paths.sh --base http://localhost:{{port}} --user <admin> --pass <pw> --db-container <db> [--forms-file plugin-forms.txt]. It logs in, creates a group, edits user settings (each verified via DB delta), and GET-sweeps every core + plugin create/edit form for 5xx. Add your plugins' add/edit routes via --forms-file / EXTRA_FORM_ROUTES. All must pass.",
+      "type": "task",
+      "priority": 0,
+      "depends_on": ["verify-docker"]
+    },
+    {
       "id": "fix-issues",
-      "title": "Fix failures from Docker/PHPUnit/E2E/parity verification",
+      "title": "Fix failures from Docker/PHPUnit/E2E/parity/write-path verification",
       "description": "Iterate: fix each failure, commit the fix, re-run the failing gate. Repeat until all gates pass.",
       "type": "task",
       "priority": 1,
-      "depends_on": ["run-phpunit", "run-e2e", "verify-parity"]
+      "depends_on": ["run-phpunit", "run-e2e", "verify-parity", "verify-write-paths"]
     },
     {
       "id": "expand-coverage",
