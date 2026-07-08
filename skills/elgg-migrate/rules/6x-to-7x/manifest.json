@@ -67,6 +67,14 @@
       "priority": 60
     },
     {
+      "id": "007a-form-action-renames-auto",
+      "name": "Auto-rewrite renamed form/action path string literals",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\FormActionRenames",
+      "breaking_change": "The renamed form/view/action PATH string literals in references/string-renames.json['7.x'] (blog/bookmarks/discussion save→edit, file upload→edit, admin/site/flush_cache→admin/site/cache/clear — including short names, forms/* and action/* full paths) are rewritten automatically via a whole-string-literal AST match (substrings/comments untouched). Also handles the single 011 admin action rename. The 007 entry below still covers view OVERRIDE FILE renames (views/default/forms/blog/save.php → edit.php), which are file moves, not string literals.",
+      "priority": 69
+    },
+    {
       "id": "007-form-action-renames",
       "name": "Update renamed plugin forms and actions",
       "automated": false,

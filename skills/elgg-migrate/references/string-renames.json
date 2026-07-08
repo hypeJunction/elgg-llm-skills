@@ -1,0 +1,23 @@
+{
+  "_meta": {
+    "description": "Whole-string-literal renames at a major version: core form/view/action path strings that were renamed, safe to auto-rewrite by matching a PHP string literal's ENTIRE value exactly (never a substring, never inside a comment/identifier). Consumed by the data-driven rules under ElggMigrate\\Rules\\* via Rules\\Shared\\DataDrivenStringLiteralRenames (an AST String_-node visitor). Per-major.",
+    "why_all_representations": "A core form has three string forms in plugin code: the short form/action NAME passed to elgg_view_form()/elgg_register_action()/elgg_generate_action_url() ('blog/save'), the full VIEW path ('forms/blog/save'), and the full ACTION path ('action/blog/save'). All three are listed so an exact whole-string match catches real usage.",
+    "excluded": "View OVERRIDE files (views/default/forms/blog/save.php) are file renames, not string literals — those stay LLM-guided (manifest 007). Renames with substring/prefix overlap risk (Elgg 7 members routes collection:user:user → collection:user:user:all) are NOT here; a whole-string match is safe but the members case is kept LLM (rule 012) pending review."
+  },
+  "7.x": {
+    "forms/blog/save": "forms/blog/edit",
+    "forms/bookmarks/save": "forms/bookmarks/edit",
+    "forms/discussion/save": "forms/discussion/edit",
+    "forms/file/upload": "forms/file/edit",
+    "action/blog/save": "action/blog/edit",
+    "action/bookmarks/save": "action/bookmarks/edit",
+    "action/discussion/save": "action/discussion/edit",
+    "action/file/upload": "action/file/edit",
+    "blog/save": "blog/edit",
+    "bookmarks/save": "bookmarks/edit",
+    "discussion/save": "discussion/edit",
+    "file/upload": "file/edit",
+    "admin/site/flush_cache": "admin/site/cache/clear",
+    "action/admin/site/flush_cache": "action/admin/site/cache/clear"
+  }
+}

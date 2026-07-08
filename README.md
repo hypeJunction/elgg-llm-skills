@@ -111,7 +111,7 @@ php skills/elgg-migrate/bin/migrate.php \
 | 3.x → 4.x | 31 | 8  | 39 | `skills/elgg-migrate/rules/3x-to-4x/manifest.json` |
 | 4.x → 5.x | 8  | 17 | 25 | `skills/elgg-migrate/rules/4x-to-5x/manifest.json` |
 | 5.x → 6.x | 2  | 13 | 15 | `skills/elgg-migrate/rules/5x-to-6x/manifest.json` |
-| 6.x → 7.x | 5  | 25 | 30 | `skills/elgg-migrate/rules/6x-to-7x/manifest.json` |
+| 6.x → 7.x | 6  | 25 | 31 | `skills/elgg-migrate/rules/6x-to-7x/manifest.json` |
 
 **Auto rules** run AST-based PHP code transformations (rename functions, rewrite signatures, etc.).
 **LLM rules** provide detailed instructions for an AI agent or developer to apply manually.
