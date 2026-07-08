@@ -1,7 +1,8 @@
 {
   "_meta": {
-    "description": "Global functions REMOVED at each Elgg major version, with their replacement. Used by PostMigrationVerifier::checkRemovedFunctions() to flag calls to functions that no longer exist at the migration target (the 'undefined symbol' class the shape-based completeness gate is blind to — bd elgg-migrate-abyju). Each target version's set is treated cumulatively: a function removed at 4.x is still removed at 6.x.",
-    "method": "Verified empirically via Elgg\\Application::loadCore() + function_exists() inside the real core container (not static grep, which is fooled by plugin-provided functions). 6.x set verified against Elgg 6.1.5 on 2026-06-03.",
+    "description": "Global functions (and a few global constants/static helpers) REMOVED at each Elgg major version, with their replacement. Used by PostMigrationVerifier::checkRemovedFunctions() to flag calls to functions that no longer exist at the migration target (the 'undefined symbol' class the shape-based completeness gate is blind to — bd elgg-migrate-abyju). Each target version's set is treated cumulatively: a function removed at 4.x is still removed at 6.x.",
+    "method": "The 6.x set was verified empirically via Elgg\\Application::loadCore() + function_exists() inside the real core container (not static grep, which is fooled by plugin-provided functions). 6.x set verified against Elgg 6.1.5 on 2026-06-03. The 3.x / 4.x / 5.x sets were reconstructed from this project's own migration history — .wolf/cerebrum.md Do-Not-Repeat, .wolf/buglog.json, and bd memories — where each removal produced a real 'Call to undefined function' fatal during a bodyology plugin migration.",
+    "detection_note": "The gate matches each key as a CALL: `/(?<![\\w>$:\\\\])(name)\\s*\\(/`. So bare global calls (name(...)) are caught; a global constant like ELGG_CACHE_PERSISTENT (no parens) is documented here for completeness but is NOT flagged by the call-shaped gate, and static/instance method forms (ElggFile::detectMimeType) are only caught in the unqualified-static form — see references/migration-failure-catalog.md for the precise per-class detection.",
     "false_positives_excluded": {
       "elgg_ws_expose_function": "provided by the web_services bundled plugin — not a core removal",
       "elgg_stars_get_entity_rating_values": "provided by the elgg_stars plugin",
@@ -11,6 +12,26 @@
       "elgg_get_total_friends": "provided by a third-party counters plugin (lib/functions.php), not an Elgg core/bundled global",
       "elgg_get_total_members": "provided by a third-party counters plugin (lib/functions.php), not an Elgg core/bundled global"
     }
+  },
+  "3.x": {
+    "elgg_get_metastring_id": "removed with the metastrings table in Elgg 3.0 — rework via QueryBuilder / the metadata API (bd elgg-migrate bug-022: group_sort/object_sort/user_sort built raw SQL on this)",
+    "_elgg_entities_get_metastrings_options": "private metastrings query API removed in 3.0 — use elgg_get_entities() QueryBuilder options"
+  },
+  "4.x": {
+    "elgg_register_css": "elgg_register_external_file('css', $name, $url) — or declare view_extensions in elgg-plugin.php",
+    "elgg_load_css": "elgg_load_external_file('css', $name)",
+    "elgg_format_attributes": "_elgg_services()->html_formatter->formatAttributes($attrs) — or build attributes manually with htmlspecialchars()",
+    "ElggFile::detectMimeType": "mime_content_type($path) guarded by file_exists() — both the static ElggFile::detectMimeType($path) and instance $file->detectMimeType() forms were removed in 4.x",
+    "access_get_show_hidden_status": "elgg_call(ELGG_SHOW_DISABLED_ENTITIES | ELGG_IGNORE_ACCESS, function () { ... }) — the save/restore access_get_show_hidden_status()/access_show_hidden_entities() pattern is gone",
+    "create_metadata": "new \\ElggMetadata + _elgg_services()->metadataTable->create($md, $allow_multiple)",
+    "update_metadata": "_elgg_services()->metadataTable->get($id), mutate, then $md->save()",
+    "elgg_flush_simplecache": "elgg_reset_system_cache() (itself later removed in 7.x — then _elgg_services()->systemCache->clear())"
+  },
+  "5.x": {
+    "add_translation": "return the array directly from the language file — Elgg 5.x's Translator include-loads the file and expects the returned array (drop the $english = [...]; add_translation('en', $english); wrapper)",
+    "get_default_access": "elgg_get_config('default_access') ?? ACCESS_PUBLIC",
+    "get_current_language": "elgg_get_current_language()",
+    "check_entity_relationship": "elgg_get_relationships(['guid_one' => $a, 'relationship' => $rel, 'guid_two' => $b, 'limit' => 1]) then ->[0]"
   },
   "6.x": {
     "elgg_trigger_plugin_hook": "elgg_trigger_event_results",
@@ -32,7 +53,6 @@
     "elgg_get_version": "elgg_get_release",
     "elgg_instanceof": "$e instanceof \\ElggObject && $e->getSubtype() === $subtype",
     "elgg_set_ignore_access": "elgg_call(ELGG_IGNORE_ACCESS, function () { ... })",
-    "elgg_format_attributes": "elgg_format_element('', $attrs)",
     "elgg_view_menu_item": "elgg_view('navigation/menu/elements/item', ['item' => ...])",
     "elgg_pop_breadcrumb": "breadcrumbs auto-managed; remove or use elgg_set_breadcrumbs([])",
     "elgg_set_plugin_setting": "elgg_get_plugin_from_id($id)->setSetting($name, $value)",
@@ -65,6 +85,7 @@
     "elgg_is_registered_viewtype": "_elgg_services()->views->isValidViewtype($viewtype)",
     "elgg_get_registered_entity_types": "elgg_entity_types_with_capability('searchable') / config registry",
     "elgg_geocode_location": "removed — no core replacement; needs a geocoding service (plugin-specific)",
-    "elgg_get_metastring_id": "removed — internal metastrings API; rework via QueryBuilder/metadata API"
+    "elgg_reset_system_cache": "_elgg_services()->systemCache->clear() (CacheService::clear)",
+    "ELGG_CACHE_PERSISTENT": "removed cache-layer flag — the persistent cache layer was dropped in 7.x; use ELGG_CACHE_RUNTIME / ELGG_CACHE_FILESYSTEM (NOTE: a bare constant, not a call — documented here but not flagged by the call-shaped gate)"
   }
 }

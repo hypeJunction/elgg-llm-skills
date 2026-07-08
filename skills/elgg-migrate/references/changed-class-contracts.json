@@ -1,8 +1,27 @@
 {
   "_meta": {
-    "description": "Core types whose CONTRACT changed across an Elgg major (interface -> abstract class, class -> interface, relocated, or method-signature break) such that a plugin's `implements`/`extends`/use of it that was valid below the boundary becomes a FATAL at or beyond it. Used by PostMigrationVerifier::checkChangedClassContracts() to flag the 'cannot implement X - it is not an interface' (and dual) class of boot fatals that the shape-based completeness gate AND checkRemovedFunctions() are both blind to — the type still exists, only its kind changed. Caught empirically by bin/verify-migration-chain.sh at the 5x->6x tier on 2026-06-05 (hypeDiscovery/hypeScraper/hypeSeo/hypeMaps upgrade Batch classes).",
-    "method": "Verified against the installed vendor: 6.x+ ships Elgg\\Upgrade\\Batch as `abstract class Batch`, with `abstract class AsynchronousUpgrade extends Batch` and `abstract class SystemUpgrade extends Batch` as the concrete contracts. Elgg\\Upgrade\\Locator::getBatch() only requires is_subclass_of($class, Batch::class), so `extends AsynchronousUpgrade` (or `extends Batch`) is correct; `implements Batch` fatals.",
-    "cumulative": "Treated like removed-functions.json: a contract change at 6.x still applies when targeting 7.x."
+    "description": "Core types whose CONTRACT changed across an Elgg major (interface -> abstract class, class -> interface, instantiable class -> interface, or removed entirely) such that a plugin's `implements`/`extends`/`use`/`new` of it that was valid below the boundary becomes a FATAL at or beyond it. Used by PostMigrationVerifier::checkChangedClassContracts() to flag the 'cannot implement X - it is not an interface' (and dual) class of boot fatals that the shape-based completeness gate AND checkRemovedFunctions() are both blind to — the type still exists (or existed) only its kind changed. Caught empirically by bin/verify-migration-chain.sh at the 5x->6x tier on 2026-06-05 (hypeDiscovery/hypeScraper/hypeSeo/hypeMaps upgrade Batch classes).",
+    "method": "Batch verified against the installed vendor: 6.x+ ships Elgg\\Upgrade\\Batch as `abstract class Batch`, with `abstract class AsynchronousUpgrade extends Batch` and `abstract class SystemUpgrade extends Batch` as the concrete contracts. Elgg\\Upgrade\\Locator::getBatch() only requires is_subclass_of($class, Batch::class), so `extends AsynchronousUpgrade` (or `extends Batch`) is correct; `implements Batch` fatals. Hook / ServiceFacade / NotificationEvent reconstructed from this project's .wolf/cerebrum.md Do-Not-Repeat where each produced a real boot fatal during a bodyology plugin migration.",
+    "cumulative": "Treated like removed-functions.json: a contract change at 6.x still applies when targeting 7.x.",
+    "gate_model_note": "The gate flags a line only when the type is referenced (via `use FQN;` or inline FQN) AND the entry's `illegal_keyword` co-occurs with the type name on that line. So `illegal_keyword` must name a token that is ALWAYS wrong for the changed type at/after the boundary (e.g. `use` for a removed class, `new` for a class-turned-interface), never a token that is still legal for correctly-migrated code — otherwise the gate emits false positives. See references/migration-failure-catalog.md for two contract-shaped fatals (Seed missing getType()/getCountOptions(); route:rewrite firing at boot) that are deliberately NOT injected here because the keyword gate cannot express them without false-positiving correctly-migrated code — they need a dedicated verifier check.",
+    "false_positive_guard_examples": {
+      "Elgg\\HooksRegistrationService\\Hook": "the 4.x concrete hook class — NOT flagged by the Elgg\\Hook entry because the FQN prefix `Elgg\\Hook` is followed by `s` (Hooks...) so the \\b word-boundary fails to match",
+      "Elgg\\Notifications\\SubscriptionNotificationEvent": "the concrete 4.x subclass — NOT flagged by the NotificationEvent entry because the file imports SubscriptionNotificationEvent (a different FQN), so the inline-FQN reference check for Elgg\\Notifications\\NotificationEvent never matches"
+    }
+  },
+  "4.x": {
+    "Elgg\\Di\\ServiceFacade": {
+      "was": "trait (self-registration hook via a name() method)",
+      "now": "removed",
+      "illegal_keyword": "use",
+      "fix": "Remove `use Elgg\\Di\\ServiceFacade;` (the import) and the in-class `use ServiceFacade;` trait use, plus the `name()` method, from any service class. Register the service with DI\\create() in elgg-services.php and use the DI array key as the service name directly. The trait does not exist in Elgg 4.x."
+    },
+    "Elgg\\Notifications\\NotificationEvent": {
+      "was": "instantiable class",
+      "now": "interface",
+      "illegal_keyword": "new",
+      "fix": "`new Elgg\\Notifications\\NotificationEvent(...)` throws 'Cannot instantiate interface' in 4.x. Use a concrete implementation: Elgg\\Notifications\\SubscriptionNotificationEvent (object-subscription events) or Elgg\\Notifications\\InstantNotificationEvent (instant/direct notifications)."
+    }
   },
   "6.x": {
     "Elgg\\Upgrade\\Batch": {
@@ -10,6 +29,12 @@
       "now": "abstract class",
       "illegal_keyword": "implements",
       "fix": "Replace `implements Batch` with `extends \\Elgg\\Upgrade\\AsynchronousUpgrade` (for admin-run upgrades) or `extends \\Elgg\\Upgrade\\SystemUpgrade`. In 3.x-5.x Batch was an interface; in 6.x it became an abstract class, so `implements Batch` fatals on boot with 'cannot implement Elgg\\Upgrade\\Batch - it is not an interface'."
+    },
+    "Elgg\\Hook": {
+      "was": "class (in 5.x it extended \\Elgg\\Event)",
+      "now": "removed entirely",
+      "illegal_keyword": "use",
+      "fix": "\\Elgg\\Hook was removed in 6.x (in 5.x it extended \\Elgg\\Event). Replace `use Elgg\\Hook;` -> `use Elgg\\Event;`, type-hint `\\Elgg\\Event $event` instead of `Hook $hook`, and `$hook->getValue()` / `$hook->getParam('k')` -> `$event->getValue()` / `$event->getParam('k')`. Rename any local `$event = $hook->getParam('event')` to `$notification_event` to avoid a collision with the renamed parameter."
     }
   }
 }

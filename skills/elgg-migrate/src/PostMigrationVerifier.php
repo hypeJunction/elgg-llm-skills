@@ -216,6 +216,61 @@ final class PostMigrationVerifier
         // (bd elgg-migrate-kg3kb; version-agnostic — checked at every target.)
         $violations = array_merge($violations, $this->checkDanglingUpgradeClasses($pluginPath));
 
+        // ---------------------------------------------------------------
+        // Failure-class detectors (FC-*). Each closes a static-gate blind
+        // spot catalogued in references/migration-failure-catalog.md and
+        // .wolf/{cerebrum,buglog}. Gated by the TARGET major so a pattern
+        // is only flagged from the version where it first bites. Data-driven
+        // off references/removed-functions.json where the shape allows.
+        // ---------------------------------------------------------------
+        $major = (int) $targetVersion;
+
+        // Version-agnostic (apply at every target).
+        $violations = array_merge($violations, $this->checkComposerVersionField($pluginPath));            // composer 'version' shadows git tag
+        $violations = array_merge($violations, $this->checkDocblockTerminator($pluginPath));              // doubled '*/' docblock close
+        $violations = array_merge($violations, $this->checkLegacyHandlerSignature($pluginPath));          // FC-3x4x-12 / FC-ALL-04
+        $violations = array_merge($violations, $this->checkRouteRewriteTiming($pluginPath));              // FC-ALL-05
+        $violations = array_merge($violations, $this->checkElggPluginSideEffects($pluginPath));           // FC-ALL-06
+        $violations = array_merge($violations, $this->checkLibFunctionsAutoload($pluginPath));            // FC-ALL-07
+        $violations = array_merge($violations, $this->checkUnguardedOptionalDeps($pluginPath));           // FC-ALL-08
+
+        if ($major >= 3) {
+            $violations = array_merge($violations, $this->checkSearchHookReturn($pluginPath));            // FC-2x3x-03
+            $violations = array_merge($violations, $this->checkSiteSecretScrub($pluginPath));             // FC-2x3x-04
+        }
+
+        if ($major >= 4) {
+            $violations = array_merge($violations, $this->checkCamelCasePluginIds($pluginPath));          // FC-3x4x-10
+            $violations = array_merge($violations, $this->checkDetectMimeTypeInstance($pluginPath));      // FC-3x4x-04
+            $violations = array_merge($violations, $this->checkInstallSqlNotAutoRun($pluginPath));        // FC-3x4x-13
+            $violations = array_merge($violations, $this->checkRelocatedSymbols($pluginPath));            // FC-3x4x-14
+        }
+
+        if ($major >= 5) {
+            $violations = array_merge($violations, $this->check5xServiceRemovals($pluginPath));           // FC-4x5x-04 / FC-4x5x-05
+            $violations = array_merge($violations, $this->check5xMenuJsApi($pluginPath));                 // FC-4x5x-06
+            $violations = array_merge($violations, $this->check5xSubtypeAssignment($pluginPath));         // FC-4x5x-07
+            $violations = array_merge($violations, $this->check5xTestMocking($pluginPath));               // FC-4x5x-08
+        }
+
+        if ($major >= 6) {
+            $violations = array_merge($violations, $this->checkSeedAbstractMethods($pluginPath, $targetVersion)); // FC-5x6x-03
+        }
+
+        if ($major >= 7) {
+            $violations = array_merge($violations, $this->checkRemovedConstants($pluginPath, $targetVersion));    // FC-6x7x-01
+            $violations = array_merge($violations, $this->checkMenuAddValue($pluginPath));                // FC-6x7x-03
+            $violations = array_merge($violations, $this->checkCssViewRelocation($pluginPath));           // FC-6x7x-05
+            $violations = array_merge($violations, $this->checkEsmBareSpecifiers($pluginPath));           // FC-6x7x-06
+            $violations = array_merge($violations, $this->checkJqueryGlobal($pluginPath));                // FC-6x7x-07
+            $violations = array_merge($violations, $this->checkI18nNamedImport($pluginPath));             // FC-6x7x-08
+            $violations = array_merge($violations, $this->checkEmptyFormatElement($pluginPath));          // FC-6x7x-09
+            $violations = array_merge($violations, $this->checkDbalColonParams($pluginPath));             // FC-6x7x-10
+            $violations = array_merge($violations, $this->checkCanWriteToContainerSubtype($pluginPath));  // FC-6x7x-11
+            $violations = array_merge($violations, $this->checkUnbracedMethodInterpolation($pluginPath)); // FC-6x7x-12
+            $violations = array_merge($violations, $this->checkAdminPasswordLength($pluginPath));         // FC-6x7x-13
+        }
+
         $errors = array_filter($violations, fn(Violation $v) => $v->severity === 'error');
 
         return new VerificationResult(
@@ -850,6 +905,1093 @@ final class PostMigrationVerifier
         }
 
         return false;
+    }
+
+    // =====================================================================
+    // Failure-class detectors
+    // =====================================================================
+
+    /**
+     * FC-3x4x-10: camelCase plugin id at a callsite. Elgg 4.x lowercased every
+     * plugin id; `elgg_get_plugin_from_id('CamelCase')` and
+     * `elgg_get_plugin_setting($name, 'CamelCase')` then silently return false
+     * (NOT the default), so settings reads go dark with no error.
+     *
+     * @return array<Violation>
+     */
+    private function checkCamelCasePluginIds(string $pluginPath): array
+    {
+        $violations = [];
+        // elgg_get_plugin_from_id('CamelCase') — id is the FIRST arg.
+        $fromId = '/elgg_get_plugin_from_id\s*\(\s*[\'"]([^\'"]*[A-Z][^\'"]*)[\'"]/';
+        // elgg_get_plugin_setting($name, 'CamelCase') — id is the SECOND arg.
+        $setting = '/elgg_get_plugin_(?:user_)?setting\s*\(\s*[\'"][^\'"]*[\'"]\s*,\s*[\'"]([^\'"]*[A-Z][^\'"]*)[\'"]/';
+
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                foreach ([$fromId, $setting] as $pattern) {
+                    if (preg_match($pattern, $line, $m)) {
+                        $violations[] = new Violation(
+                            file: $rel,
+                            line: $i + 1,
+                            severity: 'error',
+                            message: "Plugin id '{$m[1]}' is camelCase — Elgg 4.x+ lowercases plugin ids, so this callsite silently returns false. Lowercase it (e.g. '" . strtolower($m[1]) . "').",
+                            code: trim($line),
+                            category: 'camelcase-plugin-id',
+                        );
+                    }
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-3x4x-04: `$file->detectMimeType()` (instance form). ElggFile::detectMimeType
+     * was removed in 4.x. The static form `ElggFile::detectMimeType(` is caught by the
+     * call-shaped removed-functions gate; the instance `->detectMimeType(` form is not.
+     *
+     * @return array<Violation>
+     */
+    private function checkDetectMimeTypeInstance(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/->\s*detectMimeType\s*\(/',
+            'error',
+            'ElggFile::detectMimeType() was removed in Elgg 4.x — use mime_content_type($path) guarded by is_file($path) (NOT file_exists, which is true for dirs); save the entity before writing bytes.',
+            'removed-method',
+        );
+    }
+
+    /**
+     * FC-3x4x-14: `\Elgg\GatekeeperException` relocated to
+     * `\Elgg\Exceptions\Http\GatekeeperException` in 4.x. The old FQN is a latent
+     * fatal that only fires when the handler runs. The new FQN does not contain the
+     * substring `Elgg\GatekeeperException`, so the match is unambiguous.
+     *
+     * @return array<Violation>
+     */
+    private function checkRelocatedSymbols(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/\\\\?Elgg\\\\GatekeeperException\b/',
+            'error',
+            '\\Elgg\\GatekeeperException was relocated in Elgg 4.x — use \\Elgg\\Exceptions\\Http\\GatekeeperException in the import/catch.',
+            'relocated-symbol',
+        );
+    }
+
+    /**
+     * FC-3x4x-13: an `install/mysql.sql` that no code executes. In 4.x
+     * DefaultPluginBootstrap::activate() is a no-op — 4.x does NOT auto-run
+     * install/mysql.sql the way 2.x/3.x did. Unless a Bootstrap::activate()
+     * override executes the statements, the schema is silently never created.
+     *
+     * @return array<Violation>
+     */
+    private function checkInstallSqlNotAutoRun(string $pluginPath): array
+    {
+        $sql = $pluginPath . '/install/mysql.sql';
+        if (!is_file($sql)) {
+            return [];
+        }
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            // A Bootstrap that overrides activate() and runs statements.
+            if (preg_match('/function\s+activate\s*\(/', $content)
+                && preg_match('/execute(?:Statement|Query)|->query\s*\(|insertData|updateData/', $content)) {
+                return [];
+            }
+        }
+        return [new Violation(
+            file: 'install/mysql.sql',
+            line: 0,
+            severity: 'warning',
+            message: 'install/mysql.sql exists but no Bootstrap::activate() override executes it. Elgg 4.x+ does NOT auto-run install SQL (DefaultPluginBootstrap::activate is a no-op) — override activate() to prefix-swap and executeStatement() each statement.',
+            code: '',
+            category: 'install-sql-not-run',
+        )];
+    }
+
+    /**
+     * FC-3x4x-12 / FC-ALL-04: legacy multi-arg handler signatures. In 4.x+ every
+     * hook/event handler takes a SINGLE object (\Elgg\Hook / \Elgg\Event). A 4-arg
+     * `($hook, $type, $return, $params)` (3.x hook) or a 3-arg `($event, $type,
+     * $object)` (2.x/3.x event) signature is always a leftover — and the 3-arg form
+     * is the classic forward-port regression that resurrects on a higher branch.
+     *
+     * @return array<Violation>
+     */
+    private function checkLegacyHandlerSignature(string $pluginPath): array
+    {
+        $violations = [];
+        $fourArg = '/function\s+\w+\s*\(\s*\$hook\s*,\s*\$type\s*,\s*\$(?:return|returnvalue|value|return_value)\s*,\s*\$params\s*\)/';
+        $threeArg = '/function\s+\w+\s*\(\s*\$event\s*,\s*\$type\s*,\s*\$(?:object|entity|params|return)\s*\)/';
+
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match($fourArg, $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'error',
+                        message: '3.x hook signature ($hook, $type, $return, $params) — 4.x+ handlers take a single \\Elgg\\Hook/\\Elgg\\Event object; use $event->getType()/getValue()/getParam().',
+                        code: trim($line), category: 'legacy-handler-signature',
+                    );
+                } elseif (preg_match($threeArg, $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'error',
+                        message: 'Legacy 3-arg event handler signature ($event, $type, $object) resurfaced — 4.x+ handlers take a single \\Elgg\\Event object. This is the classic forward-port regression.',
+                        code: trim($line), category: 'legacy-handler-signature',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-2x3x-03: a 'search' hook handler that returns ['entities' => ...] or null.
+     * Elgg 3.0 rewrote search — a handler must return the output of elgg_search()
+     * (or elgg_list_entities(..., 'elgg_search')). The old shape stops returning the
+     * expected value and surfaces as a latent null TypeError, latent 3.x..7.x.
+     *
+     * @return array<Violation>
+     */
+    private function checkSearchHookReturn(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            // Only inspect files that actually register/handle a 'search' hook or type.
+            if (!preg_match('/[\'"]search[\'"]/', $content)) {
+                continue;
+            }
+            // A safe (migrated) handler calls elgg_search()/elgg_list_entities(...elgg_search).
+            $migrated = preg_match('/elgg_search\s*\(|elgg_list_entities[^;]*elgg_search/', $content);
+            if ($migrated) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/return\s+.*[\'"]entities[\'"]\s*=>/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "Search handler returns ['entities' => ...] — Elgg 3.0 rewrote search; return elgg_search() / elgg_list_entities(..., 'elgg_search') instead (latent null TypeError otherwise). Fix at 3.0 and forward-merge.",
+                        code: trim($line), category: 'search-hook-return',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-2x3x-04: a migration/install SQL that empties or deletes the datalists
+     * `__site_secret__` (or `site_secret`) row. 2.x regenerated the secret lazily;
+     * 3.x+ BootService hard-throws "site secret is not set". Re-seed a fresh secret
+     * before the 3.x datalists->config phinx migration.
+     *
+     * @return array<Violation>
+     */
+    private function checkSiteSecretScrub(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, ['sql', 'php']) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            if (!preg_match('/(?:__site_secret__|site_secret)/', $content)) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/(?:DELETE\s+FROM|UPDATE)\b.*(?:__site_secret__|site_secret)/i', $line)
+                    || preg_match('/(?:__site_secret__|site_secret).*(?:=\s*[\'"]{2}|SET\s+value\s*=\s*[\'"]{2})/i', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: 'Scrubbing the datalists site secret breaks 3.x+ boot ("site secret is not set") — 2.x regenerated it lazily but 3.x+ BootService hard-throws. Re-seed a fresh secret before the datalists->config migration.',
+                        code: trim($line), category: 'site-secret-scrub',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-4x5x-04 / FC-4x5x-05: 5.x DI/service + session relocations.
+     *   - ElggSession::setLoggedInUser()/removeLoggedInUser() moved to session_manager
+     *   - PluginHooksService and \DI\get('hooks') removed (drop $hooks from DI)
+     *   - \ElggCache removed (use \Elgg\Cache\BaseCache)
+     *   - elgg_entity_gatekeeper() now requires a GUID argument
+     *
+     * @return array<Violation>
+     */
+    private function check5xServiceRemovals(string $pluginPath): array
+    {
+        $checks = [
+            ['/(?:->|::)setLoggedInUser\s*\(|(?:->|::)removeLoggedInUser\s*\(/',
+             'ElggSession::setLoggedInUser()/removeLoggedInUser() moved to session_manager in 5.x — use _elgg_services()->session_manager->setLoggedInUser($user).'],
+            ['/\bPluginHooksService\b/',
+             'PluginHooksService was removed in 5.x — hooks merged into the events service; drop $hooks from DI/constructors.'],
+            ['/\\\\?DI\\\\get\s*\(\s*[\'"]hooks[\'"]\s*\)/',
+             "\\DI\\get('hooks') removed in 5.x — the hooks service no longer exists; drop it from the DI graph."],
+            ['/\buse\s+\\\\?ElggCache\b/',
+             '\\ElggCache was removed in 5.x — extend \\Elgg\\Cache\\BaseCache instead.'],
+            ['/elgg_entity_gatekeeper\s*\(\s*\)/',
+             'elgg_entity_gatekeeper() requires an entity GUID in 5.x — pass elgg_entity_gatekeeper($guid).'],
+        ];
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                foreach ($checks as [$pattern, $message]) {
+                    if (preg_match($pattern, $line)) {
+                        $violations[] = new Violation(
+                            file: $rel, line: $i + 1, severity: 'error',
+                            message: $message, code: trim($line), category: 'removed-service',
+                        );
+                    }
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-4x5x-06: 5.x menu/JS API changes.
+     *   - require(['jquery-ui', ...]) — jquery-ui split out
+     *   - array_keys($menu) on a PreparedMenu (foreach($menu as $section) instead)
+     *
+     * @return array<Violation>
+     */
+    private function check5xMenuJsApi(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, ['php', 'js']) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/require\s*\(\s*\[[^\]]*[\'"]jquery-ui/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "jquery-ui was split out in 5.x — drop it from the require([]) dependency list.",
+                        code: trim($line), category: 'removed-js-api',
+                    );
+                }
+                if (preg_match('/array_keys\s*\(\s*\$\w*[Mm]enu\b/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: 'array_keys() on a PreparedMenu — 5.x menus are objects; iterate with foreach ($menu as $section) instead.',
+                        code: trim($line), category: 'removed-js-api',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-4x5x-07: direct `$entity->subtype = ...` assignment. 5.x requires a
+     * non-empty subtype and throws on a bare property write; use setSubtype().
+     * (A `->subtype ==` comparison is excluded by the negative lookahead.)
+     *
+     * @return array<Violation>
+     */
+    private function check5xSubtypeAssignment(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/->subtype\s*=(?!=)/',
+            'error',
+            '$entity->subtype = ... throws in 5.x — use $entity->setSubtype($x); groups default to \'group\'.',
+            'subtype-assignment',
+        );
+    }
+
+    /**
+     * FC-4x5x-08: mocking \Elgg\Event without disableOriginalConstructor(). The
+     * 5.x Event class has a required constructor, so getMockBuilder(Event::class)
+     * ->getMock() explodes unless the original constructor is disabled.
+     *
+     * @return array<Violation>
+     */
+    private function check5xTestMocking(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            if (!str_contains($file, '/tests/') && !str_ends_with($file, 'Test.php')) {
+                continue;
+            }
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            if (!preg_match('/getMockBuilder\s*\(\s*\\\\?(?:Elgg\\\\)?Event::class/', $content)) {
+                continue;
+            }
+            if (str_contains($content, 'disableOriginalConstructor')) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if (preg_match('/getMockBuilder\s*\(\s*\\\\?(?:Elgg\\\\)?Event::class/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: '\\Elgg\\Event has a required constructor in 5.x — call ->disableOriginalConstructor() on the mock builder.',
+                        code: trim($line), category: 'test-mock-constructor',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-5x6x-03: a class `extends ... Seed` (\Elgg\Database\Seeds\Seed) that does
+     * not implement BOTH getType() and getCountOptions(). Seed gained these abstract
+     * methods in 6.1 — a subclass missing either is an autoload-time fatal on every
+     * page.
+     *
+     * @return array<Violation>
+     */
+    private function checkSeedAbstractMethods(string $pluginPath, string $targetVersion): array
+    {
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            if (!preg_match('/class\s+\w+\s+extends\s+\\\\?(?:Elgg\\\\Database\\\\Seeds\\\\)?Seed\b/', $content, $m, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+            $hasType = (bool) preg_match('/function\s+getType\s*\(/', $content);
+            $hasCount = (bool) preg_match('/function\s+getCountOptions\s*\(/', $content);
+            if ($hasType && $hasCount) {
+                continue;
+            }
+            $line = substr_count(substr($content, 0, $m[0][1]), "\n") + 1;
+            $missing = [];
+            if (!$hasType) {
+                $missing[] = 'getType()';
+            }
+            if (!$hasCount) {
+                $missing[] = 'getCountOptions()';
+            }
+            $violations[] = new Violation(
+                file: $this->relativePath($pluginPath, $file),
+                line: $line,
+                severity: 'error',
+                message: "Seed subclass is missing " . implode(' and ', $missing) . " — Seed gained these abstract methods in 6.1; a subclass missing either is an autoload-time fatal on every page in Elgg {$targetVersion}. Implement static getType():string and getCountOptions():array.",
+                code: trim(strtok($m[0][0], "\n")),
+                category: 'seed-abstract-methods',
+            );
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-01: bare removed CONSTANTS (e.g. ELGG_CACHE_PERSISTENT, dropped in
+     * 7.x). The call-shaped removed-functions gate only matches `name(` so a bare
+     * constant slips through. Data-driven: any ALL-CAPS key in removed-functions.json
+     * at/below the target major is treated as a removed constant.
+     *
+     * @return array<Violation>
+     */
+    private function checkRemovedConstants(string $pluginPath, string $targetVersion): array
+    {
+        $removed = $this->removedFunctionsFor($targetVersion);
+        $constants = [];
+        foreach ($removed as $name => $replacement) {
+            if (preg_match('/^[A-Z][A-Z0-9_]+$/', $name)) {
+                $constants[$name] = $replacement;
+            }
+        }
+        if (empty($constants)) {
+            return [];
+        }
+        $pattern = '/(?<![\w\\\\])(' . implode('|', array_map('preg_quote', array_keys($constants))) . ')\b/';
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match($pattern, $line, $m)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'error',
+                        message: "{$m[1]} was removed in Elgg {$targetVersion} — {$constants[$m[1]]}",
+                        code: trim($line), category: 'removed-constant',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-03: `$return->add(\ElggMenuItem::factory(...))` in a register/menu
+     * handler. In 7.x the menu register value is a plain array, not a MenuItems
+     * collection — push with `$return[] = \ElggMenuItem::factory([...]); return $return;`.
+     *
+     * @return array<Violation>
+     */
+    private function checkMenuAddValue(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/\$\w+->add\s*\(\s*\\\\?ElggMenuItem::factory/',
+            'error',
+            'Menu register value is a plain array in 7.x, not a collection — use $return[] = \\ElggMenuItem::factory([...]); return $return; instead of $return->add(...).',
+            'menu-add-value',
+        );
+    }
+
+    /**
+     * FC-6x7x-05: CSS view overrides left at views/*\/css/elements/*.php. In 7.x
+     * these relocated to views/*\/elements/*.css; the old-path override is silently
+     * orphaned (HTTP 200 but unstyled).
+     *
+     * @return array<Violation>
+     */
+    private function checkCssViewRelocation(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, ['php']) as $file) {
+            $rel = $this->relativePath($pluginPath, $file);
+            if (preg_match('#(^|/)views/[^/]+/css/elements/[^/]+\.php$#', $rel)) {
+                $violations[] = new Violation(
+                    file: $rel, line: 0, severity: 'warning',
+                    message: 'CSS view override at css/elements/* is orphaned in 7.x (200 but unstyled) — relocate to views/default/elements/*.css (or extend elgg.css for no-counterpart files).',
+                    code: '', category: 'css-view-relocation',
+                );
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-06: ESM bare specifiers missing the js/ view-path prefix. In 7.x the
+     * importmap key is the full view path minus .mjs (no js/ strip), so a specifier
+     * like 'framework/gallery/init' must be 'js/framework/gallery/init'.
+     *
+     * @return array<Violation>
+     */
+    private function checkEsmBareSpecifiers(string $pluginPath): array
+    {
+        $violations = [];
+        // View roots that in Elgg live under js/ — a specifier starting with one of
+        // these but WITHOUT the js/ prefix is almost certainly an unmapped import.
+        $roots = 'framework|elements|components|navigation|input|page|forms|entity|ajax';
+        $pattern = '#(?:import\s[^\'"]*from\s*|import\s*\(\s*)[\'"]((?:' . $roots . ')/[\w./-]+)[\'"]#';
+        foreach ($this->sourceFiles($pluginPath, ['mjs', 'js']) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match($pattern, $line, $m)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "ESM specifier '{$m[1]}' omits the js/ view path — 7.x importmap keys are the full view path minus .mjs; prefix it (js/{$m[1]}) or register the vendored lib in the importmap.",
+                        code: trim($line), category: 'esm-bare-specifier',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-07: reliance on a global jQuery. In 7.x jQuery is a deferred ESM
+     * module, no longer a global — `window.jQuery` / bare `jQuery(` only work after
+     * `import('jquery')` re-exposes it.
+     *
+     * @return array<Violation>
+     */
+    private function checkJqueryGlobal(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, ['js', 'mjs']) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            // A file that imports jquery has already re-exposed the global.
+            if (preg_match('/import[^;]*[\'"]jquery[\'"]/', $content)) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/\bwindow\.jQuery\b|\bjQuery\s*\(/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "jQuery is no longer a global in 7.x (deferred ESM) — import('jquery') and expose window.jQuery/$ before dependent code.",
+                        code: trim($line), category: 'jquery-global',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-08: a NAMED import from elgg/i18n. That module has a DEFAULT export
+     * only in 7.x, so `import { echo } from 'elgg/i18n'` is undefined at runtime.
+     *
+     * @return array<Violation>
+     */
+    private function checkI18nNamedImport(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['js', 'mjs'],
+            '/import\s*\{[^}]*\}\s*from\s*[\'"]elgg\/i18n[\'"]/',
+            'error',
+            "elgg/i18n has a DEFAULT export only in 7.x — use `import i18n from 'elgg/i18n'; const echo = (...a) => i18n.echo(...a);` instead of a named import.",
+            'i18n-named-import',
+        );
+    }
+
+    /**
+     * FC-6x7x-09: elgg_format_element('') with an empty tag name. 7.x rejects a
+     * zero-length tag — emit htmlspecialchars((string) $value) directly instead.
+     *
+     * @return array<Violation>
+     */
+    private function checkEmptyFormatElement(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/elgg_format_element\s*\(\s*([\'"])\1\s*,/',
+            'error',
+            "elgg_format_element('') rejects an empty tag name in 7.x — emit htmlspecialchars((string) \$value) directly instead of a zero-tag element.",
+            'empty-format-element',
+        );
+    }
+
+    /**
+     * FC-6x7x-10: Doctrine DBAL named-param array keys that carry the leading colon.
+     * DBAL matches `:name` in the SQL to the key `name` (no colon) — a `[':name' =>]`
+     * key silently fails to bind in 7.x.
+     *
+     * @return array<Violation>
+     */
+    private function checkDbalColonParams(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            // Only files that talk to executeStatement/executeQuery are candidates.
+            if (!preg_match('/execute(?:Statement|Query)\s*\(/', $content)) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/[\'"]:\w+[\'"]\s*=>/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "DBAL named-param key carries a ':' — drop it (DBAL matches :name in SQL to the key 'name'); a ':name' key fails to bind in 7.x.",
+                        code: trim($line), category: 'dbal-colon-param',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-11: canWriteToContainer() called with a null / ELGG_ENTITIES_ANY_VALUE
+     * subtype. 7.x requires a non-null string subtype — resolve it (e.g. Group::SUBTYPE)
+     * before the container check.
+     *
+     * @return array<Violation>
+     */
+    private function checkCanWriteToContainerSubtype(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '/canWriteToContainer\s*\([^)]*(?:null|ELGG_ENTITIES_ANY_VALUE)[^)]*\)/',
+            'warning',
+            'canWriteToContainer() requires a non-null string subtype in 7.x — resolve $subtype (e.g. Group::SUBTYPE) before the container check.',
+            'canwrite-null-subtype',
+        );
+    }
+
+    /**
+     * FC-6x7x-12: a method call inside a double-quoted string without braces, e.g.
+     * "members/listing/$event->getType()". PHP interpolates simple `$var` and
+     * `$var->prop` but NOT `$var->method()` — the parens are emitted literally.
+     * Brace it: "members/listing/{$event->getType()}".
+     *
+     * @return array<Violation>
+     */
+    private function checkUnbracedMethodInterpolation(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                // A double-quoted string segment containing $var->method( with no
+                // preceding brace. Heuristic but low-FP for this specific bug.
+                if (preg_match('/"[^"]*(?<!\{)\$\w+->\w+\s*\([^"]*"/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: 'Method call interpolated in a double-quoted string without braces — PHP emits the parens literally. Brace it: "{$obj->method()}".',
+                        code: trim($line), category: 'unbraced-method-interpolation',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-6x7x-13: an admin/install password shorter than 16 chars. 7.x raised the
+     * minimum password length to 16 — batchInstall silently fails admin creation
+     * with a short password.
+     *
+     * @return array<Violation>
+     */
+    private function checkAdminPasswordLength(string $pluginPath): array
+    {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, ['sh', 'yml', 'yaml', 'env', 'php']) as $file) {
+            $rel = $this->relativePath($pluginPath, $file);
+            if (!preg_match('/install|batchinstall|admin/i', $rel . ' ' . (string) file_get_contents($file))) {
+                continue;
+            }
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/(?:--password[= ]+|password["\']?\s*[:=]\s*["\']?)([^\s"\']+)/i', $line, $m)) {
+                    if (strlen($m[1]) < 16 && !str_starts_with($m[1], '$')) {
+                        $violations[] = new Violation(
+                            file: $rel, line: $i + 1, severity: 'warning',
+                            message: '7.x raised the minimum password length to 16 — a shorter admin password makes batchInstall silently fail admin creation. Use a >=16-char password.',
+                            code: trim($line), category: 'admin-password-length',
+                        );
+                    }
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * composer.json 'version' field on a tagged release commit overrides the git
+     * tag Composer would otherwise derive — drop the field so the tag governs.
+     * (MEMORY feedback_composer_version_field_shadows_tag.)
+     *
+     * @return array<Violation>
+     */
+    private function checkComposerVersionField(string $pluginPath): array
+    {
+        $composer = $pluginPath . '/composer.json';
+        if (!is_file($composer)) {
+            return [];
+        }
+        $raw = file_get_contents($composer);
+        if ($raw === false) {
+            return [];
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !array_key_exists('version', $data)) {
+            return [];
+        }
+        $line = 0;
+        foreach (explode("\n", $raw) as $i => $l) {
+            if (preg_match('/^\s*"version"\s*:/', $l)) {
+                $line = $i + 1;
+                break;
+            }
+        }
+        return [new Violation(
+            file: 'composer.json',
+            line: $line,
+            severity: 'warning',
+            message: "composer.json has a top-level \"version\" field — on a tagged release it shadows/overrides the git tag Composer derives. Drop the field and let the tag govern.",
+            code: '"version": "' . (is_scalar($data['version']) ? (string) $data['version'] : '') . '"',
+            category: 'composer-version-field',
+        )];
+    }
+
+    /**
+     * A malformed docblock terminator — a doubled comment-close (two adjacent
+     * star-slash sequences), the classic artifact of an AddDocBlocks pass
+     * re-terminating an already-closed block. Left uncaught it is a parse error
+     * or a swallowed following line.
+     *
+     * @return array<Violation>
+     */
+    private function checkDocblockTerminator(string $pluginPath): array
+    {
+        return $this->regexScan(
+            $pluginPath,
+            ['php'],
+            '#\*/\s*\*/#',
+            'warning',
+            "Malformed docblock: doubled '*/' terminator — remove the extra close (AddDocBlocks re-terminating an already-closed block).",
+            'docblock-terminator',
+            skipComments: false,
+        );
+    }
+
+    /**
+     * FC-ALL-05: a route:rewrite handler registered declaratively (elgg-plugin.php
+     * 'events') or in an init handler. route:rewrite fires at BOOT, before init —
+     * register it in Bootstrap::boot() early or the early service can 500 every page.
+     *
+     * @return array<Violation>
+     */
+    private function checkRouteRewriteTiming(string $pluginPath): array
+    {
+        $violations = [];
+        $pluginPhp = $pluginPath . '/elgg-plugin.php';
+        if (is_file($pluginPhp)) {
+            $content = (string) file_get_contents($pluginPhp);
+            foreach (explode("\n", $content) as $i => $line) {
+                if (!$this->isCommentLine($line) && preg_match('/[\'"]route:rewrite[\'"]/', $line)) {
+                    $violations[] = new Violation(
+                        file: 'elgg-plugin.php', line: $i + 1, severity: 'warning',
+                        message: "route:rewrite fires at BOOT, before init — declaring it in elgg-plugin.php 'events' (init-time) can 500 every page. Register it in Bootstrap::boot() early.",
+                        code: trim($line), category: 'route-rewrite-timing',
+                    );
+                }
+            }
+        }
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            if (basename($file) === 'elgg-plugin.php') {
+                continue;
+            }
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match('/elgg_register_event_handler\s*\(\s*[\'"]route:rewrite[\'"]/', $line)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: 'route:rewrite is registered outside Bootstrap::boot() — it fires at boot, before init; register it in boot() early and guard early services with an ELGG_CACHE_RUNTIME fallback.',
+                        code: trim($line), category: 'route-rewrite-timing',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-ALL-06: elgg-plugin.php include-time side effects, and class-constant use
+     * inside the 'entities' block. elgg-plugin.php is parsed before the classes/
+     * autoloader is wired, so `MyClass::SUBTYPE` / `\Ns\Class::class` in entities
+     * fatals; and any mkdir/file write above the return runs on every include.
+     *
+     * @return array<Violation>
+     */
+    private function checkElggPluginSideEffects(string $pluginPath): array
+    {
+        $pluginPhp = $pluginPath . '/elgg-plugin.php';
+        if (!is_file($pluginPhp)) {
+            return [];
+        }
+        $content = file_get_contents($pluginPhp);
+        if ($content === false) {
+            return [];
+        }
+        $lines = explode("\n", $content);
+        $violations = [];
+
+        // (a) filesystem side effects before the top-level return.
+        $returnLine = PHP_INT_MAX;
+        foreach ($lines as $i => $line) {
+            if (preg_match('/^\s*return\b/', $line)) {
+                $returnLine = $i;
+                break;
+            }
+        }
+        foreach ($lines as $i => $line) {
+            if ($i >= $returnLine || $this->isCommentLine($line)) {
+                continue;
+            }
+            if (preg_match('/\b(mkdir|file_put_contents|copy|unlink|rename|touch|fopen|fwrite)\s*\(/', $line, $m)) {
+                $violations[] = new Violation(
+                    file: 'elgg-plugin.php', line: $i + 1, severity: 'warning',
+                    message: "Include-time filesystem side effect ({$m[1]}()) above the return — runs on every include. Move it to Bootstrap::boot()/init().",
+                    code: trim($line), category: 'elgg-plugin-side-effects',
+                );
+            }
+        }
+
+        // (b) class constants inside the 'entities' block.
+        $inBlock = false;
+        $depth = 0;
+        foreach ($lines as $i => $line) {
+            if (!$inBlock) {
+                if (preg_match('/[\'"]entities[\'"]\s*=>\s*\[/', $line)) {
+                    $inBlock = true;
+                    $depth = 0;
+                } else {
+                    continue;
+                }
+            }
+            $depth += substr_count($line, '[') - substr_count($line, ']');
+            if (!$this->isCommentLine($line)
+                && preg_match('/\w+::(?:class|[A-Z][A-Z0-9_]+)\b/', $line, $m)) {
+                $violations[] = new Violation(
+                    file: 'elgg-plugin.php', line: $i + 1, severity: 'warning',
+                    message: "Class constant ({$m[0]}) in the 'entities' block — elgg-plugin.php is parsed before the classes/ autoloader; use a 'class' => 'Ns\\\\Class' string literal.",
+                    code: trim($line), category: 'elgg-plugin-side-effects',
+                );
+            }
+            if ($depth <= 0) {
+                $inBlock = false;
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * FC-ALL-07: a lib/functions.php that declares procedural helpers but is not
+     * required at the TOP of elgg-plugin.php. composer autoload.files does not fire
+     * for git-tracked customs early enough, and a Bootstrap require_once is too late.
+     *
+     * @return array<Violation>
+     */
+    private function checkLibFunctionsAutoload(string $pluginPath): array
+    {
+        $lib = $pluginPath . '/lib/functions.php';
+        $pluginPhp = $pluginPath . '/elgg-plugin.php';
+        if (!is_file($lib) || !is_file($pluginPhp)) {
+            return [];
+        }
+        $libContent = (string) file_get_contents($lib);
+        if (!preg_match('/^\s*function\s+\w+\s*\(/m', $libContent)) {
+            return []; // no global helpers declared
+        }
+        $head = implode("\n", array_slice(explode("\n", (string) file_get_contents($pluginPhp)), 0, 20));
+        if (preg_match('#require(?:_once)?[^;\n]*lib/functions\.php#', $head)) {
+            return [];
+        }
+        return [new Violation(
+            file: 'elgg-plugin.php',
+            line: 1,
+            severity: 'warning',
+            message: "lib/functions.php declares global helpers but elgg-plugin.php does not require_once it at the top — composer autoload.files/Bootstrap load too late for git-tracked customs. Add require_once __DIR__ . '/lib/functions.php'; at the top of elgg-plugin.php.",
+            code: '',
+            category: 'lib-functions-autoload',
+        )];
+    }
+
+    /**
+     * FC-ALL-08: a call to a known optional-dependency global helper without a
+     * function_exists()/elgg()->has() guard nearby. Unguarded, the plugin fails to
+     * activate in a standalone stack that lacks the optional dependency.
+     *
+     * @return array<Violation>
+     */
+    private function checkUnguardedOptionalDeps(string $pluginPath): array
+    {
+        // Conservative, curated list of hype-ecosystem optional-dep helpers.
+        $optional = ['hypeApps', 'hypeList', 'hypeLists', 'hypeShortcode', 'elgg_get_shortcodes', 'hj_lists_get_menu'];
+        $names = implode('|', array_map('preg_quote', $optional));
+        $callPattern = '/(?<![\w>$:\\\\])(' . $names . ')\s*\(/';
+        $violations = [];
+        foreach ($this->phpFiles($pluginPath) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            // If the file guards anywhere, treat it as intentional and skip.
+            if (preg_match('/function_exists\s*\(|elgg\(\)\s*->\s*has\s*\(/', $content)) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match($callPattern, $line, $m)) {
+                    $violations[] = new Violation(
+                        file: $rel, line: $i + 1, severity: 'warning',
+                        message: "Optional-dependency helper {$m[1]}() called without a function_exists()/elgg()->has() guard — the plugin fails to activate in a standalone stack lacking the dependency.",
+                        code: trim($line), category: 'unguarded-optional-dep',
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    // =====================================================================
+    // Detector helpers
+    // =====================================================================
+
+    /**
+     * Generic single-pattern line scan over files of the given extensions.
+     *
+     * @param array<string> $exts
+     * @return array<Violation>
+     */
+    private function regexScan(
+        string $pluginPath,
+        array $exts,
+        string $pattern,
+        string $severity,
+        string $message,
+        string $category,
+        bool $skipComments = true,
+    ): array {
+        $violations = [];
+        foreach ($this->sourceFiles($pluginPath, $exts) as $file) {
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $rel = $this->relativePath($pluginPath, $file);
+            foreach (explode("\n", $content) as $i => $line) {
+                if ($skipComments && $this->isCommentLine($line)) {
+                    continue;
+                }
+                if (preg_match($pattern, $line)) {
+                    $violations[] = new Violation(
+                        file: $rel,
+                        line: $i + 1,
+                        severity: $severity,
+                        message: $message,
+                        code: trim($line),
+                        category: $category,
+                    );
+                }
+            }
+        }
+        return $violations;
+    }
+
+    /**
+     * Best-effort "this line is a comment" test — a docblock/line/hash comment.
+     */
+    private function isCommentLine(string $line): bool
+    {
+        $t = ltrim($line);
+        return $t === ''
+            || $t[0] === '*'
+            || str_starts_with($t, '//')
+            || str_starts_with($t, '/*')
+            || str_starts_with($t, '#');
+    }
+
+    /**
+     * Iterate files of the given extensions, skipping third-party/nested-plugin
+     * trees exactly like phpFiles().
+     *
+     * @param array<string> $exts
+     * @return \Generator<string>
+     */
+    private function sourceFiles(string $dir, array $exts): \Generator
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $exts = array_map('strtolower', $exts);
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+        );
+        foreach ($iterator as $file) {
+            /** @var \SplFileInfo $file */
+            if (!in_array(strtolower($file->getExtension()), $exts, true)) {
+                continue;
+            }
+            $path = $file->getPathname();
+            if (str_contains($path, '/vendor/') || str_contains($path, '/vendors/') || str_contains($path, '/mod/')) {
+                continue;
+            }
+            yield $path;
+        }
     }
 
     /**
