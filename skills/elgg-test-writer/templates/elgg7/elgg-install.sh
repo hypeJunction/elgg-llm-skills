@@ -20,6 +20,20 @@ echo "MySQL is ready."
 
 cd /var/www/html
 
+# Elgg core plugins live in vendor/elgg/elgg/mod/ and must be symlinked into
+# mod/ so the plugin loader can find them (a plugin under test that declares a
+# core dependency — groups/file/discussions/… — fails to activate otherwise).
+# Bind-mounted plugins always win. Runs on every start (symlinks are cheap and
+# idempotent), not only first install.
+if [ -d /var/www/html/vendor/elgg/elgg/mod ]; then
+    for core_plugin_dir in /var/www/html/vendor/elgg/elgg/mod/*/; do
+        core_plugin_id=$(basename "${core_plugin_dir}")
+        if [ ! -e "/var/www/html/mod/${core_plugin_id}" ]; then
+            ln -s "${core_plugin_dir%/}" "/var/www/html/mod/${core_plugin_id}"
+        fi
+    done
+fi
+
 if [ ! -f /var/www/html/.elgg-installed ]; then
     echo "Installing Elgg 7.x..."
 
@@ -71,12 +85,34 @@ SETTINGS_VALUES
         echo 'Elgg 7.x installed successfully.' . PHP_EOL;
     " 2>&1 || echo "Install completed (check for errors above)."
 
-    echo "Activating plugin: ${PLUGIN_ID}"
+    echo "Activating plugins..."
     php -r "
         require_once 'vendor/autoload.php';
         \$app = \Elgg\Application::getInstance();
         \$app->bootCore();
         _elgg_services()->plugins->generateEntities();
+
+        // Fixed-point activation: keep trying until no more plugins can be
+        // activated. Handles transitive core/dep chains (A needs B needs C)
+        // without manual ordering. setPriority('last') satisfies
+        // plugin.dependencies position-after at activation time.
+        \$max_rounds = 10;
+        for (\$round = 0; \$round < \$max_rounds; \$round++) {
+            \$activated_this_round = 0;
+            foreach (elgg_get_plugins('inactive') as \$p) {
+                if (\$p->getID() === '${PLUGIN_ID}') continue; // activate under-test plugin last
+                try {
+                    \$p->setPriority('last');
+                    \$p->activate();
+                    echo '  + ' . \$p->getID() . PHP_EOL;
+                    \$activated_this_round++;
+                } catch (\Throwable \$e) {
+                    // not yet activatable — retry next round
+                }
+            }
+            if (\$activated_this_round === 0) break;
+        }
+
         \$plugin = elgg_get_plugin_from_id('${PLUGIN_ID}');
         if (!\$plugin) {
             echo 'ERROR: plugin ${PLUGIN_ID} not found at /var/www/html/mod/${PLUGIN_ID}' . PHP_EOL;
@@ -86,6 +122,7 @@ SETTINGS_VALUES
             echo 'Plugin ${PLUGIN_ID} already active.' . PHP_EOL;
         } else {
             try {
+                \$plugin->setPriority('last');
                 \$plugin->activate();
                 echo 'Plugin ${PLUGIN_ID} activated.' . PHP_EOL;
             } catch (\Throwable \$e) {

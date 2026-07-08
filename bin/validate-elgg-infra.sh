@@ -20,11 +20,23 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INFRA="$ROOT/skills/elgg-migrate/infra"
+# The per-plugin test stacks that scaffold-docker.sh actually SHIPS into plugins.
+# These are validated statically below so they can't drift away from the booted
+# infra/ tree unnoticed (the elgg6/7 templates once silently lost the core-plugin
+# symlink + dep-ordered activation while this validator stayed green — bd efa6m).
+TEMPLATES="$ROOT/skills/elgg-test-writer/templates"
 INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-420}"   # 7 min for build + install
 LOG_DIR="$ROOT/tmp/validate-elgg-infra"
 mkdir -p "$LOG_DIR"
 
-VERSIONS=("$@")
+TEMPLATES_ONLY=0
+VERSIONS=()
+for arg in "$@"; do
+  case "$arg" in
+    --templates-only) TEMPLATES_ONLY=1 ;;   # static template checks, no docker
+    *) VERSIONS+=("$arg") ;;
+  esac
+done
 if [[ ${#VERSIONS[@]} -eq 0 ]]; then
   VERSIONS=(2 3 4 5 6 7)
 fi
@@ -144,8 +156,63 @@ validate_one() {
   return 0
 }
 
+# Static invariants the SHIPPED per-plugin templates must encode. These are the
+# landmines that were each discovered painfully and must never silently regress
+# out of the templates agents actually receive. No docker needed.
+check_template_invariants() {
+  local ver="$1"
+  local script="$TEMPLATES/elgg${ver}/elgg-install.sh"
+  [[ -f "$script" ]] || { echo "FAIL template elgg${ver} — missing $script"; return 1; }
+  if ! bash -n "$script" 2>/dev/null; then
+    echo "FAIL template elgg${ver} — elgg-install.sh has a bash syntax error"; return 1
+  fi
+
+  local -a missing=()
+  # Every version: correct DB prefix (BaseTestCase default is c_i_elgg_, so a
+  # stack that omits dbprefix=elgg_ silently runs phpunit against the wrong schema).
+  grep -q "dbprefix" "$script" || missing+=("dbprefix")
+
+  # Vendor-core era (4.x+): core plugins live in vendor/elgg/elgg/mod and must be
+  # symlinked into mod/; transitive deps need dep-ordered activation via
+  # setPriority('last'); and the PhpFastCache-root-owned-dirs landmine needs a
+  # chown of the data root. (2.x/3.x predate this layout — intentionally exempt.)
+  if [[ "$ver" -ge 4 ]]; then
+    grep -q "vendor/elgg/elgg/mod" "$script" || missing+=("core-plugin symlink")
+    grep -q "setPriority('last')" "$script" || missing+=("dep-ordered activation setPriority('last')")
+    grep -q "chown.*www-data" "$script" || missing+=("chown www-data on data root")
+  fi
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "FAIL template elgg${ver} — missing invariants: ${missing[*]}"
+    return 1
+  fi
+  echo "PASS template elgg${ver} — landmine invariants present"
+  return 0
+}
+
 declare -A RESULTS
+declare -A TRESULTS
 rc_overall=0
+
+# Static template gate first (fast, no docker).
+for ver in "${VERSIONS[@]}"; do
+  if check_template_invariants "$ver"; then
+    TRESULTS[$ver]=PASS
+  else
+    TRESULTS[$ver]=FAIL
+    rc_overall=1
+  fi
+done
+
+if [[ "$TEMPLATES_ONLY" -eq 1 ]]; then
+  echo
+  echo "=== template summary ==="
+  for ver in "${VERSIONS[@]}"; do
+    printf '  templates/elgg%s : %s\n' "$ver" "${TRESULTS[$ver]:-?}"
+  done
+  exit $rc_overall
+fi
+
 for ver in "${VERSIONS[@]}"; do
   if validate_one "$ver"; then
     RESULTS[$ver]=PASS
@@ -158,7 +225,7 @@ done
 echo
 echo "=== summary ==="
 for ver in "${VERSIONS[@]}"; do
-  printf '  elgg%s : %s\n' "$ver" "${RESULTS[$ver]:-?}"
+  printf '  elgg%s : infra=%s  templates=%s\n' "$ver" "${RESULTS[$ver]:-?}" "${TRESULTS[$ver]:-?}"
 done
 echo "logs: $LOG_DIR"
 exit $rc_overall
