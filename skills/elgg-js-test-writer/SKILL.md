@@ -21,6 +21,16 @@ Plugin JS must bring its own test setup. This skill provides that.
 |------|--------|---------------|----------|
 | 2.x-5.x | RequireJS/AMD | `.js` | `elgg_require_js()`, `define()`, `require()` |
 | 6.x | Native ES Modules | `.mjs` | `elgg_import_esm()`, `import`/`export` |
+| 7.x | Native ES Modules (importmap) | `.mjs` | `elgg_import_esm()`, `import`/`export` |
+
+**7.x JS gotchas** (still ESM, but tighter — cover these in tests): jQuery is a
+DEFERRED ESM module, no longer a global — `import $ from 'jquery'` and expose
+`window.jQuery`/`$` before dependent code (bare `jQuery(`/`window.jQuery` throws).
+`elgg/i18n` has a DEFAULT export only — `import i18n from 'elgg/i18n'`, not
+`import { echo }`. ESM importmap specifiers are the full view path minus `.mjs`
+(no `js/` strip); an unmapped specifier throws "Failed to resolve module
+specifier". A Playwright/console assertion of "no pageerror, no unresolved
+specifier" per page is the 7.x front-end gate.
 
 ---
 
@@ -475,6 +485,9 @@ docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
 
 ### In CI (GitHub Actions)
 
+Run the SAME Docker command CI uses locally, so green-CI == green-local (the
+plain vitest unit tests don't need Elgg, but running them through the compose
+`node` service keeps one execution path and matches Playwright's networked run).
 Add to `.github/workflows/tests.yml`:
 
 ```yaml
@@ -482,11 +495,9 @@ Add to `.github/workflows/tests.yml`:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm install
-      - run: npm run test:js
+      - run: >
+          docker compose -f docker/docker-compose.yml --profile test run --rm node
+          sh -c "cd /plugin && npm ci && npm run test:js"
 ```
 
 ### Combined with Playwright (browser-level)
@@ -521,7 +532,12 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   use: {
-    baseURL: 'http://elgg:8080',  // Elgg container hostname in Docker network
+    // The Elgg container listens on port 80 inside the compose network — use the
+    // bare service hostname, NOT :8080 (a wrong port here = connection refused).
+    // baseURL MUST live inside use:{} (a root-level baseURL is silently ignored
+    // in Playwright >=1.50). The scaffold-docker.sh stack names the service `elgg`
+    // and sets ELGG_SITE_URL=http://elgg/ so post-login redirects resolve.
+    baseURL: 'http://elgg',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },

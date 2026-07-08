@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 apply-fleet-fixes.py  [--ndjson /tmp/fleet-verification-results.ndjson]
-                       [--plugins-dir ~/Data/hypejunction/bodyology/plugins]
-                       [--infra-dir ~/Data/elgg-migrate/skills/elgg-migrate/infra]
+                       [--plugins-dir $ELGG_MIGRATE_PLUGINS]
+                       [--infra-dir <repo>/skills/elgg-migrate/infra]
                        [--dry-run]
 
 Applies all scriptable fixes to plugin repos based on fleet verification results:

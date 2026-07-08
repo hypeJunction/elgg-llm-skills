@@ -13,7 +13,7 @@
 **Via Composer (recommended):**
 
 ```bash
-composer require hypejunction/{{REPO_SLUG}}
+composer require {{VENDOR}}/{{REPO_SLUG}}
 ```
 
 **Manual:**
