@@ -35,6 +35,14 @@
       "priority": 30
     },
     {
+      "id": "004a-removed-functions-6x-rename",
+      "name": "Auto-rename 1:1 functions removed in 6.0",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V5ToV6\\RemovedFunctions",
+      "breaking_change": "The exact 1:1 renames in references/removed-function-renames.json['6.x'] (the procedural plugin-hook family elgg_trigger_plugin_hook/elgg_register_plugin_hook_handler/…, plus register_error/system_message/forward/elgg_redirect/current_page_url/elgg_flush_caches/elgg_get_version and a few string helpers) are rewritten automatically. The 004 entry below still covers the removals that need judgment (AMD→ESM, removed annotations API, removed class methods).",
+      "priority": 39
+    },
+    {
       "id": "004-removed-functions-6x",
       "name": "Replace functions removed in 6.0",
       "automated": false,

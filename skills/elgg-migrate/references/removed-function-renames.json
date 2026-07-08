@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "description": "The SAFE, auto-rewritable subset of removed-functions.json: global functions removed at a major whose replacement is an exact 1:1 global-function rename with a compatible call signature for the dominant call shape. Consumed by the data-driven AST rules ElggMigrate\\Rules\\V5ToV6\\RemovedFunctions and V6ToV7\\RemovedFunctions (via Rules\\Shared\\DataDrivenRemovedFunctions), which rewrite FuncCall names in place. Entries whose replacement is prose, needs new arguments, changes semantics, or is a method/service call (e.g. ELGG's AMD->ESM migration, elgg_set_ignore_access -> elgg_call(...), elgg_reset_system_cache -> _elgg_services()->systemCache->clear()) are DELIBERATELY EXCLUDED here — they stay LLM-guided in the manifest because a blind rename would corrupt code.",
+    "relationship": "This is a strict subset of references/removed-functions.json (which drives DETECTION/flagging in PostMigrationVerifier + VersionGuard --check, cumulatively). This file drives REWRITING and is per-major.",
+    "signature_note": "For multi-arg helpers included here (forward, register_error, system_message), the rename is correct for the dominant single-message/single-url call; the manifest's LLM instructions still cover the rarer multi-arg reason/priority cases."
+  },
+  "6.x": {
+    "elgg_trigger_plugin_hook": "elgg_trigger_event_results",
+    "elgg_register_plugin_hook_handler": "elgg_register_event_handler",
+    "elgg_unregister_plugin_hook_handler": "elgg_unregister_event_handler",
+    "elgg_clear_plugin_hook_handlers": "elgg_clear_event_handlers",
+    "register_error": "elgg_register_error_message",
+    "system_message": "elgg_register_success_message",
+    "forward": "elgg_redirect_response",
+    "elgg_redirect": "elgg_redirect_response",
+    "current_page_url": "elgg_get_current_url",
+    "_elgg_rmdir": "elgg_delete_directory",
+    "elgg_flush_caches": "elgg_clear_caches",
+    "elgg_get_version": "elgg_get_release",
+    "elgg_strrchr": "mb_strrchr",
+    "elgg_strripos": "mb_strripos",
+    "_elgg_html_decode": "html_entity_decode"
+  },
+  "7.x": {
+    "elgg_get_logged_in_user": "elgg_get_logged_in_user_entity"
+  }
+}
