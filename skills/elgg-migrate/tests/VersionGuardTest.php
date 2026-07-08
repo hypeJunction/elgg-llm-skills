@@ -457,9 +457,11 @@ final class VersionGuardTest extends TestCase
     public function testIncompletePatternsFlagsRemovedIn7xFunctionCall(): void
     {
         // 6.x->7.x: a global removed in 7.x still called after a claimed 7.x migration.
+        // elgg_reset_system_cache is the call-shaped removal that first bites at 7.x
+        // (per the 2026-07-08 core-verified removed-functions.json).
         $dir = $this->makePluginDir([
             'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
-            'classes/Foo/Access.php' => "<?php\nnamespace Foo;\nclass Access {\n  public function can() { return elgg_is_admin_user(elgg_get_logged_in_user_guid()); }\n}\n",
+            'classes/Foo/Cache.php' => "<?php\nnamespace Foo;\nclass Cache {\n  public function bust() { return elgg_reset_system_cache(); }\n}\n",
         ]);
 
         try {
@@ -468,7 +470,7 @@ final class VersionGuardTest extends TestCase
             $this->assertContains('removed-function-call-7x', $ids);
             $hit = array_values(array_filter($findings, fn ($f) => $f->patternId === 'removed-function-call-7x'))[0];
             $this->assertSame('6.x', $hit->sourceVersion);
-            $this->assertStringContainsString('elgg_is_admin_user', $hit->description);
+            $this->assertStringContainsString('elgg_reset_system_cache', $hit->description);
         } finally {
             $this->removeDir($dir);
         }

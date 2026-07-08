@@ -483,17 +483,20 @@ Two data files feed the automated gates and are kept in lock-step with this cata
 
 ---
 
-## Known data-file refinements (follow-ups, not yet applied)
+## Known data-file refinements
 
-These are correctness nits observed while building this catalog. They are noted rather than changed,
-to avoid disturbing the empirically-verified 6.x set / passing gate tests:
-
-- **`current_page_url`, `elgg_view_menu_item`, `elgg_set_plugin_setting` family,
-  `elgg_set_ignore_access`** live under `removed-functions.json[6.x]`, but this project's
-  Do-Not-Repeat notes show they were already gone (or removed) at **5.x** (and some at **4.x**).
-  The 6.x placement is a safe lower bound (they are still removed at 6.x), but a 5.x-target
-  migration will not flag them. Refine the removal version when a 5.x/4.x ground-truth
-  `function_exists()` sweep is available.
+- **RESOLVED 2026-07-08 — removal-version placement is now core-verified.** A
+  `function_exists()` sweep against real 3.x/4.x/5.x/6.x/7.x cores (via
+  `bin/verify-removed-functions.sh` + `Elgg\Application::loadCore()`) re-placed 38
+  functions to their EARLIEST-absent major (their true removal floor), e.g.
+  `elgg_set_plugin_setting`/`elgg_set_ignore_access`/`elgg_instanceof` → **4.x**;
+  `current_page_url`/`elgg_view_menu_item`/`forward`/`register_error`/`system_message`
+  → **5.x** (empirically gone at 5.1, NOT 6.x as this project's history-reconstructed
+  notes guessed — a 4.x/5.x-target migration now flags them). Zero placements were
+  contradicted (the old data was late, never wrong). Rerun the tool after any Elgg
+  release to keep it honest. NOTE: FC-5x6x-02 above still narrates the message/redirect
+  family as a 6.x removal for historical context — the authoritative version is now
+  `removed-functions.json` (5.x for that family).
 - **`ElggFile::detectMimeType`** and **`ELGG_CACHE_PERSISTENT`** are documented in
   `removed-functions.json` but only partially / not caught by the call-shaped gate (instance-method
   form; bare constant). A dedicated method-call + constant scanner would close these.
