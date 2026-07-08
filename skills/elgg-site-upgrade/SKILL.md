@@ -957,7 +957,10 @@ update, upgrade script, verification, cache flush, and post-upgrade
 monitoring in that dependency order. What changes is where each step runs.
 
 If you're not sure what deployment model applies, run the checklist as
-written.
+written. For the blue-green model end-to-end — go/no-go gates, backup, chain
+migrate, smoke, DNS flip, seconds-fast rollback, backup/restore round-trip
+proof, and the guarded stale-plugin-entity prune — copy
+`references/cutover-runbook.md` into the site repo and fill its placeholders.
 
 ## Pre-Flight
 
