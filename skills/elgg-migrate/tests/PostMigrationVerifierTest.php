@@ -399,20 +399,29 @@ final class PostMigrationVerifierTest extends TestCase
         }
     }
 
-    public function testImplementsBatchAllowedIn5xTarget(): void
+    public function testImplementsBatchFlaggedFrom5xNotFrom4x(): void
     {
-        // Below the 6.x boundary, Batch is still an interface — `implements Batch`
-        // is correct and must NOT be flagged.
-        $dir = $this->makePluginDir([
+        // Core-verified 2026-07-08 (ReflectionClass on real cores): Batch is an
+        // interface at 4.x but ALREADY an abstract class at 5.x — so `implements
+        // Batch` fatals from 5.x, not 6.x. Flagged at 5.x, NOT at 4.x.
+        $files = [
             'classes/Acme/Upgrades/EncodeSettingsAsJson.php' =>
                 "<?php\nnamespace Acme\\Upgrades;\n\nuse Elgg\\Upgrade\\Batch;\n\nclass EncodeSettingsAsJson implements Batch {\n}\n",
             'elgg-plugin.php' => "<?php\nreturn [];",
-        ]);
+        ];
 
+        $dir = $this->makePluginDir($files);
         try {
-            $result = $this->verifier->verify($dir, '5.x');
-            $cats = array_map(fn($v) => $v->category, $result->violations);
-            $this->assertNotContains('changed-class-contract', $cats);
+            $cats4 = array_map(fn($v) => $v->category, $this->verifier->verify($dir, '4.x')->violations);
+            $this->assertNotContains('changed-class-contract', $cats4, 'Batch is still an interface at 4.x');
+        } finally {
+            $this->removeDir($dir);
+        }
+
+        $dir = $this->makePluginDir($files);
+        try {
+            $cats5 = array_map(fn($v) => $v->category, $this->verifier->verify($dir, '5.x')->violations);
+            $this->assertContains('changed-class-contract', $cats5, 'Batch is abstract from 5.x — implements Batch fatals');
         } finally {
             $this->removeDir($dir);
         }

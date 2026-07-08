@@ -1,8 +1,8 @@
 {
   "_meta": {
     "description": "Core types whose CONTRACT changed across an Elgg major (interface -> abstract class, class -> interface, instantiable class -> interface, or removed entirely) such that a plugin's `implements`/`extends`/`use`/`new` of it that was valid below the boundary becomes a FATAL at or beyond it. Used by PostMigrationVerifier::checkChangedClassContracts() to flag the 'cannot implement X - it is not an interface' (and dual) class of boot fatals that the shape-based completeness gate AND checkRemovedFunctions() are both blind to — the type still exists (or existed) only its kind changed. Caught empirically by bin/verify-migration-chain.sh at the 5x->6x tier on 2026-06-05 (hypeDiscovery/hypeScraper/hypeSeo/hypeMaps upgrade Batch classes).",
-    "method": "Batch verified against the installed vendor: 6.x+ ships Elgg\\Upgrade\\Batch as `abstract class Batch`, with `abstract class AsynchronousUpgrade extends Batch` and `abstract class SystemUpgrade extends Batch` as the concrete contracts. Elgg\\Upgrade\\Locator::getBatch() only requires is_subclass_of($class, Batch::class), so `extends AsynchronousUpgrade` (or `extends Batch`) is correct; `implements Batch` fatals. Hook / ServiceFacade / NotificationEvent reconstructed from this project's .wolf/cerebrum.md Do-Not-Repeat where each produced a real boot fatal during a bodyology plugin migration.",
-    "cumulative": "Treated like removed-functions.json: a contract change at 6.x still applies when targeting 7.x.",
+    "method": "Core-verified 2026-07-08 via ReflectionClass (interface_exists / trait_exists / isAbstract) inside real 3.x/4.x/5.x/6.x/7.x cores, loaded with \\Elgg\\Application::loadCore(). Findings: Elgg\\Upgrade\\Batch is an interface in 3.x-4.x and an abstract class ALREADY at 5.x (moved from the 6.x block); Elgg\\Event is an interface in 4.x and a class from 5.x; \\ElggObject is concrete through 6.x and ABSTRACT at 7.x; Elgg\\Hook is removed from 6.x; Elgg\\Di\\ServiceFacade (trait) is gone from 4.x. NotificationEvent is an interface across 3.x-7.x — its 4.x entry is a safe floor (no 2.x core to pin the exact transition).",
+    "cumulative": "Treated like removed-functions.json: a contract change at 5.x still applies when targeting 6.x/7.x.",
     "gate_model_note": "The gate flags a line only when the type is referenced (via `use FQN;` or inline FQN) AND the entry's `illegal_keyword` co-occurs with the type name on that line. So `illegal_keyword` must name a token that is ALWAYS wrong for the changed type at/after the boundary (e.g. `use` for a removed class, `new` for a class-turned-interface), never a token that is still legal for correctly-migrated code — otherwise the gate emits false positives. See references/migration-failure-catalog.md for two contract-shaped fatals (Seed missing getType()/getCountOptions(); route:rewrite firing at boot) that are deliberately NOT injected here because the keyword gate cannot express them without false-positiving correctly-migrated code — they need a dedicated verifier check.",
     "false_positive_guard_examples": {
       "Elgg\\HooksRegistrationService\\Hook": "the 4.x concrete hook class — NOT flagged by the Elgg\\Hook entry because the FQN prefix `Elgg\\Hook` is followed by `s` (Hooks...) so the \\b word-boundary fails to match",
@@ -23,18 +23,34 @@
       "fix": "`new Elgg\\Notifications\\NotificationEvent(...)` throws 'Cannot instantiate interface' in 4.x. Use a concrete implementation: Elgg\\Notifications\\SubscriptionNotificationEvent (object-subscription events) or Elgg\\Notifications\\InstantNotificationEvent (instant/direct notifications)."
     }
   },
-  "6.x": {
+  "5.x": {
     "Elgg\\Upgrade\\Batch": {
       "was": "interface",
       "now": "abstract class",
       "illegal_keyword": "implements",
-      "fix": "Replace `implements Batch` with `extends \\Elgg\\Upgrade\\AsynchronousUpgrade` (for admin-run upgrades) or `extends \\Elgg\\Upgrade\\SystemUpgrade`. In 3.x-5.x Batch was an interface; in 6.x it became an abstract class, so `implements Batch` fatals on boot with 'cannot implement Elgg\\Upgrade\\Batch - it is not an interface'."
+      "fix": "Replace `implements Batch` with `extends \\Elgg\\Upgrade\\AsynchronousUpgrade` (for admin-run upgrades) or `extends \\Elgg\\Upgrade\\SystemUpgrade`. Batch was an interface in 3.x-4.x; core-verified via ReflectionClass on 2026-07-08, it is an abstract class ALREADY at 5.x (not first at 6.x as previously recorded), so `implements Batch` fatals on boot from 5.x with 'cannot implement Elgg\\Upgrade\\Batch - it is not an interface'."
     },
+    "Elgg\\Event": {
+      "was": "interface",
+      "now": "class",
+      "illegal_keyword": "implements",
+      "fix": "\\Elgg\\Event became a concrete class in 5.x (it was an interface in 4.x when it unified the hook/event callback types). A plugin that declares `implements \\Elgg\\Event` (valid in 4.x) fatals in 5.x with 'cannot implement Elgg\\Event - it is not an interface'. Type-hint `\\Elgg\\Event $event` on handlers instead; do not implement it."
+    }
+  },
+  "6.x": {
     "Elgg\\Hook": {
       "was": "class (in 5.x it extended \\Elgg\\Event)",
       "now": "removed entirely",
       "illegal_keyword": "use",
       "fix": "\\Elgg\\Hook was removed in 6.x (in 5.x it extended \\Elgg\\Event). Replace `use Elgg\\Hook;` -> `use Elgg\\Event;`, type-hint `\\Elgg\\Event $event` instead of `Hook $hook`, and `$hook->getValue()` / `$hook->getParam('k')` -> `$event->getValue()` / `$event->getParam('k')`. Rename any local `$event = $hook->getParam('event')` to `$notification_event` to avoid a collision with the renamed parameter."
+    }
+  },
+  "7.x": {
+    "ElggObject": {
+      "was": "class",
+      "now": "abstract class",
+      "illegal_keyword": "new",
+      "fix": "\\ElggObject became ABSTRACT in 7.x (core-verified via ReflectionClass on 2026-07-08: concrete class through 6.x, abstract at 7.x). `new \\ElggObject()` fatals with 'Cannot instantiate abstract class ElggObject'. Use `new \\ElggUndefinedObject()` for a generic object, or instantiate the concrete subtype class; then set `->subtype`."
     }
   }
 }
