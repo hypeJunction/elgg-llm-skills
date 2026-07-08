@@ -228,7 +228,19 @@ Whole-fleet release-lag is one root cause, not N bugs. Tag the fixes, then a sin
 ## Staging preview before cutover (real data, isolated)
 
 Stand up the migrated site beside the live one **before** DNS cutover, populated with
-real prod data, to eyeball it. Reusable patterns (see `bodyology/bin/preview-7x/`):
+real prod data, to eyeball it. Rehearse on ANONYMIZED prod data, not raw PII:
+
+- **Build an anonymized seed** with `bin/build-anon-seed.sh --dump <prod-2x.sql.gz>`.
+  It restores the dump in a throwaway mysql:5.7, applies
+  `references/anonymize-elgg2x.sql` (scrub PII, drop session/auth tables), and — the
+  load-bearing part — encodes three footguns that each silently broke a real
+  migration: (A) a blanket metastring scrub clobbers login flags (`validated`/`admin`/
+  `banned`) → uservalidationbyemail blocks EVERY user, so those names are excluded;
+  (B) `password_hash` is reset to a known `dev` bcrypt so users can actually log in;
+  (C) `__site_secret__` is re-seeded because Elgg 3.x+ BootService HARD-THROWS on an
+  empty secret, killing every chain tier past 2.x. The script fails if (A)/(B) trip.
+  Log in on the preview as any `user_<guid>` / password `dev`. Copy the SQL and edit
+  it for site-specific tables/plugins — but keep the login + site-secret sections.
 
 - **The migration chain migrates the DB only.** The Elgg dataroot (avatars/uploads)
   is GUID-bucketed and version-stable across 2.x→7.x, so deploy the **prod dataroot
