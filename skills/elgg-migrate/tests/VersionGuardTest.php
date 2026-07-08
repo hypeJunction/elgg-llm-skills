@@ -307,8 +307,9 @@ final class VersionGuardTest extends TestCase
 
     public function testIncompletePatternsRespectsExplicitClaimedVersion(): void
     {
-        // Tell the guard to check this 4.x plugin for 6.x-leftover patterns
-        // (none defined yet) — must not blow up, must return [].
+        // Tell the guard to check this 4.x plugin for 6.x-leftover patterns.
+        // The 5.x->6.x step is defined, but this fixture makes no removed-6.x
+        // function calls — so the leftover scan must return [].
         $dir = $this->makePluginDir([
             'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
         ]);
@@ -405,6 +406,86 @@ final class VersionGuardTest extends TestCase
 
         try {
             $this->assertEmpty($this->guard->detectIncompletePatterns($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    // --- Leftover detectors for the previously-blind steps (doai1) ---
+
+    public function testIncompletePatternsFlagsRemovedIn3xFunctionCall(): void
+    {
+        // 2.x->3.x: a call to a function dropped with the metastrings table.
+        $dir = $this->makePluginDir([
+            'start.php' => "<?php\nreturn function () {};",
+            'classes/Foo/Sort.php' => "<?php\nnamespace Foo;\nclass Sort {\n  public function order() { return elgg_get_metastring_id('x'); }\n}\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir, '3.x');
+            $ids = array_map(fn ($f) => $f->patternId, $findings);
+            $this->assertContains('removed-function-call-3x', $ids);
+            $hit = array_values(array_filter($findings, fn ($f) => $f->patternId === 'removed-function-call-3x'))[0];
+            $this->assertSame('2.x', $hit->sourceVersion);
+            $this->assertSame('3.x', $hit->claimedVersion);
+            $this->assertStringContainsString('elgg_get_metastring_id', $hit->description);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsFlagsRemovedIn6xFunctionCall(): void
+    {
+        // 5.x->6.x: procedural plugin-hook API removed in 6.x.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'classes/Foo/Hooks.php' => "<?php\nnamespace Foo;\nclass Hooks {\n  public function reg() { elgg_register_plugin_hook_handler('a', 'b', 'c'); }\n}\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir, '6.x');
+            $ids = array_map(fn ($f) => $f->patternId, $findings);
+            $this->assertContains('removed-function-call-6x', $ids);
+            $hit = array_values(array_filter($findings, fn ($f) => $f->patternId === 'removed-function-call-6x'))[0];
+            $this->assertSame('5.x', $hit->sourceVersion);
+            $this->assertStringContainsString('elgg_register_plugin_hook_handler', $hit->description);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsFlagsRemovedIn7xFunctionCall(): void
+    {
+        // 6.x->7.x: a global removed in 7.x still called after a claimed 7.x migration.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'classes/Foo/Access.php' => "<?php\nnamespace Foo;\nclass Access {\n  public function can() { return elgg_is_admin_user(elgg_get_logged_in_user_guid()); }\n}\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir, '7.x');
+            $ids = array_map(fn ($f) => $f->patternId, $findings);
+            $this->assertContains('removed-function-call-7x', $ids);
+            $hit = array_values(array_filter($findings, fn ($f) => $f->patternId === 'removed-function-call-7x'))[0];
+            $this->assertSame('6.x', $hit->sourceVersion);
+            $this->assertStringContainsString('elgg_is_admin_user', $hit->description);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testIncompletePatternsSilentOnMigrated7xCode(): void
+    {
+        // The replacements must NOT trip the 7.x leftover detector.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'classes/Foo/Access.php' => "<?php\nnamespace Foo;\nclass Access {\n  public function can() { return elgg_get_session()->isAdmin(); }\n}\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir, '7.x');
+            $ids = array_map(fn ($f) => $f->patternId, $findings);
+            $this->assertNotContains('removed-function-call-7x', $ids);
         } finally {
             $this->removeDir($dir);
         }

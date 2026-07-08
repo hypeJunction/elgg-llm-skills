@@ -157,6 +157,14 @@ final class VersionGuard
     {
         $key = "{$sourceVersion}->{$claimedVersion}";
         $patterns = [
+            '2.x->3.x' => [
+                [
+                    'id' => 'removed-function-call-3x',
+                    'detector' => 'removedFunctionForTarget',
+                    'target' => '3.x',
+                    'fix' => 'Function was removed in Elgg 3.x — see references/removed-functions.json for the replacement (metastrings query API dropped with the metastrings table).',
+                ],
+            ],
             '3.x->4.x' => [
                 [
                     'id' => 'old-hook-signature',
@@ -186,7 +194,22 @@ final class VersionGuard
                     'fix' => 'Function was removed in Elgg 5.x — see the suggested replacement.',
                 ],
             ],
-            // Add 5.x->6.x, 6.x->7.x as we encounter them.
+            '5.x->6.x' => [
+                [
+                    'id' => 'removed-function-call-6x',
+                    'detector' => 'removedFunctionForTarget',
+                    'target' => '6.x',
+                    'fix' => 'Function was removed in Elgg 6.x — see references/removed-functions.json (plugin-hook procedural API + register_error/system_message/forward family replaced by event equivalents).',
+                ],
+            ],
+            '6.x->7.x' => [
+                [
+                    'id' => 'removed-function-call-7x',
+                    'detector' => 'removedFunctionForTarget',
+                    'target' => '7.x',
+                    'fix' => 'Function was removed in Elgg 7.x — see references/removed-functions.json for the replacement.',
+                ],
+            ],
         ];
         return $patterns[$key] ?? [];
     }
@@ -393,6 +416,74 @@ final class VersionGuard
             ];
         }
         return $hits;
+    }
+
+    /**
+     * Generic, data-driven removed-function detector. Reads the target major's
+     * block from references/removed-functions.json (the single source of truth
+     * shared with PostMigrationVerifier) so a step's leftover check needs only
+     * a manifest entry, not a hand-maintained constant table. Per-major (not
+     * cumulative): flags calls to functions removed AT $pattern['target'],
+     * matching the semantics of the version-specific detectors above.
+     *
+     * @param array<Node\Stmt> $ast
+     * @param array{target?:string} $pattern
+     * @return array<int, array{line:int, description:string}>
+     */
+    private function find_removedFunctionForTarget(array $ast, array $pattern): array
+    {
+        $target = $pattern['target'] ?? '';
+        $removed = self::removedFunctionsForMajor($target);
+        if (empty($removed)) {
+            return [];
+        }
+
+        $finder = new NodeFinder();
+        $hits = [];
+        foreach ($finder->findInstanceOf($ast, Node\Expr\FuncCall::class) as $call) {
+            assert($call instanceof Node\Expr\FuncCall);
+            if (!$call->name instanceof Node\Name) continue;
+            $name = $call->name->toString();
+            if (!isset($removed[$name])) continue;
+            $hits[] = [
+                'line' => $call->getStartLine(),
+                'description' => sprintf("Call to '%s()' — removed in Elgg %s. Use: %s", $name, $target, $removed[$name]),
+            ];
+        }
+        return $hits;
+    }
+
+    /**
+     * Load exactly one major's removed-function map from
+     * references/removed-functions.json (e.g. '7.x' → its block only). Bare
+     * constants (no parens) present in the JSON for documentation are skipped —
+     * they are not function calls.
+     *
+     * @return array<string, string>
+     */
+    private static function removedFunctionsForMajor(string $version): array
+    {
+        $path = __DIR__ . '/../references/removed-functions.json';
+        if (!is_file($path)) {
+            return [];
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+        if (!is_array($data) || !isset($data[$version]) || !is_array($data[$version])) {
+            return [];
+        }
+        $map = [];
+        foreach ($data[$version] as $fn => $replacement) {
+            // A bare constant (documented for completeness) has no call shape.
+            if (preg_match('/^[A-Z][A-Z0-9_]+$/', (string) $fn)) {
+                continue;
+            }
+            // Static/instance method forms (Class::method) aren't FuncCall nodes.
+            if (str_contains((string) $fn, '::')) {
+                continue;
+            }
+            $map[$fn] = (string) $replacement;
+        }
+        return $map;
     }
 
     /**
