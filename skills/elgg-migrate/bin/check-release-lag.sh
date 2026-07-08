@@ -20,13 +20,15 @@
 # Env fallbacks:
 #   ELGG_PLUGINS_DIR      plugins source dir (if arg omitted)
 #   ELGG_MIGRATE_BRANCH   migration branch to compare against (default migrate/elgg-7.x)
-#   ELGG_VENDOR_PREFIX    package-name prefix to check (default hypejunction/)
+#   ELGG_VENDOR_PREFIX    package-name prefix to check (default: empty = all
+#                         packages; those without a matching source repo in the
+#                         plugins dir are skipped. Narrow with --vendor-prefix.)
 # Exit: 0 = every pin is current, 1 = release-lag/float found, 2 = usage error.
 set -u
 
 QUIET=0
 BRANCH="${ELGG_MIGRATE_BRANCH:-migrate/elgg-7.x}"
-PREFIX="${ELGG_VENDOR_PREFIX:-hypejunction/}"
+PREFIX="${ELGG_VENDOR_PREFIX:-}"
 LOCK=""
 PLUGINS="${ELGG_PLUGINS_DIR:-}"
 
