@@ -63,6 +63,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 | `references/post-migration-documentation.md` | When writing ARCHITECTURE.md — template |
 | `references/git-hygiene.md` | Before every commit — what belongs (and doesn't) in plugin and site repos |
 | `references/migration-lessons.md` | **Once before any multi-version migration** — the synthesis of past failures: why "renders 200" ≠ done, the bug taxonomy (each class → signature → fix → gate), fix-at-origin/forward-port, and the real definition of done |
+| `references/migration-failure-catalog.md` | **The source of truth for `--verify`** — every failure CLASS this project has hit, per version step, reduced to a static detection signature + fix + test-to-write + `gate:` status (YES = caught by `--verify`; rule = an AST transform; NO = no static gate yet). Consult it to interpret a `--verify` finding and to know which classes are NOT yet auto-caught (still need a manual/render check) |
 
 **Linear knowledge rule**: When migrating from version N to N+1, only read the sections of these docs relevant to N and N+1. Do NOT read sections about versions beyond N+1 — that knowledge will leak into your migration and cause version drift.
 
@@ -270,7 +271,7 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 |------|---------|
 | `--dry-run` | Analyze only, don't modify files |
 | `--report` | Show LLM instructions for manual rules |
-| `--verify` | Run post-migration version boundary check (catches future-version API leakage) |
+| `--verify` | Run the failure-catalog gate: version-boundary checks PLUS ~29 concrete FC-* failure-class detectors (removed functions/constants, changed class contracts, hook-signature leftovers, ESM/jQuery/i18n residue, DBAL param bugs, …) from `references/migration-failure-catalog.md`. Treat a non-empty report as your ready-made worklist, not a prompt to go hunting. |
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
 | `--audit` | Run `composer audit` for dependency CVEs |
 | `--no-guard` | Skip version guard validation (not recommended) |
@@ -282,7 +283,7 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | 0 | Success |
 | 1 | Usage error |
 | 2 | Version mismatch (plugin version doesn't match manifest "from") |
-| 3 | Post-migration verification failed (future-version APIs detected) |
+| 3 | Post-migration verification failed (future-version APIs OR a catalogued FC-* failure class detected) |
 | 4 | Security sweep found critical issues |
 | 5 | Dependency audit found critical/high CVEs |
 
@@ -665,10 +666,16 @@ Commit the automated pass separately so it's reviewable in isolation:
 #### Apply LLM-guided fixes
 
 Not every breaking change is AST-automatable. `--dry-run --report` prints the
-LLM instructions for the remaining cases. Work through them, commit each
-logical group separately so a reviewer can follow the diff. When you hit the
-same hand-fix across multiple plugins, that's a signal the rule should be
-automated — note it for later (see the learning loop).
+LLM instructions for the remaining cases. Before hand-searching for anything,
+run `--verify`: its FC-* findings (from `references/migration-failure-catalog.md`)
+ARE your worklist for the removed-symbol / contract / residue classes — do not
+re-discover them by grep. Work through the report plus any `--verify` findings,
+commit each logical group separately so a reviewer can follow the diff. When
+you hit the same hand-fix across multiple plugins, that's a signal the rule
+should be automated — file it against the learning loop (add a curated rename
+to `references/removed-function-renames.json`, a detector to the failure
+catalog, or an AST rule) rather than just "noting it for later", so the next
+plugin gets it for free.
 
 #### Syntax check
 
@@ -1048,6 +1055,7 @@ Pulled out of this file to keep it scannable. Load when you need it:
 |------|--------------|
 | `references/breaking-changes.md` | Before starting a version step — version-specific breaking changes, plugin architecture evolution (2.x through 6.x), per-step migration checklists |
 | `references/common-mistakes.md` | When activation fails or a gate regresses — lookup table of 60+ observed mistakes and their fixes |
+| `references/migration-failure-catalog.md` | When a `--verify` finding needs interpretation, or to see which failure classes have `gate: NO` (not yet auto-caught) — per-step catalog of every failure class → detection signature → fix → gate status |
 | `references/elgg-plugin-php-generation.md` | During 3→4 migrations — how the `GenerateElggPluginPhp` rule works, what it extracts automatically vs what needs a Bootstrap class, correct handler signatures |
 | `references/agent-failure-modes.md` | At the start of every session — cost of failure, escalation criteria, agent failure modes, recovery playbook |
 | `references/git-hygiene.md` | Before every commit — ready-to-paste `.gitignore` for plugins and Elgg sites, plus migration-specific pitfalls that put junk in history |
