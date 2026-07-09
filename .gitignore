@@ -27,6 +27,20 @@ skills/elgg-migrate/tmp/
 # contains the target site's titles/plugin names — keep out of the agnostic repo)
 skills/elgg-migrate/baselines/
 
+# Golden-master / parity crawl scratch (baseline-golden-master.sh + verify-parity.sh):
+# regenerable route-status TSV snapshots and raw anonymized page-dump HTML captured
+# while crawling a live target site. Site-specific + regenerable — never commit, and
+# never let "git add ." sweep them in. Covers baseline dirs written at any repo depth.
+baselines/
+golden-routes-*.tsv
+parity-whitelist.tsv
+anon_at.html
+anon.html
+auth.html
+/*_at.html
+*-crawl.html
+*-golden-master.html
+
 # Session screenshots (design/preview QC evidence — local scratch)
 /*.jpeg
 /*.png
