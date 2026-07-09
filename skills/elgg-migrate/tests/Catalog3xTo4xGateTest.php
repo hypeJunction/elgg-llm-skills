@@ -16,7 +16,10 @@ use PHPUnit\Framework\TestCase;
  *
  * Only the catalog classes handled by a static gate are covered here. The rows
  * marked gate: rule (FC-3x4x-10/14/15) are AST rules exercised by the Rules/
- * suite; the rows marked gate: NO (FC-3x4x-11/12/13) have no static gate yet.
+ * suite. FC-3x4x-12 (legacy handler signature) and FC-3x4x-13 (install/mysql.sql
+ * not auto-run) now have static heuristic gates exercised by FailureCatalogGateTest.
+ * Only FC-3x4x-11 (camelCase→lowercase settings strand) has no static gate — it is
+ * a DB-state/data failure, verifiable only by an integration round-trip.
  */
 final class Catalog3xTo4xGateTest extends TestCase
 {
