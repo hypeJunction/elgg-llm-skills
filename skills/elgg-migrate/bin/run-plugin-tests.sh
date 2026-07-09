@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# run-plugin-tests.sh — run a migrated plugin's authored PHPUnit suite inside
+# the running Elgg 7 container, against real Elgg core, and exit non-zero on
+# any test failure/error.
+#
+# Usage:
+#   run-plugin-tests.sh <plugin-id> [--suite=unit|integration|all]
+#
+# Options:
+#   --suite=unit         run the unit tests only (default). Static, no DB writes.
+#   --suite=integration  run the integration tests. These extend
+#                        Elgg\IntegrationTestCase and WRITE real entities to the
+#                        DB at $ELGG_DB_PREFIX — point ELGG_DB_PREFIX/host at a
+#                        DISPOSABLE database, never the live site prefix.
+#   --suite=all          run whichever of unit/integration dirs are populated.
+#
+# The plugin's populated test directory is targeted explicitly (tests/Unit or
+# tests/phpunit/unit for unit; tests/Integration or tests/phpunit/integration for
+# integration), so testsuite-name/casing drift between authored layouts is moot.
+#
+# Path resolution (NO absolute /home/<user> paths are baked in — this ships as a
+# vendorable skill). Roots are read from env with sensible fallbacks:
+#   ELGG_MIGRATE_PLUGINS  workspace holding <plugin-id>/ source dirs.
+#                         Falls back to ~/.config/elgg-migrate/config.json
+#                         (plugins_source), same contract as discover-plugins.sh.
+#   ELGG_APP_CONTAINER    running Elgg 7 container name. Default: bodyology-forum-app-1
+#   ELGG_DB_PREFIX        DB table prefix for integration tests. Default: elgg_
+#
+# Why a scratch copy: the container's /var/www/html/mod/<plugin> is a baked,
+# possibly-stale snapshot that the LIVE site serves. We must not mutate it (other
+# agents probe the running site). Instead we stage the *current* workspace source
+# at /var/www/html/mod-test/<plugin> — a sibling that is still exactly three
+# directories below /var/www/html, so the plugin's tests/bootstrap.php resolves
+# $elggRoot to /var/www/html and loads real Elgg core. mod-test/ is NOT under
+# mod/, so Elgg never scans it and the live site is untouched. It is removed on
+# exit.
+#
+# phpunit: obtained ONCE as a pinned 9.6 PHAR at /usr/local/lib/phpunit-9.phar
+# inside the container (downloaded if absent). The site composer.json is never
+# touched. PHPUnit 9's flag for a disposable result cache is --do-not-cache-result
+# (the historical --cache-result=false spelling is rejected by 9.x); it makes
+# concurrent runs of different plugins safe against .phpunit.result.cache races.
+#
+# Concurrency: each plugin stages into its own mod-test/<plugin-id>, so distinct
+# plugins can run in parallel. The PHAR is read-only once present.
+#
+# Exit codes: 0 = all tests passed; non-zero = phpunit reported failures/errors,
+# or a setup problem (missing plugin, no tests, container down).
+
+set -uo pipefail
+
+PHAR_URL="https://phar.phpunit.de/phpunit-9.phar"
+PHAR_PATH="/usr/local/lib/phpunit-9.phar"
+
+APP_CONTAINER="${ELGG_APP_CONTAINER:-bodyology-forum-app-1}"
+DB_PREFIX="${ELGG_DB_PREFIX:-elgg_}"
+
+usage() {
+    sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# --- args -----------------------------------------------------------------
+PLUGIN_ID=""
+SUITE="unit"
+for arg in "$@"; do
+    case "$arg" in
+        --suite=*) SUITE="${arg#--suite=}" ;;
+        -h|--help) usage; exit 0 ;;
+        --*)       echo "unknown option: $arg" >&2; exit 2 ;;
+        *)
+            if [ -z "$PLUGIN_ID" ]; then
+                PLUGIN_ID="$arg"
+            else
+                echo "unexpected argument: $arg" >&2; exit 2
+            fi
+            ;;
+    esac
+done
+
+if [ -z "$PLUGIN_ID" ]; then
+    echo "ERROR: plugin-id required." >&2
+    usage
+    exit 2
+fi
+
+case "$SUITE" in
+    unit|integration|all) : ;;
+    *) echo "ERROR: --suite must be unit|integration|all (got '$SUITE')" >&2; exit 2 ;;
+esac
+
+# --- resolve plugin source root -------------------------------------------
+resolve_plugins_root() {
+    if [ -n "${ELGG_MIGRATE_PLUGINS:-}" ]; then
+        echo "$ELGG_MIGRATE_PLUGINS"
+        return
+    fi
+    local cfg="${XDG_CONFIG_HOME:-$HOME/.config}/elgg-migrate/config.json"
+    if [ -f "$cfg" ]; then
+        local cached
+        cached=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("plugins_source",""))' "$cfg" 2>/dev/null || true)
+        if [ -n "$cached" ]; then
+            echo "$cached"
+            return
+        fi
+    fi
+    echo "ERROR: plugin workspace unknown. Set \$ELGG_MIGRATE_PLUGINS or populate $cfg (plugins_source)." >&2
+    exit 1
+}
+
+PLUGINS_ROOT="$(resolve_plugins_root)"
+PLUGIN_SRC="$PLUGINS_ROOT/$PLUGIN_ID"
+
+if [ ! -d "$PLUGIN_SRC" ]; then
+    echo "ERROR: plugin source not found: $PLUGIN_SRC" >&2
+    exit 1
+fi
+if [ ! -d "$PLUGIN_SRC/tests" ]; then
+    echo "ERROR: $PLUGIN_ID has no tests/ directory — nothing to run." >&2
+    exit 1
+fi
+
+# Two authored layouts exist:
+#   old  : phpunit.xml at plugin root; suites in tests/Unit, tests/Integration
+#   new  : tests/phpunit.xml; suites in tests/phpunit/unit, tests/phpunit/integration
+# (some plugins carry a vestigial second config, so we do NOT trust suite names).
+# We pick the config whose bootstrap loads Elgg core, then point phpunit at the
+# real test *directory* explicitly — sidestepping suite-name/casing drift.
+if [ -f "$PLUGIN_SRC/tests/phpunit.xml" ]; then
+    CONFIG_SUBDIR="tests"
+elif [ -f "$PLUGIN_SRC/phpunit.xml" ]; then
+    CONFIG_SUBDIR="."
+else
+    echo "ERROR: $PLUGIN_ID has no phpunit.xml (root or tests/) — nothing to run." >&2
+    exit 1
+fi
+
+# Locate the populated unit / integration directories (relative to plugin root).
+# First existing, *Test.php-bearing candidate wins.
+find_suite_dir() {
+    # $@ = candidate dirs relative to plugin root
+    local c
+    for c in "$@"; do
+        if [ -d "$PLUGIN_SRC/$c" ] && \
+           [ -n "$(find "$PLUGIN_SRC/$c" -name '*Test.php' -print -quit 2>/dev/null)" ]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+UNIT_DIR="$(find_suite_dir tests/Unit tests/phpunit/unit || true)"
+INTEGRATION_DIR="$(find_suite_dir tests/Integration tests/phpunit/integration || true)"
+
+# Express a plugin-root-relative dir relative to the phpunit cwd (CONFIG_SUBDIR).
+rel_to_cfg() {
+    local d="$1"
+    if [ "$CONFIG_SUBDIR" = "tests" ]; then
+        printf '%s' "${d#tests/}"
+    else
+        printf '%s' "$d"
+    fi
+}
+
+TARGET_DIRS=()
+case "$SUITE" in
+    unit)
+        [ -n "$UNIT_DIR" ] || { echo "ERROR: $PLUGIN_ID has no populated unit test dir." >&2; exit 1; }
+        TARGET_DIRS+=("$(rel_to_cfg "$UNIT_DIR")")
+        ;;
+    integration)
+        [ -n "$INTEGRATION_DIR" ] || { echo "ERROR: $PLUGIN_ID has no populated integration test dir." >&2; exit 1; }
+        TARGET_DIRS+=("$(rel_to_cfg "$INTEGRATION_DIR")")
+        ;;
+    all)
+        [ -n "$UNIT_DIR" ]        && TARGET_DIRS+=("$(rel_to_cfg "$UNIT_DIR")")
+        [ -n "$INTEGRATION_DIR" ] && TARGET_DIRS+=("$(rel_to_cfg "$INTEGRATION_DIR")")
+        [ ${#TARGET_DIRS[@]} -gt 0 ] || { echo "ERROR: $PLUGIN_ID has no populated test dirs." >&2; exit 1; }
+        ;;
+esac
+
+# --- container reachable? -------------------------------------------------
+if ! docker exec "$APP_CONTAINER" true 2>/dev/null; then
+    echo "ERROR: container '$APP_CONTAINER' is not running/execable." >&2
+    exit 1
+fi
+
+# --- obtain phpunit PHAR once (never touch site composer.json) ------------
+docker exec "$APP_CONTAINER" sh -c '
+    set -e
+    if [ ! -s "'"$PHAR_PATH"'" ]; then
+        tmp="'"$PHAR_PATH"'.tmp.$$"
+        curl -sSL -o "$tmp" "'"$PHAR_URL"'"
+        chmod +x "$tmp"
+        mv -f "$tmp" "'"$PHAR_PATH"'"
+    fi
+' || { echo "ERROR: could not obtain phpunit PHAR in container." >&2; exit 1; }
+
+# --- stage current source into an isolated, non-mod scratch dir -----------
+SCRATCH="/var/www/html/mod-test/$PLUGIN_ID"
+cleanup() {
+    # SCRATCH lives under mod-test/, NEVER under mod/ — safe to remove and it is
+    # container-local (not bind-mounted). Iron rule: never delete under mod/.
+    docker exec "$APP_CONTAINER" rm -rf "$SCRATCH" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+docker exec "$APP_CONTAINER" sh -c "rm -rf '$SCRATCH' && mkdir -p '$SCRATCH'" \
+    || { echo "ERROR: could not create scratch dir $SCRATCH" >&2; exit 1; }
+
+# Ship only source + tests (skip .git/vendor/node_modules) so the tests scan the
+# real plugin code, and stream it straight into the container.
+tar -C "$PLUGIN_SRC" \
+    --exclude=.git --exclude=vendor --exclude=node_modules \
+    -cf - . \
+  | docker exec -i "$APP_CONTAINER" tar -C "$SCRATCH" -xf - \
+  || { echo "ERROR: failed to stage $PLUGIN_ID source into container." >&2; exit 1; }
+
+# --- run -------------------------------------------------------------------
+if [ "$CONFIG_SUBDIR" = "tests" ]; then
+    RUN_DIR="$SCRATCH/tests"
+else
+    RUN_DIR="$SCRATCH"
+fi
+echo ">> $PLUGIN_ID  (suite=$SUITE, config=${CONFIG_SUBDIR}/phpunit.xml, dirs=${TARGET_DIRS[*]})"
+docker exec \
+    -e ELGG_DB_PREFIX="$DB_PREFIX" \
+    -w "$RUN_DIR" \
+    "$APP_CONTAINER" \
+    php "$PHAR_PATH" -c phpunit.xml "${TARGET_DIRS[@]}" --do-not-cache-result
+STATUS=$?
+
+exit $STATUS
