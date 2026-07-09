@@ -154,6 +154,17 @@ final class SecuritySweep
             'severity' => 'warning',
             'category' => 'eval',
         ],
+        // FC-ALL-02: a raw SQL REPLACE() in an UPDATE over stored data corrupts
+        // PHP-serialized s:<len>: length prefixes (the byte count no longer matches
+        // the string). Migrating serialized blobs (or serialize()->json_encode())
+        // MUST go per-row (unserialize -> str_replace -> serialize) via DBAL, or
+        // ship an Elgg\Upgrade\Batch — never a blanket SQL REPLACE.
+        'serialized-sql-replace' => [
+            'pattern' => '/UPDATE\b[^;]*\bREPLACE\s*\(/i',
+            'message' => 'Raw SQL REPLACE() over stored data corrupts PHP-serialized s:<len>: length prefixes. Migrate per-row (unserialize -> str_replace -> serialize) via DBAL, or ship an Elgg\\Upgrade\\Batch.',
+            'severity' => 'warning',
+            'category' => 'data-migration',
+        ],
     ];
 
     /**

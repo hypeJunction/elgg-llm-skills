@@ -6,6 +6,8 @@ namespace ElggMigrate;
 
 use PhpParser\Node;
 use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\CloningVisitor;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter;
 
@@ -32,6 +34,10 @@ abstract class AbstractRule implements MigrationRule
     /**
      * Parse PHP code into an AST, returning null on failure.
      *
+     * Use this for analyze passes that only inspect code. For apply passes
+     * that mutate and rewrite the file, use parsePreserving() so the
+     * original formatting of untouched regions survives.
+     *
      * @return array<Node\Stmt>|null
      */
     protected function parse(string $code): ?array
@@ -44,13 +50,47 @@ abstract class AbstractRule implements MigrationRule
     }
 
     /**
-     * Pretty-print an AST back to PHP code.
+     * Parse a file's contents for format-preserving editing.
      *
-     * @param array<Node\Stmt> $ast
+     * Returns the original AST (for the printer's diff), a deep clone
+     * (to mutate), and the original token stream. Pass all three to
+     * printPreserving() after mutating the clone — unchanged regions
+     * round-trip byte-for-byte from the tokens.
+     *
+     * @return array{old: array<Node\Stmt>, new: array<Node\Stmt>, tokens: array<\PhpParser\Token>}|null
      */
-    protected function print(array $ast): string
+    protected function parsePreserving(string $code): ?array
     {
-        return $this->printer()->prettyPrintFile($ast);
+        $parser = $this->parser();
+        try {
+            $oldStmts = $parser->parse($code);
+        } catch (\Throwable) {
+            return null;
+        }
+        if ($oldStmts === null) {
+            return null;
+        }
+        $tokens = $parser->getTokens();
+
+        $cloneTraverser = new NodeTraverser();
+        $cloneTraverser->addVisitor(new CloningVisitor());
+        $newStmts = $cloneTraverser->traverse($oldStmts);
+
+        return ['old' => $oldStmts, 'new' => $newStmts, 'tokens' => $tokens];
+    }
+
+    /**
+     * Print a mutated AST while preserving the original formatting of
+     * untouched regions (whitespace, blank lines, comments, multi-line
+     * array layouts). Pair with parsePreserving().
+     *
+     * @param array<Node\Stmt> $newStmts mutated clone
+     * @param array<Node\Stmt> $oldStmts original AST returned by parsePreserving()
+     * @param array<\PhpParser\Token> $tokens original tokens returned by parsePreserving()
+     */
+    protected function printPreserving(array $newStmts, array $oldStmts, array $tokens): string
+    {
+        return $this->printer()->printFormatPreserving($newStmts, $oldStmts, $tokens);
     }
 
     /**

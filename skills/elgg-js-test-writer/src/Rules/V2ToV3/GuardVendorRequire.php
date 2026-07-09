@@ -79,10 +79,7 @@ final class GuardVendorRequire extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            $ast = $this->parse($code);
-            if ($ast === null) continue;
-
-            $result = $this->transformFile($ast, $code);
+            $result = $this->transformFile($code);
 
             if ($result['transformed']) {
                 file_put_contents($file, $result['code']);
@@ -187,15 +184,19 @@ final class GuardVendorRequire extends AbstractRule
     }
 
     /**
-     * @param array<Node\Stmt> $ast
      * @return array{transformed: bool, code: string, warnings: array<string>}
      */
-    private function transformFile(array $ast, string $originalCode): array
+    private function transformFile(string $originalCode): array
     {
         $warnings = [];
         $rule = $this;
 
-        // First pass: add parent attributes
+        $parsed = $this->parsePreserving($originalCode);
+        if ($parsed === null) {
+            return ['transformed' => false, 'code' => $originalCode, 'warnings' => $warnings];
+        }
+
+        // First pass: add parent attributes (attribute-only, no AST mutation)
         $parentTraverser = new NodeTraverser();
         $parentVisitor = new class extends NodeVisitorAbstract {
             /** @var array<Node> */
@@ -217,7 +218,7 @@ final class GuardVendorRequire extends AbstractRule
             }
         };
         $parentTraverser->addVisitor($parentVisitor);
-        $ast = $parentTraverser->traverse($ast);
+        $parentTraverser->traverse($parsed['new']);
 
         $traverser = new NodeTraverser();
         $visitor = new class($rule, $warnings) extends NodeVisitorAbstract {
@@ -269,13 +270,17 @@ final class GuardVendorRequire extends AbstractRule
         };
 
         $traverser->addVisitor($visitor);
-        $newAst = $traverser->traverse($ast);
+        $parsed['new'] = $traverser->traverse($parsed['new']);
 
         if (!$visitor->hasChanged()) {
             return ['transformed' => false, 'code' => $originalCode, 'warnings' => $warnings];
         }
 
-        return ['transformed' => true, 'code' => $this->print($newAst), 'warnings' => $warnings];
+        return [
+            'transformed' => true,
+            'code' => $this->printPreserving($parsed['new'], $parsed['old'], $parsed['tokens']),
+            'warnings' => $warnings,
+        ];
     }
 
     /**

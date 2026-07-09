@@ -4,7 +4,11 @@
 /**
  * Run automated migration rules on a plugin directory.
  *
- * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--report] [--no-guard] [--verify] [--security]
+ * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--report] [--no-guard] [--verify] [--security] [--no-tests]
+ *
+ * A TESTS-FIRST gate runs before any transform is applied (Iron Law 4): the plugin
+ * must ship a test suite (incl. MigrationRegressionTest) AND a passing baseline
+ * record, or migrate.php refuses with exit code 7. Waive with --no-tests (logged).
  *
  * Example:
  *   php bin/migrate.php rules/2x-to-3x/manifest.json tmp/hypeWall
@@ -18,6 +22,7 @@ use ElggMigrate\DependencyAudit;
 use ElggMigrate\PostMigrationVerifier;
 use ElggMigrate\RuleRunner;
 use ElggMigrate\SecuritySweep;
+use ElggMigrate\TestsFirstGate;
 use ElggMigrate\VersionGuard;
 
 $args = array_slice($argv, 1);
@@ -27,18 +32,49 @@ $noGuard = in_array('--no-guard', $args);
 $verify = in_array('--verify', $args);
 $security = in_array('--security', $args);
 $audit = in_array('--audit', $args);
+$checkOnly = in_array('--check', $args);
+$strictCompleteness = in_array('--strict-completeness', $args);
+
+// TESTS-FIRST gate (Iron Law 4). Defaults ON: no plugin code is mutated until a
+// regression safety net (test suite + captured baseline) is proven to exist.
+// `--require-tests` is the (redundant) explicit opt-in; `--no-tests` is the
+// escape hatch and is loudly logged.
+$noTests = in_array('--no-tests', $args);
+$requireTests = !$noTests; // ON unless explicitly waived
+
+// Optional override for where the baseline record lives (else auto-discovered).
+$baselineOverride = null;
+foreach ($args as $a) {
+    if (str_starts_with($a, '--baseline=')) {
+        $baselineOverride = substr($a, strlen('--baseline='));
+    }
+}
+
 $args = array_filter($args, fn($a) => !str_starts_with($a, '--'));
 $args = array_values($args);
 
 if (count($args) < 2) {
-    fwrite(STDERR, "Usage: php bin/migrate.php <manifest.json> <plugin-path> [--dry-run] [--report] [--no-guard] [--verify] [--security] [--audit]\n");
+    fwrite(STDERR, "Usage: php bin/migrate.php <manifest.json> <plugin-path> [flags]\n");
     fwrite(STDERR, "\nFlags:\n");
-    fwrite(STDERR, "  --dry-run    Analyze only, don't modify files\n");
-    fwrite(STDERR, "  --report     Show LLM instructions for manual rules\n");
-    fwrite(STDERR, "  --no-guard   Skip version guard (not recommended)\n");
-    fwrite(STDERR, "  --verify     Run post-migration version boundary check\n");
-    fwrite(STDERR, "  --security   Run security sweep (pattern-based) after migration\n");
-    fwrite(STDERR, "  --audit      Run composer audit for dependency CVEs\n");
+    fwrite(STDERR, "  --dry-run               Analyze only, don't modify files\n");
+    fwrite(STDERR, "  --check                 Only run the incomplete-migration check (scans for prior-version\n");
+    fwrite(STDERR, "                          patterns left over after a previous migration attempt). Exit 0 if\n");
+    fwrite(STDERR, "                          none; exit 6 if findings.\n");
+    fwrite(STDERR, "  --strict-completeness   After migration, fail if any source-version patterns remain.\n");
+    fwrite(STDERR, "                          Best paired with --verify.\n");
+    fwrite(STDERR, "  --report                Show LLM instructions for manual rules\n");
+    fwrite(STDERR, "  --no-guard              Skip the shape-based version guard. The deep completeness check\n");
+    fwrite(STDERR, "                          still runs and reports leftover patterns.\n");
+    fwrite(STDERR, "  --verify                Run post-migration version boundary check\n");
+    fwrite(STDERR, "  --security              Run security sweep (pattern-based) after migration\n");
+    fwrite(STDERR, "  --audit                 Run composer audit for dependency CVEs\n");
+    fwrite(STDERR, "  --require-tests         (default ON) Refuse to apply transforms unless the plugin\n");
+    fwrite(STDERR, "                          ships a test suite (incl. MigrationRegressionTest) AND a\n");
+    fwrite(STDERR, "                          passing baseline record exists. Exit 7 if missing.\n");
+    fwrite(STDERR, "  --no-tests              Escape hatch: skip the tests-first gate (logged loudly).\n");
+    fwrite(STDERR, "                          Unsafe — no RED→GREEN proof the migration preserved behavior.\n");
+    fwrite(STDERR, "  --baseline=<path>       Explicit path to the baseline JSON record (else auto-discovered\n");
+    fwrite(STDERR, "                          at tests/.migration-baseline.json or \$ELGG_MIGRATE_BASELINE).\n");
     exit(1);
 }
 
@@ -60,12 +96,43 @@ $runner = new RuleRunner($versionGuard);
 
 echo "=== Migration: {$manifestPath} → {$pluginPath} ===\n\n";
 
+$guard = new VersionGuard();
+$manifest = $runner->loadManifest($manifestPath);
+
+// --- COMPLETENESS CHECK (deep guard) ---
+// Always runs — independent of the shape-based version guard. Finds
+// prior-version code patterns inside a plugin whose file shape already
+// looks done. Shape-only detection misses incomplete migrations
+// (start.php removed but 3.x hook signatures still in place).
+echo "--- COMPLETENESS CHECK ---\n";
+try {
+    $detected = $guard->detectVersion($pluginPath);
+    echo "Detected plugin shape: {$detected}\n";
+    $gaps = $guard->detectIncompletePatterns($pluginPath, $detected);
+    if (empty($gaps)) {
+        echo "✓ No prior-version code patterns found\n\n";
+    } else {
+        echo "⚠ Found " . count($gaps) . " prior-version pattern(s) — migration is incomplete:\n";
+        foreach ($gaps as $g) {
+            echo "  {$g->file}:{$g->line}  [{$g->patternId}]  {$g->description}\n";
+            echo "    → {$g->fix}\n";
+        }
+        echo "\n";
+    }
+} catch (\RuntimeException $e) {
+    echo "  (couldn't detect plugin shape — {$e->getMessage()})\n\n";
+    $gaps = [];
+    $detected = null;
+}
+
+if ($checkOnly) {
+    // --check mode stops here. Exit 0 if clean, 6 if leftovers found.
+    exit(empty($gaps) ? 0 : 6);
+}
+
 // Version guard check (validates AND prints)
 if (!$noGuard) {
     try {
-        $manifest = $runner->loadManifest($manifestPath);
-        $guard = new VersionGuard();
-        $detected = $guard->detectVersion($pluginPath);
         echo "--- VERSION CHECK ---\n";
         echo "Detected plugin version: {$detected}\n";
         echo "Manifest: {$manifest['from']} → {$manifest['to']}\n";
@@ -73,12 +140,29 @@ if (!$noGuard) {
         $guard->validate($pluginPath, $manifest);
         echo "✓ Version match confirmed\n\n";
     } catch (\ElggMigrate\VersionMismatchException $e) {
-        fwrite(STDERR, "\n✗ VERSION MISMATCH\n");
-        fwrite(STDERR, "  {$e->getMessage()}\n");
-        fwrite(STDERR, "\n  Detected: {$e->detectedVersion}\n");
-        fwrite(STDERR, "  Expected: {$e->expectedVersion}\n");
-        fwrite(STDERR, "\n  Use --no-guard to skip this check (not recommended).\n");
-        exit(2);
+        // If the shape is later than expected BUT completeness check found
+        // patterns matching the manifest's source version, this is exactly
+        // the "incomplete migration" case — proceed with a clear warning
+        // rather than refuse. Saves users from blindly --no-guard'ing.
+        $isLaterShapeWithSourceLeftovers = $e->detectedVersion > $e->expectedVersion
+            && !empty($gaps)
+            && $gaps[0]->sourceVersion === $e->expectedVersion;
+
+        if ($isLaterShapeWithSourceLeftovers) {
+            echo "⚠ Shape says {$e->detectedVersion} but content has {$e->expectedVersion} leftovers.\n";
+            echo "  Proceeding with {$e->expectedVersion}→{$manifest['to']} migration to clean up.\n\n";
+            // RuleRunner's internal applyAll/analyzeAll will also throw the
+            // same VersionMismatch. Drop the guard from the runner so the
+            // cleanup migration actually runs.
+            $runner = new RuleRunner(null);
+        } else {
+            fwrite(STDERR, "\n✗ VERSION MISMATCH\n");
+            fwrite(STDERR, "  {$e->getMessage()}\n");
+            fwrite(STDERR, "\n  Detected: {$e->detectedVersion}\n");
+            fwrite(STDERR, "  Expected: {$e->expectedVersion}\n");
+            fwrite(STDERR, "\n  Use --no-guard to skip this check (not recommended).\n");
+            exit(2);
+        }
     } catch (\RuntimeException $e) {
         fwrite(STDERR, "\n✗ VERSION DETECTION FAILED\n");
         fwrite(STDERR, "  {$e->getMessage()}\n");
@@ -125,22 +209,47 @@ if (!empty($llmInstructions)) {
 if ($dryRun) {
     echo "[DRY RUN] No files modified.\n";
 
-    // Still run verification, security, and audit in dry-run mode (read-only)
+    // Still run verification, security, and audit in dry-run mode (read-only).
+    // These gates must propagate their exit codes (3/4/5) even in dry-run —
+    // the documented "Verify only" workflow is `--dry-run --verify`, and a gate
+    // that reports violations but exits 0 is silently non-blocking in CI.
+    $exitCode = 0;
     if ($verify || $security || $audit) {
         echo "\n";
     }
     if ($verify) {
         $manifest = $runner->loadManifest($manifestPath);
-        runVerification($pluginPath, $manifest['to']);
+        if (!runVerification($pluginPath, $manifest['to'])) {
+            $exitCode = 3;
+        }
     }
     if ($security) {
-        runSecuritySweep($pluginPath);
+        if (!runSecuritySweep($pluginPath)) {
+            $exitCode = max($exitCode, 4);
+        }
     }
     if ($audit) {
-        runDependencyAudit($pluginPath);
+        if (!runDependencyAudit($pluginPath)) {
+            $exitCode = max($exitCode, 5);
+        }
     }
 
-    exit(0);
+    exit($exitCode);
+}
+
+// --- TESTS-FIRST GATE (Iron Law 4) ---
+// Refuse to MUTATE plugin code until a regression safety net is proven to exist:
+// (1) a plugin test suite incl. MigrationRegressionTest, and (2) a captured,
+// PASSING baseline run against the CURRENT (pre-migration) code. This is the only
+// thing that makes every downstream gate more than theater — without a known-good
+// baseline you cannot tell whether the migration broke behavior or whether it was
+// already broken. Only runs on the real apply path (dry-run/--check exited above).
+if ($requireTests) {
+    if (!TestsFirstGate::runTestsFirstGate($pluginPath, $manifest, $baselineOverride)) {
+        exit(7);
+    }
+} else {
+    TestsFirstGate::logTestsBypass($pluginPath, $manifest);
 }
 
 // Apply phase
@@ -187,6 +296,35 @@ if ($report) {
 
 // Post-migration verification
 $exitCode = 0;
+
+// --- POST-MIGRATION COMPLETENESS GATE ---
+// After running rules, re-scan for prior-version leftovers. Surfaces any
+// patterns the rule set didn't catch — the gap that left hypeinbox half-
+// migrated on migrate/elgg-4.x. Always informational; only blocks when
+// --strict-completeness is set.
+if (!$dryRun) {
+    echo "\n--- POST-MIGRATION COMPLETENESS ---\n";
+    try {
+        $postDetected = $guard->detectVersion($pluginPath);
+        $postGaps = $guard->detectIncompletePatterns($pluginPath, $postDetected);
+        if (empty($postGaps)) {
+            echo "✓ No source-version patterns remaining\n";
+        } else {
+            echo "⚠ " . count($postGaps) . " source-version pattern(s) still present:\n";
+            foreach ($postGaps as $g) {
+                echo "  {$g->file}:{$g->line}  [{$g->patternId}]  {$g->description}\n";
+            }
+            if ($strictCompleteness) {
+                echo "\n✗ --strict-completeness: failing because leftover patterns remain.\n";
+                $exitCode = max($exitCode, 6);
+            } else {
+                echo "  (pass --strict-completeness to make this a hard fail)\n";
+            }
+        }
+    } catch (\RuntimeException) {
+        echo "  (skipped — plugin shape no longer detectable)\n";
+    }
+}
 
 if ($verify) {
     $manifest = $runner->loadManifest($manifestPath);

@@ -51,12 +51,28 @@
       "priority": 50
     },
     {
+      "id": "006a-notification-handler-renames-auto",
+      "name": "Auto-rewrite notification handler/event class FQNs",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\NotificationHandlerRenames",
+      "breaking_change": "The 8 exact 1:1 FQN renames in references/class-renames.json['7.x'] (Elgg\\Notifications\\*EventHandler → Elgg\\Notifications\\{Handlers,Events}\\*) are rewritten automatically. The 006 entry below still covers the accompanying API/signature changes (elgg_register_notification_event array→string $action) that a rename cannot fix.",
+      "priority": 59
+    },
+    {
       "id": "006-notification-handler-renames",
       "name": "Update notification handler class references",
       "automated": false,
       "llm_instructions": "Notification handler classes were moved and renamed in Elgg 7.x:\n\n**Handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateCommentEventHandler` | `Elgg\\Notifications\\Handlers\\CreateComment` |\n| `Elgg\\Notifications\\MakeAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\MakeAdminUser` |\n| `Elgg\\Notifications\\MentionsEventHandler` | `Elgg\\Notifications\\Handlers\\Mentions` |\n| `Elgg\\Notifications\\RemoveAdminUserEventHandler` | `Elgg\\Notifications\\Handlers\\RemoveAdminUser` |\n| `Elgg\\Notifications\\UnbanUserEventHandler` | `Elgg\\Notifications\\Handlers\\UnbanUser` |\n\n**Event handler classes:**\n| Old | New |\n|-----|-----|\n| `Elgg\\Notifications\\CreateContentEventHandler` | `Elgg\\Notifications\\Events\\CreateContent` |\n| `Elgg\\Notifications\\EnqueueEventHandler` | `Elgg\\Notifications\\Events\\Enqueue` |\n| `Elgg\\Notifications\\MentionsEnqueueEventHandler` | `Elgg\\Notifications\\Events\\MentionsEnqueue` |\n\n**API changes:**\n- `elgg_register_notification_event()` changed `array $actions` to `string $action` (singular)\n- `elgg_unregister_notification_event()` now requires a `$handler` parameter\n- Multiple notification handlers per action now supported\n\nSearch:\n```bash\ngrep -rn 'CreateCommentEventHandler\\|MakeAdminUserEventHandler\\|MentionsEventHandler\\|RemoveAdminUserEventHandler\\|UnbanUserEventHandler\\|CreateContentEventHandler\\|EnqueueEventHandler\\|MentionsEnqueueEventHandler' classes/ elgg-plugin.php --include='*.php'\ngrep -rn 'elgg_register_notification_event\\|elgg_unregister_notification_event' classes/ elgg-plugin.php --include='*.php'\n```",
       "breaking_change": "Notification handler classes moved to Handlers/Events subnamespaces, API signatures changed",
       "priority": 60
+    },
+    {
+      "id": "007a-form-action-renames-auto",
+      "name": "Auto-rewrite renamed form/action path string literals",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\FormActionRenames",
+      "breaking_change": "The renamed form/view/action PATH string literals in references/string-renames.json['7.x'] (blog/bookmarks/discussion save→edit, file upload→edit, admin/site/flush_cache→admin/site/cache/clear, members routes collection:user:user→:all and search:user:user→collection:user:user:search — including short names, forms/* and action/* full paths) are rewritten automatically via a whole-string-literal AST match (substrings/comments untouched), resolved longest-key-first so prefix-overlapping route names cannot be clobbered. Also handles the single 011 admin action rename and the 012 members route renames. The 007 entry below still covers view OVERRIDE FILE renames (views/default/forms/blog/save.php → edit.php), which are file moves, not string literals.",
+      "priority": 69
     },
     {
       "id": "007-form-action-renames",
@@ -102,7 +118,7 @@
       "id": "012-members-route-renames",
       "name": "Update members route names",
       "automated": false,
-      "llm_instructions": "Members routes were renamed:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nSearch:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```\n\nUpdate `elgg_generate_url()` calls and route references.",
+      "llm_instructions": "AUTO-APPLIED by rule 007a (FormActionRenames). These whole-string route literals are in references/string-renames.json['7.x'] and are rewritten by the data-driven AST match, resolved longest-key-first so the prefix overlap is safe:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nThe prefix overlap (`collection:user:user` is a prefix of `collection:user:user:all`) is handled correctly because matching is on a String_ node's ENTIRE value: `collection:user:user:all` never equals the key `collection:user:user`, so it is never clobbered, and the rewrite is idempotent. No manual action needed unless a route name is BUILT by string concatenation (e.g. `'collection:user:' . $x`), which the AST match cannot see — search for that case:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```",
       "breaking_change": "Members routes renamed: collection:user:user→:all, search:user:user→:search",
       "priority": 120
     },
@@ -177,6 +193,54 @@
       "llm_instructions": "Webservices changes in Elgg 7.x:\n\n- REST API responses include `Content-Disposition: attachment` header\n- Error responses return proper HTTP status codes (404, 403, 500) instead of 200\n- REST endpoint segments URL part changed\n\nIf your plugin provides or consumes web services:\n```bash\ngrep -rn 'webservices\\|rest_api\\|ws_expose\\|api_methods' classes/ elgg-plugin.php --include='*.php'\n```\n\nAPI clients that check HTTP status codes may need updating to handle new error codes.",
       "breaking_change": "REST API returns proper HTTP error codes, Content-Disposition header added",
       "priority": 210
+    },
+    {
+      "id": "022-reset-system-cache",
+      "name": "Replace elgg_reset_system_cache() with _elgg_services()->systemCache->clear()",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\ResetSystemCache",
+      "breaking_change": "elgg_reset_system_cache() removed in 7.x",
+      "priority": 220
+    },
+    {
+      "id": "023-composer-stability",
+      "name": "Add minimum-stability:dev + prefer-stable:true to composer.json (asset-packagist only when bower/npm-asset deps exist)",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\ComposerStabilitySettings",
+      "breaking_change": "Elgg 7.x requires specific composer.json stability settings",
+      "priority": 225
+    },
+    {
+      "id": "024-grid-css-extension-target",
+      "name": "Update elements/grid CSS view extension target",
+      "automated": false,
+      "llm_instructions": "On Elgg 7.x, `core.css.php` no longer includes `elements/grid` or `css/elements/grid` at the same position.\n\nSearch for plugins extending these views:\n```bash\ngrep -rn 'elements/grid\\|css/elements/grid' classes/ elgg-plugin.php views/ --include='*.php'\n```\n\nIf found, check whether the extension is still needed and update the target view to the Elgg 7.x equivalent (typically `elements/core` or remove if no longer applicable).",
+      "breaking_change": "elements/grid CSS view extension target changed in 7.x",
+      "priority": 230
+    },
+    {
+      "id": "025-frontend-js-residue",
+      "name": "Migrate client-side JS off AMD / global jQuery / Foundation (Elgg 7 ESM)",
+      "automated": false,
+      "llm_instructions": "Elgg 7 has NO RequireJS/AMD, NO global `jQuery`/`$`, and the legacy JS registration API is removed. A server-side migration can pass every HTTP render check (pages return >1000 bytes) while the plugin's CLIENT JS never runs — the UI loads unstyled / non-interactive. You MUST migrate the front end.\n\nREMOVED — must be gone:\n| Removed | Replacement |\n|---|---|\n| `require([...], cb)` / `define([...], cb)` (AMD) in JS or inline `<script>` | native `import` in a `.mjs` ES module loaded via `elgg_import_esm()` |\n| `elgg_require_js()` / `elgg_define_js()` / `elgg_register_js()` / `elgg_unrequire_js()` | `elgg_import_esm()` / `elgg_register_esm()` |\n| classic scripts assuming a global `jQuery`/`$` (Foundation, jquery.*, plugin `.js`) | `import $ from 'jquery';` inside an ES module — there is NO window.jQuery |\n| bundled 2.x frameworks (Foundation/Zurb top-bar, Orbit, Reveal) | core theme grid + ESM, or re-wrap the lib as an ESM that imports jQuery |\n| bare ESM specifier like `import 'elements/navigation/dropdown'` | a specifier that resolves via the importmap (registered module) or a relative `./` path |\n\nGATE (run it — do not eyeball): `bin/scan-frontend-residue.sh <plugin-dir>` flags every critical pattern and exits non-zero. It is wired into `bin/elgg-migrate-verify` as the `[frontend]` gate. A plugin is NOT migrated until this gate is clean. After fixing, load the plugin in a browser and confirm the layout/JS actually work — HTTP 200 is not enough.\n\n---\n## ESM importmap resolution — the failure that survives every server-side gate (battle-tested 2026-06)\n\nThe render crawl (HTTP status) CANNOT see these — only a real browser console can. A single unresolved module specifier aborts that whole module; the page still returns 200. Open each plugin's pages in a browser and read the console (0 errors except 3rd-party tags).\n\n### How a module gets INTO the Elgg 7 importmap (this is the crux)\n- `elgg_register_esm('<key>', '<absolute-url>')` in a Bootstrap `init()` -> GLOBAL importmap entry. THIS IS THE RELIABLE MECHANISM.\n- A `.mjs` view (e.g. `views/default/foo/bar.mjs`) -> importmap key `foo/bar`, but PAGE-SCOPED (only present when a co-loaded module imports it).\n- A `'<name>.js' => <file>` entry under `elgg-plugin.php` `'views'` -> **NOT added to the importmap at all** (`.js`, not `.mjs`). This is the #1 latent bug. `elgg_register_esm('x', elgg_get_simplecache_url('x.js'))` is equally broken (it routes through that non-existent view).\n\n### Fix template for a vendored 3rd-party lib imported by a bare specifier\n1. Vendor the file under `<plugin>/vendors/<lib>/<lib>.js` (web-accessible; NOT `vendor/` which composer/.htaccess may block; install via `composer require npm-asset/<lib>` then copy the dist file in).\n2. In the plugin Bootstrap `init()`: `\\elgg_register_esm('<spec>', \\elgg_normalize_url('mod/<plugin>/vendors/<lib>/<lib>.js'));`\n3. Delete any broken `'<spec>.js' => ...` `'views'` entry.\n4. Classic UMD jQuery plugins (jquery.form, jquery.colorbox, jquery.tokeninput, rateit, Foundation) reference a GLOBAL jQuery. Elgg 7 has none — expose `window.$ = window.jQuery = $;` BEFORE the lib loads (the site theme's init.mjs is the always-loaded place; do it there or in the importing module).\n5. A shared lib imported by many plugins (e.g. jquery.form) -> register ONCE in the always-loaded theme so it resolves on every page.\n\n### Concrete removed/renamed symbols proven in the field\n| Pattern | Fix |\n|---|---|\n| `import 'jquery-ui/widgets/sortable'` / `'jquery-ui/unique-id'` / `'jquery-ui/progressbar'` | `import 'jquery-ui'` — the importmap maps only the full `jquery-ui` bundle, never submodules (core does this too) |\n| `import notify from 'elgg/notify'` | `import notify from 'elgg/system_messages'` (same `.success/.error/.clear` API; `elgg/notify` removed) |\n| `elgg.ui.registerTogglableMenuItems('a','b')` (removed `elgg.ui`) | delete the JS; add `'data-toggle' => '<partner-name>'` to BOTH `ElggMenuItem::factory` items + keep `item_class => 'hidden'` — core `navigation/menu/elements/item_toggle.mjs` handles the swap declaratively |\n| vendored Foundation/old lib calling `$(window).load(fn)` -> `TypeError: e.indexOf is not a function` | jQuery 3 removed `.load/.unload/.error` event shorthands; shim them (jQuery-Migrate style) BEFORE the lib loads |\n| `elgg_import_esm('framework/x')` but module is the view `js/framework/x.mjs` | path mismatch — `elgg_register_esm('framework/x', elgg_get_simplecache_url('js/framework/x.mjs'))` alias, or fix the import path |\n| lib imported but NO file/registration anywhere (phantom dep, e.g. `jquery.form`, `parsley.js`) | obtain via `composer require npm-asset/<lib>`, then apply the vendored fix template above |\n\n### Verifying in the browser (the only authoritative check)\n- After editing, `php vendor/bin/elgg-cli cache:invalidate` (NOT `cache:clear` — clear purges files but does NOT bump the simplecache timestamp, so the browser keeps serving the stale `/cache/<ts>/` module). Then reload with a `?v=N` cache-buster.\n- The site theme's admin login on an anonymized stack is the renamed user (e.g. `user_124`), not `admin`; reset via `get_entity($guid)->setPassword(...)`.\n- The route-render golden master's auth crawl MUST fetch `/login` ONCE for both `__elgg_token` and `__elgg_ts` (the token is an HMAC over the ts — two fetches => CSRF reject => the auth crawl silently mirrors anon and hides auth-gated breakage).",
+      "breaking_change": "RequireJS/AMD, global jQuery, and elgg_(require|define|register)_js() removed in Elgg 7; client JS that relies on them silently fails to run.",
+      "priority": 250
+    },
+    {
+      "id": "026-css-view-relocation",
+      "name": "Relocate orphaned css/ view overrides to the Elgg 7 name (css/elements/X -> elements/X.css)",
+      "automated": false,
+      "priority": 260,
+      "breaking_change": "CSS/JS cacheable views moved out of css/ and js/ dirs; core.css aggregates elements/*.css, not css/elements/*",
+      "llm_instructions": "Elgg 7 moved cacheable CSS/JS views OUT of the css/ and js/ directories: a view that was `css/elements/layout` is now `elements/layout.css`, and `core.css.php` aggregates `elements/*.css`. A plugin or theme that OVERRIDES a core element CSS view at the OLD path `views/default/css/elements/<name>.css` is therefore SILENTLY ORPHANED on Elgg 7 — core's default view wins, the override never loads, and the UI renders unstyled/wrong while every page still returns HTTP 200. This is how a theme can silently lose its entire CSS framework (layout/header, nav, fonts, grid) past every server-side gate.\n\nFIX, per override file under `views/default/css/elements/`:\n1. If the basename matches a 7.x core element view (core.css.php includes: variables, color_schemes, reset, typography, forms, buttons, icons, navigation, modules, widgets, components, layout, helpers, z-index, misc/scroll_to_top, misc/spinner) — RELOCATE it to `views/default/elements/<name>.css`. It then overrides core again.\n2. If it has NO 7.x core counterpart (e.g. `core.css` = Foundation base+grid, `grid.css` = removed `.elgg-col-*` helpers, `misc.css` = component styles) — LOAD it explicitly: `elgg_extend_view('elgg.css', 'css/elements/<name>.css', <priority>)`. Use priority < 500 for base layers (load before core's element views) and > 500 for overrides that must win over them.\n3. A THEME that overrides core element views must also hold the HIGHEST plugin priority (`$plugin->setPriority('last')`), or a later-loading core plugin (e.g. activity's `resources/index`) overrides its views. Verify after migration.\n\nThe same css/ -> name.css relocation applies to other overridden core CSS views (e.g. `css/walled_garden` -> `walled_garden.css`) and to JS views (`js/X` -> `X.js`/`X.mjs`).\n\nDetection + gate: `bin/scan-frontend-residue.sh <plugin>` flags `[css-view-orphaned]` for any `views/default/css/elements/*.css` that has neither a relocated twin at `views/default/elements/<name>.css` nor an explicit `css/elements/<name>` load. Also: `grep -rl 'views/default/css/elements' <plugin>` and check each against the core view list above. VERIFY IN A BROWSER against the pre-migration render — HTTP 200 does not prove the CSS loaded."
+    },
+    {
+      "id": "027-removed-functions-7x-rename",
+      "name": "Auto-rename 1:1 functions removed in 7.0",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V6ToV7\\RemovedFunctions",
+      "breaking_change": "Auto-applies the exact 1:1 renames in references/removed-function-renames.json['7.x']. That block is currently empty: elgg_get_logged_in_user was core-verified as a 3.x removal (removed-functions.json) and now auto-renames at 2x->3x, and no other 7.x removal is a plain 1:1 global rename (elgg_reset_system_cache is a service call handled by 022). Kept wired so a future 7.x 1:1 rename is a data-only edit. The judgment-required 7.x removals (elgg_is_admin_user, elgg_new_entity, elgg_get_entities_from_relationship, …) remain covered by their dedicated entries.",
+      "priority": 226
     },
     {
       "id": "999-add-docblocks",

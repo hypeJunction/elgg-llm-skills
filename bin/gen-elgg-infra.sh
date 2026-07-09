@@ -10,13 +10,17 @@
 # unless --force is passed.
 #
 # After generating into skills/elgg-migrate/infra/, the script mirrors
-# the new dirs into the three sibling skills that bundle the same infra:
-#   elgg-site-upgrade, elgg-test-writer, elgg-js-test-writer
+# the new dirs into the sibling skills that bundle the same docker infra.
+#
+# elgg-js-test-writer receives the AST engine but NOT infra/: it is a
+# JS-only skill that delegates its docker stack to elgg-test-writer's
+# scaffold (see its SKILL.md, "Skill layout (no shared docker stack)").
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATE_INFRA="$ROOT/skills/elgg-migrate/infra"
 SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
+INFRA_SIBLINGS=(elgg-site-upgrade elgg-test-writer)
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
@@ -376,7 +380,7 @@ mirror_to_siblings() {
   local ver="$1"
   local src="$MIGRATE_INFRA/elgg${ver}"
   [[ -d "$src" ]] || return
-  for s in "${SIBLING_SKILLS[@]}"; do
+  for s in "${INFRA_SIBLINGS[@]}"; do
     local dst="$ROOT/skills/$s/infra/elgg${ver}"
     mkdir -p "$dst"
     rsync -a --delete "$src/" "$dst/"

@@ -1,0 +1,9 @@
+{
+    "name": "hype/myplugin",
+    "type": "elgg-plugin",
+    "autoload": {
+        "psr-4": {
+            "HypeMyPlugin\\": "classes/"
+        }
+    }
+}

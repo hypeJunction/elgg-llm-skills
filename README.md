@@ -18,6 +18,8 @@ Automated migration toolkit for upgrading Elgg CMS plugins across major versions
 
 This repo ships as a set of self-contained **skills** plus a few shared shell scripts. Each skill has its own `bin/`, `src/`, `rules/`, `tests/`, `references/`, and Docker `infra/` so it can be vendored or distributed independently.
 
+The one exception is `elgg-js-test-writer`, which is JS-only and ships no `infra/`: it runs Vitest against plugin JS directly, and delegates its Playwright stack to the per-plugin docker scaffold created by `elgg-test-writer`.
+
 ```
 elgg-migrate/
   bin/                              # Shared scripts
@@ -127,7 +129,7 @@ This project ships skill definitions for AI coding agents (designed for Claude C
 | `skills/elgg-test-writer/` | Generate PHPUnit test coverage for Elgg plugins |
 | `skills/elgg-js-test-writer/` | Generate Vitest / Playwright test coverage for plugin JS |
 
-Each skill is self-contained: it bundles its own CLI, rules, references, and Docker infra, so it can be vendored into a downstream project independently.
+Each skill is self-contained: it bundles its own CLI, rules, references, and Docker infra, so it can be vendored into a downstream project independently. (`elgg-js-test-writer` bundles no Docker infra — see the note above.)
 
 ### Using Skills with Claude Code
 

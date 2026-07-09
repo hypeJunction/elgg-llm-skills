@@ -244,6 +244,7 @@ final class GenerateElggPluginPhp extends AbstractRule
             return $result;
         }
 
+        $namespace = $this->extractNamespace($code);
         $finder = $this->finder();
         $printer = $this->printer();
 
@@ -277,14 +278,14 @@ final class GenerateElggPluginPhp extends AbstractRule
                     break;
 
                 case 'elgg_register_plugin_hook_handler':
-                    $hook = $this->extractHook($call, $printer);
+                    $hook = $this->extractHook($call, $printer, $namespace);
                     if ($hook) {
                         $result['hooks'][] = $hook;
                     }
                     break;
 
                 case 'elgg_register_event_handler':
-                    $event = $this->extractEvent($call, $printer);
+                    $event = $this->extractEvent($call, $printer, $namespace);
                     if ($event) {
                         $result['events'][] = $event;
                     }
@@ -395,7 +396,7 @@ final class GenerateElggPluginPhp extends AbstractRule
         ];
     }
 
-    private function extractHook(Node\Expr\FuncCall $call, $printer): ?array
+    private function extractHook(Node\Expr\FuncCall $call, $printer, string $namespace = ''): ?array
     {
         $hook = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
             ? $call->args[0]->value->value : null;
@@ -411,12 +412,16 @@ final class GenerateElggPluginPhp extends AbstractRule
             return null;
         }
 
-        $callback = isset($call->args[2]) ? $printer->prettyPrintExpr($call->args[2]->value) : null;
+        $callback = null;
+        if (isset($call->args[2])) {
+            $node = $this->resolveNamespaceMagicConst($call->args[2]->value, $namespace);
+            $callback = $printer->prettyPrintExpr($node);
+        }
 
         return ['hook' => $hook, 'type' => $type, 'callback' => $callback];
     }
 
-    private function extractEvent(Node\Expr\FuncCall $call, $printer): ?array
+    private function extractEvent(Node\Expr\FuncCall $call, $printer, string $namespace = ''): ?array
     {
         $event = isset($call->args[0]) && $call->args[0]->value instanceof Node\Scalar\String_
             ? $call->args[0]->value->value : null;
@@ -432,9 +437,100 @@ final class GenerateElggPluginPhp extends AbstractRule
             return null;
         }
 
-        $callback = isset($call->args[2]) ? $printer->prettyPrintExpr($call->args[2]->value) : null;
+        $callback = null;
+        if (isset($call->args[2])) {
+            $node = $this->resolveNamespaceMagicConst($call->args[2]->value, $namespace);
+            $callback = $printer->prettyPrintExpr($node);
+        }
 
         return ['event' => $event, 'type' => $type, 'callback' => $callback];
+    }
+
+    /**
+     * Replace __NAMESPACE__ magic constant references with fully-qualified ::class fetches.
+     *
+     * Handles:
+     *   __NAMESPACE__ . '\ClassName'          → \NS\ClassName::class
+     *   __NAMESPACE__ . '\ClassName::method'  → [\NS\ClassName::class, 'method'] (array)
+     *   [__NAMESPACE__ . '\ClassName', 'method'] → [\NS\ClassName::class, 'method']
+     */
+    private function resolveNamespaceMagicConst(Node\Expr $node, string $namespace): Node\Expr
+    {
+        // Array: [class_expr, 'method'] — resolve class_expr
+        if ($node instanceof Node\Expr\Array_ && count($node->items) === 2) {
+            $classNode = $node->items[0]->value;
+            $resolved = $this->resolveClassExpr($classNode, $namespace);
+            if ($resolved !== null) {
+                return new Node\Expr\Array_([
+                    new Node\Expr\ArrayItem($resolved),
+                    $node->items[1],
+                ]);
+            }
+        }
+
+        // Direct: __NAMESPACE__ . '\ClassName' or __NAMESPACE__ . '\Class::method'
+        $resolved = $this->resolveClassExpr($node, $namespace);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        return $node;
+    }
+
+    /**
+     * Try to resolve a __NAMESPACE__ . '\...' concat to a ClassConstFetch (or Array_ for ::method form).
+     * Returns null if the node is not a recognisable __NAMESPACE__ concat.
+     */
+    private function resolveClassExpr(Node\Expr $node, string $namespace): ?Node\Expr
+    {
+        if (!($node instanceof Node\Expr\BinaryOp\Concat)
+            || !($node->left instanceof Node\Scalar\MagicConst\Namespace_)
+            || !($node->right instanceof Node\Scalar\String_)
+        ) {
+            return null;
+        }
+
+        $suffix = ltrim($node->right->value, '\\');
+
+        if (str_contains($suffix, '::')) {
+            // __NAMESPACE__ . '\ClassName::method' → [\NS\ClassName::class, 'method']
+            [$className, $method] = explode('::', $suffix, 2);
+            $fqn = $namespace ? "{$namespace}\\{$className}" : $className;
+            return new Node\Expr\Array_([
+                new Node\Expr\ArrayItem(
+                    new Node\Expr\ClassConstFetch(
+                        new Node\Name\FullyQualified($fqn),
+                        new Node\Identifier('class')
+                    )
+                ),
+                new Node\Expr\ArrayItem(new Node\Scalar\String_($method)),
+            ]);
+        }
+
+        $fqn = $namespace ? "{$namespace}\\{$suffix}" : $suffix;
+        return new Node\Expr\ClassConstFetch(
+            new Node\Name\FullyQualified($fqn),
+            new Node\Identifier('class')
+        );
+    }
+
+    /**
+     * Extract the namespace declaration from parsed PHP code.
+     */
+    private function extractNamespace(string $code): string
+    {
+        $ast = $this->parse($code);
+        if ($ast === null) {
+            return '';
+        }
+        $namespaces = $this->finder()->find(
+            $ast,
+            fn(Node $n) => $n instanceof Node\Stmt\Namespace_
+        );
+        if (!empty($namespaces) && $namespaces[0]->name !== null) {
+            return $namespaces[0]->name->toString();
+        }
+        return '';
     }
 
     private function extractViewExtension(Node\Expr\FuncCall $call): ?array
