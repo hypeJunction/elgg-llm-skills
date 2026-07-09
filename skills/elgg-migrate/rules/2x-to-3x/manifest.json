@@ -84,6 +84,14 @@
       "post_apply_followup": "When this rule strips elgg_register_classes() calls from lib/autoloader.php (or wherever they live), it does NOT synthesize the PSR-4 autoload replacement. After applying, manually add to composer.json: \"autoload\": { \"psr-4\": { \"<Vendor>\\\\<Plugin>\\\\\": \"classes/<Vendor>/<Plugin>/\" } }. If the plugin vendored a third-party library that the old elgg_register_classes registered (e.g., vendors/WideImage/lib/), add that namespace to PSR-4 too. Then run `composer dump-autoload -d <plugin>` inside the elgg3 container to generate vendor/autoload.php. Do NOT run `composer install` — elgg/elgg is a metadata declaration, not a runtime dep."
     },
     {
+      "id": "009a-removed-functions-3x-rename",
+      "name": "Auto-rename 1:1 functions removed in 3.0",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionRenames",
+      "breaking_change": "The exact 1:1 renames in references/removed-function-renames.json['3.x'] (elgg_redirect->elgg_redirect_response, _elgg_rmdir->elgg_delete_directory, _elgg_html_decode->html_entity_decode, elgg_get_logged_in_user->elgg_get_logged_in_user_entity) are rewritten automatically at the step where they break. These were core-verified 3.x removals; before bd elgg-migrate-jfrc1 they sat in the 6.x/7.x rename blocks and were rewritten far too late.",
+      "priority": 91
+    },
+    {
       "id": "010-removed-methods",
       "name": "Rename or flag methods removed in 3.0",
       "automated": true,

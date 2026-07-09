@@ -266,16 +266,27 @@ Two data files feed the automated gates and are kept in lock-step with this cata
   `Elgg\HooksRegistrationService\Hook` does NOT.
 - **gate:** YES · **Sources:** cerebrum DNR 2026-05-11, buglog bug-001
 
-### FC-5x6x-02 — Plugin-hook procedural functions removed
-- **Detection (symbol):** `elgg_trigger_plugin_hook(`, `elgg_register_plugin_hook_handler(`,
-  `elgg_unregister_plugin_hook_handler(`, `elgg_clear_plugin_hook_handlers(`, plus `register_error(`,
-  `system_message(`, `forward(` (`removed-functions.json[6.x]`).
-- **Fix:** `elgg_trigger_event_results`, `elgg_register_event_handler`, …;
-  `register_error`→**`elgg_register_error_message`** (NOT `elgg_register_error`, which does not
-  exist); `system_message`→`elgg_register_success_message`; `forward`→`elgg_redirect_response`.
-- **Test-to-write:** unit — each flags at `6.x`; a fixture calling `elgg_register_error_message()`
-  (the correct replacement) is NOT flagged.
-- **gate:** YES · **Sources:** cerebrum DNR 2026-05-11, buglog bug-elgg7-register-error-name
+### FC-5x6x-02 — Plugin-hook procedural functions removed (6.x) + the 5.x message/redirect family
+- **Detection (symbol):** the procedural plugin-hook family — `elgg_trigger_plugin_hook(`,
+  `elgg_register_plugin_hook_handler(`, `elgg_unregister_plugin_hook_handler(`,
+  `elgg_clear_plugin_hook_handlers(` — is a **6.x** removal (`removed-functions.json[6.x]`). The
+  message/redirect family — `register_error(`, `system_message(`, `forward(`, `current_page_url(`,
+  `elgg_get_version(` — is core-verified as a **5.x** removal (`removed-functions.json[5.x]`, commit
+  d9df460); `elgg_redirect(` is a **3.x** removal. Do NOT treat the message/redirect family as 6.x.
+- **Fix:** hook family → `elgg_trigger_event_results`, `elgg_register_event_handler`,
+  `elgg_unregister_event_handler`, `elgg_clear_event_handlers` (auto-renamed at 5x->6x by
+  `V5ToV6\RemovedFunctions`). Message/redirect family (auto-renamed at 4x->5x by
+  `V4ToV5\RemovedFunctions`): `register_error`→**`elgg_register_error_message`** (NOT
+  `elgg_register_error`, which does not exist); `system_message`→`elgg_register_success_message`;
+  `forward`→`elgg_redirect_response`; `current_page_url`→`elgg_get_current_url`;
+  `elgg_get_version`→`elgg_get_release`. `elgg_redirect`→`elgg_redirect_response` auto-renamed at
+  2x->3x by `V2ToV3\RemovedFunctionRenames`.
+- **Test-to-write:** unit — the hook family flags at `6.x`, the message/redirect family flags at
+  `5.x`; a fixture calling `elgg_register_error_message()` (the correct replacement) is NOT flagged;
+  `tests/Rules/Shared/RenameMapPlacementTest.php` asserts every rename block equals its
+  removed-functions.json removal major.
+- **gate:** YES · **Sources:** cerebrum DNR 2026-05-11, buglog bug-elgg7-register-error-name, bd
+  elgg-migrate-jfrc1
 
 ### FC-5x6x-03 — `Seed` gained abstract `getType()` / `getCountOptions()` in 6.1
 - **Detection (regex):** `extends \Elgg\Database\Seeds\Seed` (or imported `Seed`) in a class that
@@ -494,9 +505,13 @@ Two data files feed the automated gates and are kept in lock-step with this cata
   → **5.x** (empirically gone at 5.1, NOT 6.x as this project's history-reconstructed
   notes guessed — a 4.x/5.x-target migration now flags them). Zero placements were
   contradicted (the old data was late, never wrong). Rerun the tool after any Elgg
-  release to keep it honest. NOTE: FC-5x6x-02 above still narrates the message/redirect
-  family as a 6.x removal for historical context — the authoritative version is now
-  `removed-functions.json` (5.x for that family).
+  release to keep it honest. The auto-rewrite side is now reconciled too (bd
+  elgg-migrate-jfrc1): `removed-function-renames.json` moved the message/redirect family to its
+  `5.x` block (consumed by `V4ToV5\RemovedFunctions`), `elgg_redirect`/`_elgg_rmdir`/
+  `_elgg_html_decode`/`elgg_get_logged_in_user` to `3.x` and `elgg_flush_caches` to `4.x`
+  (each with a per-step data-driven consumer), and FC-5x6x-02 above now narrates them at their
+  true majors. `tests/Rules/Shared/RenameMapPlacementTest.php` fails the build if any rename
+  block drifts from removed-functions.json.
 - **`ElggFile::detectMimeType`** and **`ELGG_CACHE_PERSISTENT`** are documented in
   `removed-functions.json` but only partially / not caught by the call-shaped gate (instance-method
   form; bare constant). A dedicated method-call + constant scanner would close these.

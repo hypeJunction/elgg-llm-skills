@@ -115,6 +115,14 @@
       "priority": 120
     },
     {
+      "id": "012a-removed-functions-4x-rename",
+      "name": "Auto-rename 1:1 functions removed in 4.0",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\RemovedFunctionRenames",
+      "breaking_change": "The exact 1:1 rename in references/removed-function-renames.json['4.x'] (elgg_flush_caches->elgg_clear_caches) is rewritten automatically at the step where it breaks. It was a core-verified 4.x removal; before bd elgg-migrate-jfrc1 it sat in the 6.x rename block and was only rewritten at 5x->6x.",
+      "priority": 121
+    },
+    {
       "id": "013b-amd-removed-apis",
       "name": "Remove AMD module APIs dropped in Elgg 4.x (elgg/init, elgg.echo, elgg.provide)",
       "automated": true,

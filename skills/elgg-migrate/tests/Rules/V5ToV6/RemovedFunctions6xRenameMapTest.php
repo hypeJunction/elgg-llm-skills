@@ -12,8 +12,9 @@ use PHPUnit\Framework\TestCase;
  * references/removed-function-renames.json['6.x'] end-to-end (input code →
  * transformed output) plus the documented non-rewrite invariants
  * (method calls, namespaced calls, function definitions and string literals
- * are left untouched). The base RemovedFunctionsTest only asserts a handful
- * of the 15 renames.
+ * are left untouched). The 6.x block holds only the genuine 6.x removals — the
+ * procedural plugin-hook family and the mb_* string helpers; the message/redirect
+ * family moved to the 5.x block (bd elgg-migrate-jfrc1).
  */
 final class RemovedFunctions6xRenameMapTest extends TestCase
 {
@@ -34,17 +35,8 @@ final class RemovedFunctions6xRenameMapTest extends TestCase
             'register hook handler'        => ['elgg_register_plugin_hook_handler', 'elgg_register_event_handler'],
             'unregister hook handler'      => ['elgg_unregister_plugin_hook_handler', 'elgg_unregister_event_handler'],
             'clear hook handlers'          => ['elgg_clear_plugin_hook_handlers', 'elgg_clear_event_handlers'],
-            'register_error'               => ['register_error', 'elgg_register_error_message'],
-            'system_message'               => ['system_message', 'elgg_register_success_message'],
-            'forward'                      => ['forward', 'elgg_redirect_response'],
-            'elgg_redirect'                => ['elgg_redirect', 'elgg_redirect_response'],
-            'current_page_url'             => ['current_page_url', 'elgg_get_current_url'],
-            'rmdir helper'                 => ['_elgg_rmdir', 'elgg_delete_directory'],
-            'flush caches'                 => ['elgg_flush_caches', 'elgg_clear_caches'],
-            'get version'                  => ['elgg_get_version', 'elgg_get_release'],
             'strrchr'                      => ['elgg_strrchr', 'mb_strrchr'],
             'strripos'                     => ['elgg_strripos', 'mb_strripos'],
-            'html decode'                  => ['_elgg_html_decode', 'html_entity_decode'],
         ];
     }
 
@@ -79,9 +71,9 @@ final class RemovedFunctions6xRenameMapTest extends TestCase
             . "namespace App;\n"
             . "class C {\n"
             . "    public function run(\$obj) {\n"
-            . "        \$obj->forward('/x');\n"           // method call — untouched
-            . "        \\Other\\forward('/y');\n"          // namespaced call — untouched
-            . "        \$s = 'call register_error here';\n" // string literal — untouched
+            . "        \$obj->elgg_trigger_plugin_hook('/x');\n"     // method call — untouched
+            . "        \\Other\\elgg_trigger_plugin_hook('/y');\n"    // namespaced call — untouched
+            . "        \$s = 'call elgg_strrchr here';\n"            // string literal — untouched
             . "        return \$s;\n"
             . "    }\n"
             . "}\n";
@@ -95,10 +87,10 @@ final class RemovedFunctions6xRenameMapTest extends TestCase
             $this->assertEmpty($result->changes);
 
             $out = file_get_contents($dir . '/classes/C.php');
-            $this->assertStringContainsString("\$obj->forward('/x')", $out);
-            $this->assertStringContainsString("Other\\forward('/y')", $out);
-            $this->assertStringContainsString("'call register_error here'", $out);
-            $this->assertStringNotContainsString('elgg_redirect_response', $out);
+            $this->assertStringContainsString("\$obj->elgg_trigger_plugin_hook('/x')", $out);
+            $this->assertStringContainsString("Other\\elgg_trigger_plugin_hook('/y')", $out);
+            $this->assertStringContainsString("'call elgg_strrchr here'", $out);
+            $this->assertStringNotContainsString('elgg_trigger_event_results', $out);
         } finally {
             $this->removeDir($dir);
         }
@@ -110,8 +102,8 @@ final class RemovedFunctions6xRenameMapTest extends TestCase
         // have its declaration renamed — only call sites are eligible, and here
         // the call site is a genuine global FuncCall so it IS renamed.
         $dir = $this->makeDir([
-            'lib/compat.php' => "<?php\nfunction current_page_url() { return 'stub'; }\n"
-                . "\$u = current_page_url();\n",
+            'lib/compat.php' => "<?php\nfunction elgg_strrchr(\$h, \$n) { return 'stub'; }\n"
+                . "\$u = elgg_strrchr('a', 'b');\n",
         ]);
 
         try {
@@ -119,9 +111,9 @@ final class RemovedFunctions6xRenameMapTest extends TestCase
             $out = file_get_contents($dir . '/lib/compat.php');
 
             // Declaration keeps its original name.
-            $this->assertStringContainsString('function current_page_url()', $out);
+            $this->assertStringContainsString('function elgg_strrchr(', $out);
             // Call site is rewritten to the 6.x equivalent.
-            $this->assertStringContainsString('$u = elgg_get_current_url()', $out);
+            $this->assertStringContainsString("\$u = mb_strrchr('a', 'b')", $out);
         } finally {
             $this->removeDir($dir);
         }

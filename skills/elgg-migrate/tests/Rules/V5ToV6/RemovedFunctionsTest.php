@@ -22,16 +22,16 @@ final class RemovedFunctionsTest extends TestCase
         $this->assertTrue($this->rule->canAutomate());
     }
 
-    public function testRewritesPluginHookFamilyAndLeavesUnrelatedAndExcluded(): void
+    public function testRewritesPluginHookFamilyAndLeavesUnrelatedExcludedAnd5xRemovals(): void
     {
         $dir = $this->makeDir([
             'classes/H.php' => "<?php\nfunction reg() {\n"
                 . "    elgg_register_plugin_hook_handler('a', 'b', 'c');\n"
                 . "    \$r = elgg_trigger_plugin_hook('x', 'y', [], null);\n"
-                . "    register_error('bad');\n"
-                . "    forward('/home');\n"
-                . "    elgg_require_js('foo/bar');\n"          // 6.x-excluded (ESM judgment)
-                . "    \$obj->forward('/nope');\n"             // method call — must NOT change
+                . "    register_error('bad');\n"                 // 5.x removal — NOT rewritten here
+                . "    forward('/home');\n"                      // 5.x removal — NOT rewritten here
+                . "    elgg_require_js('foo/bar');\n"            // 6.x-excluded (ESM judgment)
+                . "    \$obj->forward('/nope');\n"               // method call — must NOT change
                 . "    return \$r;\n"
                 . "}\n",
         ]);
@@ -45,14 +45,19 @@ final class RemovedFunctionsTest extends TestCase
 
             $out = file_get_contents($dir . '/classes/H.php');
 
-            // Rewritten:
+            // The genuine 6.x plugin-hook family IS rewritten:
             $this->assertStringContainsString('elgg_register_event_handler(', $out);
             $this->assertStringContainsString('elgg_trigger_event_results(', $out);
-            $this->assertStringContainsString('elgg_register_error_message(', $out);
-            $this->assertStringContainsString('elgg_redirect_response(', $out);
             $this->assertStringNotContainsString('elgg_register_plugin_hook_handler(', $out);
             $this->assertStringNotContainsString('elgg_trigger_plugin_hook(', $out);
-            $this->assertStringNotContainsString('register_error(', $out);
+
+            // The message/redirect family are 5.x removals — the 6.x rule must
+            // leave them for the 4x->5x step (bd elgg-migrate-jfrc1). They stay
+            // as-is, NOT rewritten to their 5.x replacements at this step.
+            $this->assertStringContainsString('register_error(', $out);
+            $this->assertStringContainsString('forward(', $out);
+            $this->assertStringNotContainsString('elgg_register_error_message(', $out);
+            $this->assertStringNotContainsString('elgg_redirect_response(', $out);
 
             // Excluded (ESM) — left for LLM judgment:
             $this->assertStringContainsString('elgg_require_js(', $out);

@@ -21,30 +21,28 @@ final class RemovedFunctionsTest extends TestCase
         $this->assertSame('removed-functions-7x', $this->rule->getId());
     }
 
-    public function testRewritesLoggedInUser(): void
+    /**
+     * The 7.x rename block is currently empty — elgg_get_logged_in_user was
+     * core-verified as a 3.x removal (removed-functions.json) and now
+     * auto-renames at 2x->3x (V2ToV3\RemovedFunctionRenames), and no other 7.x
+     * removal is a plain 1:1 global rename. So the 6x->7x rename rule must be a
+     * no-op that touches nothing (bd elgg-migrate-jfrc1). The rule stays wired
+     * so a future 7.x 1:1 rename is a data-only edit.
+     */
+    public function testSevenXRenameBlockIsANoOp(): void
     {
         $dir = $this->makeDir([
+            // A 3.x-removed symbol must NOT be rewritten at the 7.x step.
             'classes/A.php' => "<?php\nfunction who() { return elgg_get_logged_in_user(); }\n",
         ]);
         try {
-            $this->assertTrue($this->rule->analyze($dir)->applicable);
-            $this->rule->apply($dir);
-            $out = file_get_contents($dir . '/classes/A.php');
-            $this->assertStringContainsString('elgg_get_logged_in_user_entity(', $out);
-            // The _guid variant (different function) must be untouched by the rename.
-            $this->assertStringNotContainsString('elgg_get_logged_in_user_entity_guid', $out);
-        } finally {
-            $this->removeDir($dir);
-        }
-    }
-
-    public function testDoesNotTouchGuidVariant(): void
-    {
-        $dir = $this->makeDir([
-            'classes/B.php' => "<?php\nfunction g() { return elgg_get_logged_in_user_guid(); }\n",
-        ]);
-        try {
             $this->assertFalse($this->rule->analyze($dir)->applicable);
+            $result = $this->rule->apply($dir);
+            $this->assertTrue($result->success);
+            $this->assertEmpty($result->changes);
+            $out = file_get_contents($dir . '/classes/A.php');
+            $this->assertStringContainsString('elgg_get_logged_in_user(', $out);
+            $this->assertStringNotContainsString('elgg_get_logged_in_user_entity', $out);
         } finally {
             $this->removeDir($dir);
         }

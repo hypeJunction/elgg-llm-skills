@@ -39,7 +39,7 @@
       "name": "Auto-rename 1:1 functions removed in 6.0",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V5ToV6\\RemovedFunctions",
-      "breaking_change": "The exact 1:1 renames in references/removed-function-renames.json['6.x'] (the procedural plugin-hook family elgg_trigger_plugin_hook/elgg_register_plugin_hook_handler/…, plus register_error/system_message/forward/elgg_redirect/current_page_url/elgg_flush_caches/elgg_get_version and a few string helpers) are rewritten automatically. The 004 entry below still covers the removals that need judgment (AMD→ESM, removed annotations API, removed class methods).",
+      "breaking_change": "The exact 1:1 renames in references/removed-function-renames.json['6.x'] (the procedural plugin-hook family elgg_trigger_plugin_hook/elgg_register_plugin_hook_handler/elgg_unregister_plugin_hook_handler/elgg_clear_plugin_hook_handlers, plus the string helpers elgg_strrchr/elgg_strripos) are rewritten automatically. NOTE: the message/redirect family (register_error/system_message/forward/current_page_url/elgg_get_version) is core-verified as a 5.x removal and is now auto-renamed by V4ToV5\\RemovedFunctions at 4x->5x; elgg_redirect/_elgg_rmdir/_elgg_html_decode at 2x->3x and elgg_flush_caches at 3x->4x — they are no longer in the 6.x block (bd elgg-migrate-jfrc1). The 004 entry below still covers the 6.x removals that need judgment (AMD→ESM, removed annotations API, removed class methods).",
       "priority": 39
     },
     {
