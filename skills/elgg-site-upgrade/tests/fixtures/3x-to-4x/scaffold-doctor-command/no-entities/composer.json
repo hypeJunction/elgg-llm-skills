@@ -1,0 +1,16 @@
+{
+    "name": "acme/simple",
+    "description": "Simple plugin for Elgg",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Simple\\": "classes/Simple/"
+        }
+    },
+    "extra": {
+        "installer-name": "simple"
+    }
+}

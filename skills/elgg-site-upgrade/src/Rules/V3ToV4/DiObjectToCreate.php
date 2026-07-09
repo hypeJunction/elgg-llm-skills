@@ -81,10 +81,10 @@ final class DiObjectToCreate extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            $ast = $this->parse($code);
-            if ($ast === null) continue;
+            $parsed = $this->parsePreserving($code);
+            if ($parsed === null) continue;
 
-            $calls = $this->findDiObjectCalls($ast);
+            $calls = $this->findDiObjectCalls($parsed['new']);
             if (empty($calls)) continue;
 
             $traverser = new NodeTraverser();
@@ -112,10 +112,10 @@ final class DiObjectToCreate extends AbstractRule
             };
 
             $traverser->addVisitor($visitor);
-            $newAst = $traverser->traverse($ast);
+            $parsed['new'] = $traverser->traverse($parsed['new']);
 
             if ($visitor->changed) {
-                file_put_contents($file, $this->print($newAst));
+                file_put_contents($file, $this->printPreserving($parsed['new'], $parsed['old'], $parsed['tokens']));
                 $changes[] = new FileChange(
                     file: $relativePath,
                     type: 'modified',

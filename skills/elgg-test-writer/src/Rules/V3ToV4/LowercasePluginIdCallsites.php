@@ -92,10 +92,10 @@ final class LowercasePluginIdCallsites extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            $ast = $this->parse($code);
-            if ($ast === null) continue;
+            $parsed = $this->parsePreserving($code);
+            if ($parsed === null) continue;
 
-            $targets = $this->findTargetCalls($ast);
+            $targets = $this->findTargetCalls($parsed['new']);
             $affected = array_filter(
                 $targets,
                 fn ($pair) => $this->checkCall($pair[0], $pair[1], $relativePath) !== null,
@@ -138,10 +138,10 @@ final class LowercasePluginIdCallsites extends AbstractRule
             };
 
             $traverser->addVisitor($visitor);
-            $newAst = $traverser->traverse($ast);
+            $parsed['new'] = $traverser->traverse($parsed['new']);
 
             if ($visitor->changed) {
-                file_put_contents($file, $this->print($newAst));
+                file_put_contents($file, $this->printPreserving($parsed['new'], $parsed['old'], $parsed['tokens']));
                 $changes[] = new FileChange(
                     file: $relativePath,
                     type: 'modified',

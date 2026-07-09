@@ -140,10 +140,7 @@ final class RemovedMethods extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            $ast = $this->parse($code);
-            if ($ast === null) continue;
-
-            $result = $this->transformFile($ast, $code);
+            $result = $this->transformFile($code);
 
             if ($result['transformed']) {
                 file_put_contents($file, $result['code']);
@@ -176,12 +173,16 @@ final class RemovedMethods extends AbstractRule
     }
 
     /**
-     * @param array<Node\Stmt> $ast
      * @return array{transformed: bool, code: string, warnings: array<string>}
      */
-    private function transformFile(array $ast, string $originalCode): array
+    private function transformFile(string $originalCode): array
     {
         $warnings = [];
+
+        $parsed = $this->parsePreserving($originalCode);
+        if ($parsed === null) {
+            return ['transformed' => false, 'code' => $originalCode, 'warnings' => $warnings];
+        }
 
         $traverser = new NodeTraverser();
         $visitor = new class($warnings) extends NodeVisitorAbstract {
@@ -226,12 +227,16 @@ final class RemovedMethods extends AbstractRule
         };
 
         $traverser->addVisitor($visitor);
-        $newAst = $traverser->traverse($ast);
+        $parsed['new'] = $traverser->traverse($parsed['new']);
 
         if (!$visitor->hasChanged()) {
             return ['transformed' => false, 'code' => $originalCode, 'warnings' => $warnings];
         }
 
-        return ['transformed' => true, 'code' => $this->print($newAst), 'warnings' => $warnings];
+        return [
+            'transformed' => true,
+            'code' => $this->printPreserving($parsed['new'], $parsed['old'], $parsed['tokens']),
+            'warnings' => $warnings,
+        ];
     }
 }

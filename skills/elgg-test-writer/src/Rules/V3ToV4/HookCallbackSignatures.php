@@ -10,6 +10,7 @@ use ElggMigrate\Finding;
 use ElggMigrate\RuleAnalysis;
 use ElggMigrate\RuleResult;
 use PhpParser\Node;
+use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 
@@ -45,17 +46,9 @@ final class HookCallbackSignatures extends AbstractRule
     public function analyze(string $pluginPath): RuleAnalysis
     {
         $findings = [];
-
         $handlers = $this->extractHandlerReferences($pluginPath);
-        if (empty($handlers)) {
-            return new RuleAnalysis(
-                ruleId: $this->getId(),
-                applicable: false,
-                findings: [],
-                summary: 'No hook/event handlers found in elgg-plugin.php',
-            );
-        }
 
+        // Findings from elgg-plugin.php-registered handlers
         foreach ($handlers as $handler) {
             $location = $this->findHandlerMethod($pluginPath, $handler['class'], $handler['method']);
             if (!$location) {
@@ -76,6 +69,30 @@ final class HookCallbackSignatures extends AbstractRule
                     code: $location['signature'],
                 );
             }
+        }
+
+        // Findings from procedurally-registered handlers (4-arg/3-arg signature scan).
+        // De-duplicate against the registered findings above (by file+method).
+        $seen = array_map(fn ($f) => $f->file . '#' . preg_replace('/^([\w]+)::(\w+)\(.*$/', '$2', $f->description), $findings);
+        foreach ($this->findUnregisteredLegacyHandlers($pluginPath) as $unreg) {
+            $key = $unreg['relpath'] . '#' . $unreg['method'];
+            if (in_array($key, $seen, true)) continue;
+            $typeHint = $unreg['kind'] === 'hook' ? '\\Elgg\\Hook' : '\\Elgg\\Event';
+            $findings[] = new Finding(
+                file: $unreg['relpath'],
+                line: $unreg['line'],
+                description: "{$unreg['class']}::{$unreg['method']}() has old {$unreg['kind']} signature — needs {$typeHint} (procedurally registered)",
+                code: $unreg['signature'],
+            );
+        }
+
+        if (empty($handlers) && empty($findings)) {
+            return new RuleAnalysis(
+                ruleId: $this->getId(),
+                applicable: false,
+                findings: [],
+                summary: 'No hook/event handlers found',
+            );
         }
 
         return new RuleAnalysis(
@@ -115,6 +132,22 @@ final class HookCallbackSignatures extends AbstractRule
             ];
         }
 
+        // Pick up handlers registered procedurally (elgg_register_plugin_hook_handler
+        // in Bootstrap/init code) that the elgg-plugin.php scan can't see. We rely on
+        // the exact 4-arg ($hook, $type, $return, $params) / 3-arg ($event, $type,
+        // $entity) signature patterns — false-positive rate is effectively zero
+        // (no non-handler function uses those exact param names in that order).
+        $registeredKeys = array_map(fn ($i) => $i['location']['abspath'] . '#' . $i['handler']['method'], array_merge(...array_values($byFile) ?: [[]]));
+        foreach ($this->findUnregisteredLegacyHandlers($pluginPath) as $unreg) {
+            $key = $unreg['abspath'] . '#' . $unreg['method'];
+            if (in_array($key, $registeredKeys, true)) continue;
+            $byFile[$unreg['abspath']][] = [
+                'handler' => ['class' => $unreg['class'], 'method' => $unreg['method'], 'kind' => $unreg['kind']],
+                'location' => $unreg,
+            ];
+            $registeredKeys[] = $key;
+        }
+
         foreach ($byFile as $absPath => $items) {
             $code = file_get_contents($absPath);
             $relPath = $this->relativePath($pluginPath, $absPath);
@@ -142,6 +175,100 @@ final class HookCallbackSignatures extends AbstractRule
             changes: $changes,
             warnings: $warnings,
         );
+    }
+
+    /**
+     * Find all FunctionLike nodes whose parameter list matches an Elgg 3.x
+     * hook (`$hook, $type, $return, $params`) or event (`$event, $type, $entity`)
+     * handler signature. Skips vendor/, vendors/, tests/, node_modules/.
+     *
+     * @return array<int, array{abspath:string, relpath:string, line:int, signature:string, code:string, class:string, method:string, kind:'hook'|'event'}>
+     */
+    private function findUnregisteredLegacyHandlers(string $pluginPath): array
+    {
+        // Accept common variations on the 3rd param name. `return` is the
+        // canonical Elgg name, but `returnvalue` / `value` / `return_value`
+        // show up in third-party plugins (e.g. ColdTrick's). The rewriter
+        // already adapts to whatever name it captured.
+        $hookParamShapes = [
+            ['hook', 'type', 'return', 'params'],
+            ['hook', 'type', 'returnvalue', 'params'],
+            ['hook', 'type', 'value', 'params'],
+            ['hook', 'type', 'return_value', 'params'],
+        ];
+        $eventParams = ['event', 'type', 'entity'];
+
+        $found = [];
+        $finder = new NodeFinder();
+
+        foreach ($this->findPhpFiles($pluginPath) as $file) {
+            // Skip vendor / tests — same exclusion as the deep guard.
+            if (preg_match('#/(vendor|vendors|node_modules|tests)/#', $file)) continue;
+
+            $code = file_get_contents($file);
+            if ($code === false) continue;
+            $ast = $this->parse($code);
+            if ($ast === null) continue;
+
+            $functions = $finder->find($ast, fn (Node $n) =>
+                $n instanceof Node\FunctionLike
+            );
+
+            // Capture enclosing class so the rewriter has a class name for diagnostics.
+            $classByLine = [];
+            foreach ($finder->findInstanceOf($ast, Node\Stmt\Class_::class) as $cls) {
+                assert($cls instanceof Node\Stmt\Class_);
+                $name = $cls->name?->toString() ?? '<anon>';
+                $classByLine[] = ['name' => $name, 'start' => $cls->getStartLine(), 'end' => $cls->getEndLine()];
+            }
+
+            foreach ($functions as $fn) {
+                /** @var Node\FunctionLike $fn */
+                $names = array_map(
+                    fn (Node\Param $p) => $p->var instanceof Node\Expr\Variable && is_string($p->var->name) ? $p->var->name : '',
+                    $fn->getParams(),
+                );
+                $kind = null;
+                if ($names === $eventParams) {
+                    $kind = 'event';
+                } else {
+                    foreach ($hookParamShapes as $shape) {
+                        if ($names === $shape) {
+                            $kind = 'hook';
+                            break;
+                        }
+                    }
+                }
+                if ($kind === null) continue;
+
+                $method = $fn instanceof Node\Stmt\Function_ ? $fn->name->toString()
+                       : ($fn instanceof Node\Stmt\ClassMethod ? $fn->name->toString() : null);
+                if ($method === null) continue;
+
+                // Look up enclosing class
+                $line = $fn->getStartLine();
+                $class = '';
+                foreach ($classByLine as $c) {
+                    if ($line >= $c['start'] && $line <= $c['end']) {
+                        $class = $c['name'];
+                        break;
+                    }
+                }
+
+                $rel = $this->relativePath($pluginPath, $file);
+                $found[] = [
+                    'abspath' => $file,
+                    'relpath' => $rel,
+                    'line' => $line,
+                    'signature' => trim(explode("\n", $code)[$line - 1] ?? ''),
+                    'code' => $code,
+                    'class' => $class,
+                    'method' => $method,
+                    'kind' => $kind,
+                ];
+            }
+        }
+        return $found;
     }
 
     /**
@@ -263,11 +390,34 @@ final class HookCallbackSignatures extends AbstractRule
 
     /**
      * Rewrite a hook handler: ($hook, $type, $return, $params) → (\Elgg\Hook $hook)
+     *
+     * Tolerates optional defaults on params 2-4 (`$type = null, $return = null,
+     * $params = null` is a real shape seen in the wild). The first param never
+     * has a default — the registered hook callback always receives a value.
+     *
+     * Skips bodies that already have an `instanceof \Elgg\Hook` compat shim
+     * — those are written by humans transitioning the plugin to 4.x and
+     * pattern-rewriting them produces invalid PHP like
+     * `$hook->getParams() = $hook->getParams();` (lvalue on a method call).
      */
     private function rewriteHookHandler(string $code, string $method): string
     {
-        // Capture the 4 parameter names
-        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*\)/';
+        // `(?:\s*=\s*[^,)]+)?` accepts an optional default value on params 2-4.
+        $paramOptDefault = '(?:\s*=\s*[^,)]+)?';
+        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*\)/';
+
+        // Compat-shim guard: if the method body already references
+        // `\Elgg\Hook` (most commonly `if ($hook instanceof \Elgg\Hook)`),
+        // the human already adapted it for 4.x. Leave it alone.
+        $body = $this->extractMethodBody($code, $method);
+        if ($body !== null) {
+            $bodyText = substr($code, $body['start'], $body['end'] - $body['start']);
+            if (str_contains($bodyText, 'instanceof \\Elgg\\Hook')
+                || str_contains($bodyText, 'instanceof Hook')
+            ) {
+                return $code;
+            }
+        }
 
         if (!preg_match($sigPattern, $code, $m)) {
             return $code;
@@ -306,15 +456,18 @@ final class HookCallbackSignatures extends AbstractRule
         );
 
         // 2. Replace elgg_extract('key', $params, default) → $hook->getParam('key', default)
+        // The optional leading `\\?` consumes a global-namespace prefix on
+        // `\elgg_extract(...)` — without it the `\` is left dangling and the
+        // replacement collides with the new `$hook` to produce `\$hook->...`.
         $body = preg_replace(
-            '/elgg_extract\s*\(\s*[\'"](\w+)[\'"]\s*,\s*\$' . preg_quote($paramsVar) . '\s*,\s*([^)]+)\)/',
+            '/\\\\?elgg_extract\s*\(\s*[\'"](\w+)[\'"]\s*,\s*\$' . preg_quote($paramsVar) . '\s*,\s*([^)]+)\)/',
             '\$hook->getParam(\'$1\', $2)',
             $body
         );
 
         // 3. Replace elgg_extract('key', $params) → $hook->getParam('key')
         $body = preg_replace(
-            '/elgg_extract\s*\(\s*[\'"](\w+)[\'"]\s*,\s*\$' . preg_quote($paramsVar) . '\s*\)/',
+            '/\\\\?elgg_extract\s*\(\s*[\'"](\w+)[\'"]\s*,\s*\$' . preg_quote($paramsVar) . '\s*\)/',
             '\$hook->getParam(\'$1\')',
             $body
         );
@@ -379,11 +532,24 @@ final class HookCallbackSignatures extends AbstractRule
 
     /**
      * Rewrite an event handler: ($event, $type, $entity) → (\Elgg\Event $event)
+     *
+     * Tolerates optional defaults on params 2-3 (same rationale as rewriteHookHandler).
+     * Skips bodies that already have an `instanceof \Elgg\Event` compat shim.
      */
     private function rewriteEventHandler(string $code, string $method): string
     {
-        // Capture the 3 parameter names
-        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)\s*,\s*\$(\w+)\s*\)/';
+        $paramOptDefault = '(?:\s*=\s*[^,)]+)?';
+        $sigPattern = '/(function\s+' . preg_quote($method) . '\s*\()\s*\$(\w+)\s*,\s*\$(\w+)' . $paramOptDefault . '\s*,\s*\$(\w+)' . $paramOptDefault . '\s*\)/';
+
+        $body = $this->extractMethodBody($code, $method);
+        if ($body !== null) {
+            $bodyText = substr($code, $body['start'], $body['end'] - $body['start']);
+            if (str_contains($bodyText, 'instanceof \\Elgg\\Event')
+                || str_contains($bodyText, 'instanceof Event')
+            ) {
+                return $code;
+            }
+        }
 
         if (!preg_match($sigPattern, $code, $m)) {
             return $code;

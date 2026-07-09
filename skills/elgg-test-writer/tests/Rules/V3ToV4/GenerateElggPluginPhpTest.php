@@ -88,6 +88,44 @@ final class GenerateElggPluginPhpTest extends TestCase
         }
     }
 
+    public function testApplyResolvesNamespaceMagicConst(): void
+    {
+        $src = __DIR__ . '/../../fixtures/3x-to-4x/generate-elgg-plugin-php-namespace/input';
+        $workDir = sys_get_temp_dir() . '/elgg-migrate-ns-' . uniqid();
+        mkdir($workDir, 0755, true);
+        copy($src . '/start.php', $workDir . '/start.php');
+
+        try {
+            $result = $this->rule->apply($workDir);
+            $this->assertTrue($result->success);
+
+            $file = $workDir . '/elgg-plugin.php';
+            $this->assertFileExists($file);
+
+            $content = file_get_contents($file);
+
+            // Generated file must have valid PHP syntax
+            $output = [];
+            exec('php -l ' . escapeshellarg($file) . ' 2>&1', $output, $exitCode);
+            $this->assertSame(0, $exitCode, 'Generated file has syntax errors: ' . implode("\n", $output));
+
+            // __NAMESPACE__ must NOT appear literally in the output
+            $this->assertStringNotContainsString('__NAMESPACE__', $content);
+
+            // FQCNs should appear with ::class notation
+            $this->assertStringContainsString('\MyPlugin\Core\Hooks::class', $content);
+            $this->assertStringContainsString('\MyPlugin\Core\Router::class', $content);
+        } finally {
+            foreach (new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($workDir, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST
+            ) as $f) {
+                $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+            }
+            rmdir($workDir);
+        }
+    }
+
     public function testApplySkipsIfElggPluginPhpExists(): void
     {
         $workDir = $this->makeWorkDir();

@@ -1,0 +1,16 @@
+{
+    "name": "acme/legacy",
+    "description": "Legacy plugin with add_subtype",
+    "type": "elgg-plugin",
+    "require": {
+        "elgg/elgg": "~4.3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Legacy\\": "classes/Legacy/"
+        }
+    },
+    "extra": {
+        "installer-name": "legacy"
+    }
+}

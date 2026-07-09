@@ -67,6 +67,26 @@ SETTINGS_VALUES
     # Activate plugins in priority order
     echo "Activating plugins..."
     PLUGIN_ORDER_FILE="/var/www/html/mod/.plugin-order.txt"
+
+    # Symlink core plugins listed in .plugin-order.txt that ship with
+    # elgg/elgg under vendor/elgg/elgg/mod/. The orchestrator's resolver
+    # classifies these as source=core: they aren't bind-mounted from the
+    # host workspace because the canonical copy lives in the elgg release.
+    # Symlinking before generateEntities() makes the activation loop
+    # discover them via the standard mod/ scan.
+    if [ -f "$PLUGIN_ORDER_FILE" ]; then
+        VENDOR_MOD="/var/www/html/vendor/elgg/elgg/mod"
+        while IFS= read -r CORE_PLUGIN; do
+            CORE_PLUGIN="${CORE_PLUGIN%%#*}"
+            CORE_PLUGIN="$(echo "$CORE_PLUGIN" | tr -d '[:space:]')"
+            [ -z "$CORE_PLUGIN" ] && continue
+            if [ ! -e "/var/www/html/mod/${CORE_PLUGIN}" ] && [ -d "${VENDOR_MOD}/${CORE_PLUGIN}" ]; then
+                ln -s "${VENDOR_MOD}/${CORE_PLUGIN}" "/var/www/html/mod/${CORE_PLUGIN}"
+                echo "Symlinked core plugin: ${CORE_PLUGIN}"
+            fi
+        done < "$PLUGIN_ORDER_FILE"
+    fi
+
     if [ -f "$PLUGIN_ORDER_FILE" ]; then
         echo "Using ordered activation from .plugin-order.txt"
         php -r "
@@ -84,6 +104,14 @@ SETTINGS_VALUES
                 if (!\$plugin) { echo 'Plugin not found: ' . \$id . PHP_EOL; continue; }
                 if (\$plugin->isActive()) { \$activated++; continue; }
                 try {
+                    // Bump each plugin to the highest priority among
+                    // inactives at activation time. The .plugin-order.txt
+                    // is topologically sorted (dep-leaves first, plugin
+                    // under test last), so each call to setPriority('last')
+                    // produces a monotonically increasing priority that
+                    // satisfies any 'position' => 'after' constraint
+                    // declared in plugin.dependencies.
+                    \$plugin->setPriority('last');
                     \$plugin->activate();
                     \$activated++;
                     echo '  + ' . \$id . PHP_EOL;

@@ -5,7 +5,8 @@
     {
       "id": "000-update-manifest-version",
       "name": "Update composer.json to target Elgg 5.x",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\UpdateManifestVersion",
       "llm_instructions": "Update the plugin's `composer.json` to require Elgg 5.x:\n\n```json\n\"require\": {\n    \"elgg/elgg\": \"~5.1.0\"\n}\n```\n\nAlso update `elgg-plugin.php` if it has a version constraint.",
       "breaking_change": "Plugin must declare Elgg 5.x compatibility",
       "priority": 1
@@ -43,6 +44,14 @@
       "priority": 40
     },
     {
+      "id": "boolean-plugin-settings",
+      "name": "Migrate yes/no plugin settings to boolean",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\BooleanPluginSettings",
+      "breaking_change": "Plugins using 'yes'/'no' strings for boolean settings must migrate stored values and comparison logic to PHP bool",
+      "priority": 45
+    },
+    {
       "id": "005-session-manager",
       "name": "Replace session functions with session_manager service",
       "automated": false,
@@ -61,15 +70,25 @@
     {
       "id": "007-removed-functions-5x",
       "name": "Replace functions removed in 5.0",
-      "automated": false,
-      "llm_instructions": "The following functions were removed in Elgg 5.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `blog_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `bookmarks_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `discussion_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `file_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `groups_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `messages_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `pages_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `thewire_latest_guid()` | Query wire entities directly |\n| `elgg_get_breadcrumbs()` | Use breadcrumbs menu |\n| `elgg_pop_breadcrumb()` | Use breadcrumbs menu |\n| `elgg_set_email_transport()` | Use `_elgg_services()->set('mailer', ...)` |\n| `elgg_trigger_deprecated_plugin_hook()` | Use `elgg_trigger_event_results()` |\n| `elgg_ws_expose_function()` | Use `elgg-plugin.php` or `'register', 'api_methods'` event |\n| `get_user_by_email()` | Use `elgg_get_user_by_email()` |\n| `get_user_by_username()` | Use `elgg_get_user_by_username()` |\n| `\\ElggWidget::saveSettings()` | Removed |\n\nSearch:\n```bash\ngrep -rn 'blog_prepare_form_vars\\|bookmarks_prepare_form_vars\\|discussion_prepare_form_vars\\|file_prepare_form_vars\\|groups_prepare_form_vars\\|messages_prepare_form_vars\\|pages_prepare_form_vars\\|thewire_latest_guid\\|elgg_set_email_transport\\|elgg_trigger_deprecated_plugin_hook\\|elgg_ws_expose_function\\|get_user_by_email\\|get_user_by_username' classes/ views/ actions/ --include='*.php'\n```",
-      "breaking_change": "~15 functions removed including plugin form helpers, breadcrumbs, and deprecated hook triggers",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\RemovedFunctions",
+      "llm_instructions": "The following functions were removed in Elgg 5.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `current_page_url()` | `elgg_get_current_url()` (auto-renamed by rule) |\n| `get_default_access()` | `elgg_get_default_access()` (auto-renamed by rule) |\n| `blog_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `bookmarks_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `discussion_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `file_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `groups_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `messages_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `pages_prepare_form_vars()` | Inline the logic or use entity form vars |\n| `thewire_latest_guid()` | Query wire entities directly |\n| `elgg_get_breadcrumbs()` | Use breadcrumbs menu |\n| `elgg_pop_breadcrumb()` | Use breadcrumbs menu |\n| `elgg_set_email_transport()` | Use `_elgg_services()->set('mailer', ...)` |\n| `elgg_trigger_deprecated_plugin_hook()` | Use `elgg_trigger_event_results()` |\n| `elgg_ws_expose_function()` | Use `elgg-plugin.php` or `'register', 'api_methods'` event |\n| `get_user_by_email()` | Use `elgg_get_user_by_email()` |\n| `get_user_by_username()` | Use `elgg_get_user_by_username()` |\n| `\\ElggWidget::saveSettings()` | Removed |\n\nSearch:\n```bash\ngrep -rn 'blog_prepare_form_vars\\|bookmarks_prepare_form_vars\\|discussion_prepare_form_vars\\|file_prepare_form_vars\\|groups_prepare_form_vars\\|messages_prepare_form_vars\\|pages_prepare_form_vars\\|thewire_latest_guid\\|elgg_set_email_transport\\|elgg_trigger_deprecated_plugin_hook\\|elgg_ws_expose_function\\|get_user_by_email\\|get_user_by_username' classes/ views/ actions/ --include='*.php'\n```",
+      "breaking_change": "~15 functions removed including plugin form helpers, breadcrumbs, and deprecated hook triggers; current_page_url() and get_default_access() are auto-renamed",
       "priority": 70
+    },
+    {
+      "id": "007b-jquery-ui-split",
+      "name": "Flag jquery-ui AMD require (split into submodules in 5.x)",
+      "automated": false,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\JqueryUiSplit",
+      "breaking_change": "Bundled jquery-ui AMD module split — use specific submodule paths",
+      "priority": 75
     },
     {
       "id": "008-moved-classes-5x",
       "name": "Update references to moved/renamed classes",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\MovedClasses",
       "llm_instructions": "Several classes were moved in Elgg 5.0:\n\n| Old | New |\n|-----|-----|\n| `\\ElggAutoP` | `\\Elgg\\Views\\AutoParagraph` |\n| `\\ElggCache` | `\\Elgg\\Cache\\BaseCache` |\n| `\\ElggDiskFilestore` | `\\Elgg\\Filesystem\\Filestore\\DiskFilestore` |\n| `\\ElggFilestore` | `\\Elgg\\Filesystem\\Filestore` |\n| `\\ElggRewriteTester` | `\\Elgg\\Router\\RewriteTester` |\n| `\\ElggTempDiskFilestore` | `\\Elgg\\Filesystem\\Filestore\\TempDiskFilestore` |\n| `\\Elgg\\Database\\SiteSecret` | `\\Elgg\\Security\\SiteSecret` |\n\nAlso removed:\n- `\\Elgg\\WebServices\\ApiKeyForm`\n- `Loggable` interface (merged into `ElggData`)\n\nSearch:\n```bash\ngrep -rn 'ElggAutoP\\|ElggCache\\b\\|ElggDiskFilestore\\|ElggFilestore\\b\\|ElggRewriteTester\\|ElggTempDiskFilestore\\|Elgg\\\\Database\\\\SiteSecret\\|Elgg\\\\WebServices\\\\ApiKeyForm\\|\\bLoggable\\b' classes/ --include='*.php'\n```",
       "breaking_change": "7 classes moved to new namespaces, 2 classes removed",
       "priority": 80
@@ -77,7 +96,8 @@
     {
       "id": "009-removed-events-5x",
       "name": "Replace removed events",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\RemovedConstants",
       "llm_instructions": "The following events were removed in Elgg 5.0:\n\n| Removed | Replacement |\n|---------|-------------|\n| `access:collections:addcollection, collection` | `create, access_collection` |\n| `access:collections:deletecollection, collection` | `delete, access_collection` |\n| `prepare, breadcrumbs` | `register, menu:breadcrumbs` |\n| `widget_settings, <widget_handler>` | Removed — use widget save logic |\n\nThe `REFERER` constant (misspelled) was removed. Use `REFERRER` instead.\n\nSearch:\n```bash\ngrep -rn 'access:collections:addcollection\\|access:collections:deletecollection\\|widget_settings' classes/ elgg-plugin.php --include='*.php'\ngrep -rn '\\bREFERER\\b' classes/ views/ actions/ --include='*.php'\n```",
       "breaking_change": "4 events removed, REFERER constant removed (use REFERRER)",
       "priority": 90
@@ -165,9 +185,18 @@
     {
       "id": "020-faker-library",
       "name": "Update Faker library usage (fzaninotto → FakerPHP)",
-      "automated": false,
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\FakerLibrary",
       "llm_instructions": "The faker library was switched from `fzaninotto/faker` to `fakerphp/faker`.\n\nIf your plugin uses Faker for seeding/testing:\n```php\n// Before:\nuse Faker\\Generator;\n// Usually no code change needed — namespace stayed the same\n\n// But check for any fzaninotto-specific features\n```\n\nUpdate `composer.json` if it requires the old package:\n```bash\ngrep -rn 'fzaninotto' composer.json\n```",
       "breaking_change": "Faker library switched from fzaninotto/faker to fakerphp/faker",
+      "priority": 200
+    },
+    {
+      "id": "scaffold-seeder",
+      "name": "Scaffold Seeder subclass for plugins owning entity types/subtypes",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V4ToV5\\ScaffoldSeeder",
+      "breaking_change": "None — new file created; plugins without a Seeder cannot be seeded via elgg-cli database:seed",
       "priority": 200
     },
     {

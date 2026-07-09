@@ -84,6 +84,14 @@
       "post_apply_followup": "When this rule strips elgg_register_classes() calls from lib/autoloader.php (or wherever they live), it does NOT synthesize the PSR-4 autoload replacement. After applying, manually add to composer.json: \"autoload\": { \"psr-4\": { \"<Vendor>\\\\<Plugin>\\\\\": \"classes/<Vendor>/<Plugin>/\" } }. If the plugin vendored a third-party library that the old elgg_register_classes registered (e.g., vendors/WideImage/lib/), add that namespace to PSR-4 too. Then run `composer dump-autoload -d <plugin>` inside the elgg3 container to generate vendor/autoload.php. Do NOT run `composer install` — elgg/elgg is a metadata declaration, not a runtime dep."
     },
     {
+      "id": "009a-removed-functions-3x-rename",
+      "name": "Auto-rename 1:1 functions removed in 3.0",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionRenames",
+      "breaking_change": "The exact 1:1 renames in references/removed-function-renames.json['3.x'] (elgg_redirect->elgg_redirect_response, _elgg_rmdir->elgg_delete_directory, _elgg_html_decode->html_entity_decode, elgg_get_logged_in_user->elgg_get_logged_in_user_entity) are rewritten automatically at the step where they break. These were core-verified 3.x removals; before bd elgg-migrate-jfrc1 they sat in the 6.x/7.x rename blocks and were rewritten far too late.",
+      "priority": 91
+    },
+    {
       "id": "010-removed-methods",
       "name": "Rename or flag methods removed in 3.0",
       "automated": true,
@@ -293,12 +301,28 @@
       "priority": 310
     },
     {
+      "id": "033-psr3-logging",
+      "name": "Modernize legacy logging calls to PSR-3 via elgg()->logger",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\Psr3Logging",
+      "breaking_change": "elgg()->logger PSR-3 service introduced in 3.0; legacy elgg_log()/error_log() patterns rewritten to elgg()->logger->{level}() — semantically equivalent, structured logging-friendly",
+      "priority": 400
+    },
+    {
       "id": "032-css-simplecache-compat",
       "name": "Verify CSS views are compatible with css-crush simplecache compilation",
       "automated": false,
       "llm_instructions": "Check if the plugin extends CSS views into the simplecache bundle via `elgg_extend_view('css/elgg', ...)` or `elgg_extend_view('elgg.css', ...)`. If so, verify the CSS content is compatible with css-crush v2.4.\n\n**Critical issue:** css-crush v2.4 (used in Elgg 3.x) silently fails on certain CSS patterns, returning empty string instead of compiled CSS. This causes the ENTIRE site stylesheet to become empty — a catastrophic silent failure.\n\n**Diagnosis after Docker verification:**\n```bash\n# Check if simplecache CSS has content (MUST be > 1000 bytes)\ncurl -sL -o /dev/null -w '%{size_download}' 'http://localhost:PORT/cache/TIMESTAMP/default/elgg.css'\n```\n\nIf the CSS is 0 or 1 bytes, a plugin CSS view is breaking css-crush.\n\n**Fix:** Load plugin CSS as an external stylesheet instead of extending into the bundle:\n```php\n// Instead of:\nelgg_extend_view('css/elgg', 'css/theme/custom.css', 999);\n\n// Use:\nelgg_register_css('theme.custom', '/mod/PLUGIN/views/default/css/theme/custom.css');\nelgg_load_css('theme.custom');\n```\n\n**To find the culprit:** Binary-search by removing CSS extensions one at a time and testing if compilation succeeds.",
       "breaking_change": "css-crush v2.4 silently returns empty CSS for certain patterns, making the entire site unstyled",
       "priority": 500
+    },
+    {
+      "id": "034-search-rewrite",
+      "name": "Replace 2.x search-hook results pattern with elgg_search() (Elgg 3.0 rewrite)",
+      "automated": false,
+      "priority": 340,
+      "breaking_change": "Elgg 3.0 rewrote search: search_*_hook functions removed; the 'search' hook no longer returns an ['entities'=>...] array",
+      "llm_instructions": "Elgg 3.0 rewrote search to be query-based. The `search_*_hook` functions and the old `'search'` hook return-shape are GONE: the hook/event now MODIFIES the query, it does NOT return `['entities' => [...], 'count' => N]`. Any 2.x code like:\n\n  $results = elgg_trigger_plugin_hook('search', $type, $options, []);  // 5.x+: elgg_trigger_event_results\n  $entities = elgg_extract('entities', $results);\n  echo elgg_view_entity_list($entities, ...);   // $entities is NULL on 3.x+ -> TypeError\n\nis broken from 3.0 onward. It typically passes activation + homepage render and only FATALS (or silently returns nothing) when the search/listing page is actually exercised — so it survives every server-side gate and surfaces much later.\n\nFIX — use the query-based API:\n- Render a list: `echo elgg_list_entities($options, 'elgg_search');` (the `elgg_search` callback runs the search query).\n- Get entities: `$entities = elgg_search($options);` then pass to `elgg_view_entity_list($entities, ...)`. Set `$options['query']` and `$options['type']` (and `subtypes`). For a count, `elgg_search($options + ['count' => true])`.\n\nThis is NOT a 7.x-only fix — it belongs on the migrate/elgg-3.x branch and forward-merges through 4.x/5.x/6.x/7.x (Iron Law 13). The intermediate branches carry the same latent bug. Verify by actually loading the search + every listing/directory page in a browser (see the route battery in elgg-migrate-verify).\n\nDetection: `bin/scan-frontend-residue.sh` flags `[dead-search-event]`; also `grep -rn \"elgg_trigger_\\(plugin_hook\\|event_results\\)(\\s*['\\\"]search\" --include='*.php'` and check each for a following `elgg_extract('entities', ...)`.\n\nRelated 3.0 removals to refactor the same way: `members_list_*` / `members_nav_*` functions (custom members directories), and from Elgg 7 the core members routes moved from the `members:list` event / resource model to route CONTROLLERS (collection:user:user:*), so plugins that customised members via that event must re-register their own route/resource on 7.x."
     },
     {
       "id": "999-add-docblocks",

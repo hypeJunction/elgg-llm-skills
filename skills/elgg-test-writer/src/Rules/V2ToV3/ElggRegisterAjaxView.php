@@ -81,10 +81,10 @@ final class ElggRegisterAjaxView extends AbstractRule
             $code = file_get_contents($file);
             if ($code === false) continue;
 
-            $ast = $this->parse($code);
-            if ($ast === null) continue;
+            $parsed = $this->parsePreserving($code);
+            if ($parsed === null) continue;
 
-            if (empty($this->findFunctionCalls($ast, ['elgg_register_ajax_view']))) continue;
+            if (empty($this->findFunctionCalls($parsed['new'], ['elgg_register_ajax_view']))) continue;
 
             $traverser = new NodeTraverser();
             $visitor = new class() extends NodeVisitorAbstract {
@@ -103,10 +103,10 @@ final class ElggRegisterAjaxView extends AbstractRule
             };
 
             $traverser->addVisitor($visitor);
-            $newAst = $traverser->traverse($ast);
+            $parsed['new'] = $traverser->traverse($parsed['new']);
 
             if ($visitor->changed) {
-                file_put_contents($file, $this->print($newAst));
+                file_put_contents($file, $this->printPreserving($parsed['new'], $parsed['old'], $parsed['tokens']));
                 $changes[] = new FileChange(
                     file: $relativePath,
                     type: 'modified',

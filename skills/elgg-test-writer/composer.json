@@ -1,5 +1,5 @@
 {
-    "name": "acme/elgg-test-writer",
+    "name": "acme/elgg-migrate",
     "description": "Automated migration toolkit for Elgg CMS plugins — migrate from legacy versions to modern Elgg one version at a time",
     "type": "project",
     "license": "MIT",
