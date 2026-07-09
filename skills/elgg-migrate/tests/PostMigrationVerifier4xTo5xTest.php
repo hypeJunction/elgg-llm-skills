@@ -20,8 +20,11 @@ use PHPUnit\Framework\TestCase;
  *   FC-4x5x-02  5.x global function removals        -> removed-function @ 5.x
  *   FC-4x5x-03  elgg_trigger_event_results leak     -> future-version-api @ 4.x
  *
- * (FC-4x5x-04..08 are catalogued as gate: NO / rule — no static verifier gate
- * exists for them yet, so they are intentionally out of scope here.)
+ * (FC-4x5x-04..08 ARE statically gated — checkRelocatedSymbols /
+ * check5xServiceRemovals / check5xMenuJsApi / check5xSubtypeAssignment /
+ * check5xTestMocking — and are exercised by FailureCatalogGateTest and the
+ * V4ToV5/AmdRemovedApis rule test, so they are covered there, not here. See the
+ * "Gate coverage audit" table at the foot of the failure catalog.)
  */
 final class PostMigrationVerifier4xTo5xTest extends TestCase
 {

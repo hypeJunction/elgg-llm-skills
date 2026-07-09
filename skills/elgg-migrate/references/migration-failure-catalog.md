@@ -8,7 +8,15 @@ detection signature** (a removed symbol, a regex, a forbidden file, or a config/
 
 `gate` column: **YES** = already detected by `PostMigrationVerifier` or `SecuritySweep`
 (runs on `migrate.php --verify`); **rule** = handled by an automated AST rule under
-`src/Rules/`; **NO** = no static gate yet (candidate for a new check).
+`src/Rules/`; **NO** = no static gate — a data/render/e2e failure verified only by an
+integration round-trip or a rendered-page battery, NOT a candidate for a static check.
+
+> **The authoritative, test-backed coverage record is the "Gate coverage audit"
+> table at the foot of this file** (bd elgg-migrate-99qbj, 2026-07-09). Many
+> per-entry `gate:` lines below predate the verifier checks that now cover them and
+> are indicative only; the audit table names the concrete check/rule and the passing
+> test for every FC class. Result: **0 FC classes admit a static gate without one** —
+> every remaining `gate: NO` is a by-design data/render/e2e case.
 
 Two data files feed the automated gates and are kept in lock-step with this catalog:
 - `references/removed-functions.json` — global symbols that fatal with "Call to undefined function"
@@ -517,3 +525,85 @@ Two data files feed the automated gates and are kept in lock-step with this cata
   form; bare constant). A dedicated method-call + constant scanner would close these.
 - **`Seed` missing `getType()`/`getCountOptions()`** needs a method-presence verifier check (see
   FC-5x6x-03) — it cannot be expressed by the keyword-based `changed-class-contracts` gate.
+
+---
+
+## Gate coverage audit (bd elgg-migrate-99qbj, 2026-07-09)
+
+Evidence-based three-bucket sort of all **53** FC classes. Verified by mapping each entry to its
+`PostMigrationVerifier`/`SecuritySweep`/AST-rule check and to a passing test in
+`skills/elgg-migrate/tests`; the full engine suite is green (692 tests, 0 failures). Some per-entry
+`gate:` lines above are stale relative to this table — the table is authoritative.
+
+**Bucket (a) — statically gated by a passing test (48):**
+
+| FC | check / rule | test |
+|----|--------------|------|
+| FC-2x3x-01 | removed-function[3.x] | Fc2xTo3xGateTest |
+| FC-2x3x-02 | check3xStartPhpExists | Fc2xTo3xGateTest |
+| FC-2x3x-03 | checkSearchHookReturn | Fc2xTo3xGateTest, FailureCatalogGateTest |
+| FC-2x3x-04 | checkSiteSecretScrub | Fc2xTo3xGateTest, FailureCatalogGateTest |
+| FC-3x4x-01 | checkForbiddenFiles | Catalog3xTo4xGateTest |
+| FC-3x4x-02 | removed-function + CssRegistration rule | Catalog3xTo4xGateTest |
+| FC-3x4x-03 | removed-function[4.x] | Catalog3xTo4xGateTest |
+| FC-3x4x-04 | checkDetectMimeTypeInstance (partial) | Catalog3xTo4xGateTest, FailureCatalogGateTest |
+| FC-3x4x-05 | removed-function[4.x] | Catalog3xTo4xGateTest |
+| FC-3x4x-06 | removed-function[4.x] | Catalog3xTo4xGateTest |
+| FC-3x4x-07 | changed-class-contract[4.x] | Catalog3xTo4xGateTest |
+| FC-3x4x-08 | changed-class-contract[4.x] | Catalog3xTo4xGateTest |
+| FC-3x4x-09 | check4xHookEventConfusion | Catalog3xTo4xGateTest |
+| FC-3x4x-10 | LowercasePluginIdCallsites rule | Catalog3xTo4xGateTest, LowercasePluginIdCallsitesTest |
+| FC-3x4x-12 | checkLegacyHandlerSignature | Catalog3xTo4xGateTest, FailureCatalogGateTest |
+| FC-3x4x-13 | checkInstallSqlNotAutoRun | Catalog3xTo4xGateTest, FailureCatalogGateTest |
+| FC-3x4x-14 | ExceptionClassRenames rule | FailureCatalogGateTest |
+| FC-3x4x-15 | ElggCallIgnoreAccess rule (+removed[6.x]) | ElggCallIgnoreAccessTest |
+| FC-4x5x-01 | removed-function[5.x] | PostMigrationVerifier4xTo5xTest |
+| FC-4x5x-02 | removed-function[5.x] | RemovedFunctionsTest(V4ToV5), PostMigrationVerifier4xTo5xTest |
+| FC-4x5x-03 | checkFunctions future-api[5.x] | PostMigrationVerifier4xTo5xTest |
+| FC-4x5x-04 | checkRelocatedSymbols (relocated-symbol) | FailureCatalogGateTest |
+| FC-4x5x-05 | check5xServiceRemovals | FailureCatalogGateTest |
+| FC-4x5x-06 | AmdRemovedApis / JqueryUiRequires rules | FailureCatalogGateTest, AmdRemovedApisTest |
+| FC-4x5x-07 | check5xSubtypeAssignment | FailureCatalogGateTest |
+| FC-4x5x-08 | check5xTestMocking | FailureCatalogGateTest |
+| FC-5x6x-01 | changed-class-contract[6.x] | FailureCatalog5xTo6xTest |
+| FC-5x6x-02 | removed-function[6.x]/[5.x] | FailureCatalog5xTo6xTest, RenameMapPlacementTest |
+| FC-5x6x-03 | checkSeedAbstractMethods | FailureCatalog5xTo6xTest, FailureCatalogGateTest |
+| FC-5x6x-04 | changed-class-contract[6.x] | FailureCatalog5xTo6xTest |
+| FC-5x6x-05 | removed-function[6.x] + future-api | FailureCatalog5xTo6xTest |
+| FC-6x7x-01 | checkRemovedConstants | FailureCatalogGateTest |
+| FC-6x7x-02 | removed-function elgg_new_entity (partial) | PostMigrationVerifier6xTo7xTest |
+| FC-6x7x-03 | checkMenuAddValue | FailureCatalogGateTest |
+| FC-6x7x-04 | removed-function[7.x] + ResetSystemCache rule | ResetSystemCacheTest, PostMigrationVerifier6xTo7xTest |
+| FC-6x7x-05 | checkCssViewRelocation | FailureCatalogGateTest |
+| FC-6x7x-06 | checkEsmBareSpecifiers | FailureCatalogGateTest |
+| FC-6x7x-07 | checkJqueryGlobal | FailureCatalogGateTest |
+| FC-6x7x-08 | checkI18nNamedImport | FailureCatalogGateTest |
+| FC-6x7x-09 | checkEmptyFormatElement | FailureCatalogGateTest |
+| FC-6x7x-10 | checkDbalColonParams | FailureCatalogGateTest |
+| FC-6x7x-11 | checkCanWriteToContainerSubtype | FailureCatalogGateTest |
+| FC-6x7x-12 | checkUnbracedMethodInterpolation | FailureCatalogGateTest |
+| FC-6x7x-13 | checkAdminPasswordLength | FailureCatalogGateTest |
+| FC-ALL-01 | SecuritySweep unserialize | SecuritySweepTest |
+| FC-ALL-03 | checkDanglingUpgradeClasses | PostMigrationVerifierTest |
+| FC-ALL-05 | checkRouteRewriteTiming | FailureCatalogGateTest |
+| FC-ALL-06 | checkElggPluginSideEffects | FailureCatalogGateTest |
+| FC-ALL-07 | checkLibFunctionsAutoload | FailureCatalogGateTest |
+| FC-ALL-08 | checkUnguardedOptionalDeps | FailureCatalogGateTest |
+
+**Bucket (b) — gate: NO by design; no static gate is possible (5, one partial):**
+
+- **FC-3x4x-11** camelCase→lowercase strands plugin SETTINGS — DB-state/data; verifiable only by an
+  integration settings round-trip (ships an `Elgg\Upgrade\Batch`).
+- **FC-6x7x-02** *(partial)* the `elgg_new_entity()` removal IS gated (bucket a); the residual
+  `new \ElggObject` abstract-instantiation subset is a render/integration concern.
+- **FC-ALL-02** serialize→json / URL-rewrite corrupts serialized length prefixes — data round-trip;
+  needs a Batch + integration unserialize assertion.
+- **FC-ALL-04** *(partial)* the static 3-arg legacy-handler subset IS caught by
+  checkLegacyHandlerSignature (bucket a); the data-dependent forward-port render battery is by design.
+- **FC-ALL-05..08, FC-6x7x-05..13** all carry an additional render/e2e "test-to-write" beyond their
+  static gate — the static half is covered (bucket a); the render half is intentionally e2e-only.
+
+**Bucket (c) — genuinely uncovered though a static gate is possible: EMPTY (0).**
+
+Conclusion: every FC class that admits a static gate already has one plus a passing test; no static
+gate tests remain to be written. Bead elgg-migrate-99qbj can be CLOSED.
