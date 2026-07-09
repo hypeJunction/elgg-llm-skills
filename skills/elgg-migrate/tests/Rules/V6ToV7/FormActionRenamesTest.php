@@ -72,6 +72,61 @@ final class FormActionRenamesTest extends TestCase
         }
     }
 
+    public function testPrefixOverlapRewritesEachRouteExactlyOnce(): void
+    {
+        // A file containing BOTH the short members route and its own rename
+        // target (the longer, prefix-overlapping key). The naive-replace failure
+        // mode would corrupt 'collection:user:user:all' while rewriting its
+        // prefix 'collection:user:user'. Whole-literal, longest-first matching
+        // must rewrite each exactly once.
+        $dir = $this->makeDir([
+            'views/default/resources/members.php' => "<?php\n"
+                . "\$a = elgg_generate_url('collection:user:user');\n"        // → :all
+                . "\$b = elgg_generate_url('collection:user:user:all');\n"    // already migrated → untouched
+                . "\$c = elgg_generate_url('search:user:user');\n",          // → collection:user:user:search
+        ]);
+
+        try {
+            $this->assertTrue($this->rule->analyze($dir)->applicable);
+            $this->rule->apply($dir);
+            $out = file_get_contents($dir . '/views/default/resources/members.php');
+
+            // Each rewritten target appears exactly once.
+            $this->assertSame(2, substr_count($out, "'collection:user:user:all'"));
+            $this->assertSame(1, substr_count($out, "'collection:user:user:search'"));
+
+            // The short prefix key no longer stands alone as a whole literal.
+            $this->assertStringNotContainsString("'collection:user:user'", $out);
+            $this->assertStringNotContainsString("'search:user:user'", $out);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testMembersRouteRewriteIsIdempotent(): void
+    {
+        $dir = $this->makeDir([
+            'views/default/resources/members.php' => "<?php\n"
+                . "\$a = elgg_generate_url('collection:user:user');\n"
+                . "\$b = elgg_generate_url('collection:user:user:all');\n"
+                . "\$c = elgg_generate_url('search:user:user');\n",
+        ]);
+
+        try {
+            $this->rule->apply($dir);
+            $first = file_get_contents($dir . '/views/default/resources/members.php');
+
+            // Second run must be a no-op: nothing left to rewrite, file unchanged.
+            $this->assertFalse($this->rule->analyze($dir)->applicable);
+            $this->assertEmpty($this->rule->apply($dir)->changes);
+            $second = file_get_contents($dir . '/views/default/resources/members.php');
+
+            $this->assertSame($first, $second);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     private function makeDir(array $files): string
     {
         $dir = sys_get_temp_dir() . '/elgg-migrate-far-' . uniqid();

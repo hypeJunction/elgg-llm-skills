@@ -46,7 +46,36 @@ abstract class DataDrivenStringLiteralRenames extends AbstractRule
         foreach ($data[$major] as $old => $new) {
             $map[(string) $old] = (string) $new;
         }
+
+        // Order keys longest-first so that "the longest key wins". Matching is
+        // already on a String_ node's ENTIRE value (===), so a literal can equal
+        // at most one key and a longer key like 'collection:user:user:all' can
+        // never be clobbered by a rewrite of its prefix 'collection:user:user'.
+        // The explicit ordering makes that invariant a guaranteed, testable
+        // property (see resolveRename) and future-proofs it against any move to
+        // prefix matching.
+        uksort($map, static fn(string $a, string $b): int => strlen($b) <=> strlen($a) ?: strcmp($a, $b));
+
         return $map;
+    }
+
+    /**
+     * Resolve a rename for one whole literal value using longest-key-first,
+     * exact-match ordering. Returns null when nothing applies or when the
+     * rename would be a no-op (guarantees idempotency: a value that is itself a
+     * rename TARGET, e.g. the already-migrated 'collection:user:user:all', is
+     * only rewritten if it also appears as a key, and never to itself).
+     *
+     * @param array<string, string> $orderedMap longest-key-first rename map
+     */
+    private static function resolveRename(string $value, array $orderedMap): ?string
+    {
+        foreach ($orderedMap as $old => $new) {
+            if ($old === $value && $new !== $value) {
+                return $new;
+            }
+        }
+        return null;
     }
 
     public function getId(): string
@@ -84,11 +113,12 @@ abstract class DataDrivenStringLiteralRenames extends AbstractRule
                     continue;
                 }
                 foreach ($this->collectStringLiterals($ast) as $node) {
-                    if (isset($map[$node->value])) {
+                    $new = self::resolveRename($node->value, $map);
+                    if ($new !== null) {
                         $findings[] = new Finding(
                             file: $relativePath,
                             line: $node->getLine(),
-                            description: sprintf("'%s' → '%s'", $node->value, $map[$node->value]),
+                            description: sprintf("'%s' → '%s'", $node->value, $new),
                             code: '',
                         );
                     }
@@ -163,7 +193,7 @@ abstract class DataDrivenStringLiteralRenames extends AbstractRule
     {
         return array_values(array_filter(
             $this->collectStringLiterals($ast),
-            fn(Node\Scalar\String_ $n) => isset($map[$n->value]),
+            fn(Node\Scalar\String_ $n) => self::resolveRename($n->value, $map) !== null,
         ));
     }
 
@@ -178,21 +208,27 @@ abstract class DataDrivenStringLiteralRenames extends AbstractRule
             return ['transformed' => false, 'code' => $originalCode];
         }
 
+        // Longest-key-first resolver, shared with analyze(), so the printed
+        // rewrite obeys the same "longest key wins" + idempotency invariant.
+        $resolve = fn(string $value): ?string => self::resolveRename($value, $map);
+
         $traverser = new NodeTraverser();
-        $visitor = new class($map) extends NodeVisitorAbstract {
+        $visitor = new class($resolve) extends NodeVisitorAbstract {
             private bool $changed = false;
 
-            /** @param array<string, string> $map */
-            public function __construct(private array $map) {}
+            /** @param callable(string): ?string $resolve */
+            public function __construct(private $resolve) {}
 
             public function leaveNode(Node $node): int|Node|null
             {
-                if ($node instanceof Node\Scalar\String_ && isset($this->map[$node->value])) {
-                    $new = $this->map[$node->value];
-                    // Replace with a fresh node so the printer re-renders the literal.
-                    $replacement = new Node\Scalar\String_($new, $node->getAttributes());
-                    $this->changed = true;
-                    return $replacement;
+                if ($node instanceof Node\Scalar\String_) {
+                    $new = ($this->resolve)($node->value);
+                    if ($new !== null) {
+                        // Replace with a fresh node so the printer re-renders the literal.
+                        $replacement = new Node\Scalar\String_($new, $node->getAttributes());
+                        $this->changed = true;
+                        return $replacement;
+                    }
                 }
                 return null;
             }

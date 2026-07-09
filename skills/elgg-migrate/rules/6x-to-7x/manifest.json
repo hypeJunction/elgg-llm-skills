@@ -71,7 +71,7 @@
       "name": "Auto-rewrite renamed form/action path string literals",
       "automated": true,
       "class": "ElggMigrate\\Rules\\V6ToV7\\FormActionRenames",
-      "breaking_change": "The renamed form/view/action PATH string literals in references/string-renames.json['7.x'] (blog/bookmarks/discussion save→edit, file upload→edit, admin/site/flush_cache→admin/site/cache/clear — including short names, forms/* and action/* full paths) are rewritten automatically via a whole-string-literal AST match (substrings/comments untouched). Also handles the single 011 admin action rename. The 007 entry below still covers view OVERRIDE FILE renames (views/default/forms/blog/save.php → edit.php), which are file moves, not string literals.",
+      "breaking_change": "The renamed form/view/action PATH string literals in references/string-renames.json['7.x'] (blog/bookmarks/discussion save→edit, file upload→edit, admin/site/flush_cache→admin/site/cache/clear, members routes collection:user:user→:all and search:user:user→collection:user:user:search — including short names, forms/* and action/* full paths) are rewritten automatically via a whole-string-literal AST match (substrings/comments untouched), resolved longest-key-first so prefix-overlapping route names cannot be clobbered. Also handles the single 011 admin action rename and the 012 members route renames. The 007 entry below still covers view OVERRIDE FILE renames (views/default/forms/blog/save.php → edit.php), which are file moves, not string literals.",
       "priority": 69
     },
     {
@@ -118,7 +118,7 @@
       "id": "012-members-route-renames",
       "name": "Update members route names",
       "automated": false,
-      "llm_instructions": "Members routes were renamed:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nSearch:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```\n\nUpdate `elgg_generate_url()` calls and route references.",
+      "llm_instructions": "AUTO-APPLIED by rule 007a (FormActionRenames). These whole-string route literals are in references/string-renames.json['7.x'] and are rewritten by the data-driven AST match, resolved longest-key-first so the prefix overlap is safe:\n- `collection:user:user` → `collection:user:user:all`\n- `search:user:user` → `collection:user:user:search`\n\nThe prefix overlap (`collection:user:user` is a prefix of `collection:user:user:all`) is handled correctly because matching is on a String_ node's ENTIRE value: `collection:user:user:all` never equals the key `collection:user:user`, so it is never clobbered, and the rewrite is idempotent. No manual action needed unless a route name is BUILT by string concatenation (e.g. `'collection:user:' . $x`), which the AST match cannot see — search for that case:\n```bash\ngrep -rn \"collection:user:user[^:]\\|search:user:user\" classes/ views/ --include='*.php'\n```",
       "breaking_change": "Members routes renamed: collection:user:user→:all, search:user:user→:search",
       "priority": 120
     },
