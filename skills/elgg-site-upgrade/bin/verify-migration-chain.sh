@@ -8,7 +8,8 @@
 # Per NEXT tier: dump PREV (mysqldump + tar dataroot) → preseed NEXT's named
 # volumes (restore SQL in a throwaway mysql + extract dataroot) → boot NEXT (must
 # SKIP install because tables exist) → optional CHAIN_PRE_PHINX_<VER>_SQL hook →
-# `phinx migrate` (schema) → `elgg-cli upgrade` (Batch) → optional plugin
+# `phinx migrate` (schema) → `elgg-cli upgrade` (Batch) →
+# optional CHAIN_POST_UPGRADE_<VER>_SQL hook → optional plugin
 # activation reconcile → verify HTTP + scan logs for fatals → PREV=NEXT.
 #
 # WARNING: `php upgrade.php` is a WEB bootstrap (emits an HTTP redirect), NOT a
@@ -23,6 +24,9 @@
 #   CHAIN_SEED_SQL, CHAIN_SEED_DATA           overlay the seed tier with prod data
 #   CHAIN_PRE_PHINX_<LABEL>_SQL               inject cleanup SQL before phinx (e.g.
 #                                             CHAIN_PRE_PHINX_3X_SQL for a 2x→3x fix)
+#   CHAIN_POST_UPGRADE_<LABEL>_SQL            inject data repair AFTER phinx + Batch
+#                                             (e.g. CHAIN_POST_UPGRADE_4X_SQL=references/
+#                                             4x-post-lowercase-plugin-settings.sql)
 #   CHAIN_ACTIVE_PLUGINS_TSV                  reconcile prod-active plugins per tier
 #                                             (uses the sibling restore-active-plugins.sh)
 #   CHAIN_KEEP=1                              leave the last tier running
@@ -206,6 +210,20 @@ boot_and_upgrade() {
   local pat='Phinx\\.*Exception|SQLSTATE|Elgg\\Upgrade.*failed|Fatal error|Uncaught|Upgrade class .* was not found|Locator\.php'
   grep -cE "$pat" "$CHAIN_DIR/batch-$proj.log" 2>/dev/null | grep -qvx 0 \
     && { log "    ⚠ batch fatals:"; grep -E "$pat" "$CHAIN_DIR/batch-$proj.log" | head -5 | sed 's/^/      /' | tee -a "$REPORT"; return 1; }
+
+  # Optional post-upgrade SQL hook — data repairs that can only run once BOTH the
+  # schema and Batch upgrades have landed for this tier. The canonical case is the
+  # 4.x plugin-id lowercasing, which strands every stored plugin setting on the old
+  # camelCase plugin entity; the copy has to happen after `elgg-cli upgrade` has
+  # created the lowercase twin, and before anything deletes the orphan.
+  #   CHAIN_POST_UPGRADE_4X_SQL=references/4x-post-lowercase-plugin-settings.sql
+  local uv="CHAIN_POST_UPGRADE_$(echo "$lbl" | tr '[:lower:]' '[:upper:]')_SQL"; local up="${!uv:-}"
+  if [ -n "$up" ] && [ -f "$up" ]; then
+    log "  [post-upgrade] applying $up"
+    docker exec -i "$(db_c "$proj")" mysql -uelgg -pelgg elgg <"$up" >"$CHAIN_DIR/post-upgrade-$proj.log" 2>&1 \
+      || { log "    POST-UPGRADE SQL FAILED — $CHAIN_DIR/post-upgrade-$proj.log"; return 1; }
+  fi
+
   docker exec "$(app_c "$proj")" sh -c 'chown -R www-data:www-data /var/data/elgg 2>/dev/null || true' >/dev/null 2>&1
 
   if [ -n "${CHAIN_ACTIVE_PLUGINS_TSV:-}" ] && [ -f "${CHAIN_ACTIVE_PLUGINS_TSV}" ] && [ -x "$RESTORE_SH" ]; then
