@@ -23,7 +23,9 @@
 #   ELGG_MIGRATE_PLUGINS  workspace holding <plugin-id>/ source dirs.
 #                         Falls back to ~/.config/elgg-migrate/config.json
 #                         (plugins_source), same contract as discover-plugins.sh.
-#   ELGG_APP_CONTAINER    running Elgg 7 container name. Default: bodyology-forum-app-1
+#   ELGG_APP_CONTAINER    running Elgg 7 container name. Default: elgg7-elgg-1
+#                         (the skill's own infra/elgg7 stack); set it to your
+#                         site's app container when testing against a real site.
 #   ELGG_DB_PREFIX        DB table prefix for integration tests. Default: elgg_
 #
 # Why a scratch copy: the container's /var/www/html/mod/<plugin> is a baked,
@@ -52,7 +54,7 @@ set -uo pipefail
 PHAR_URL="https://phar.phpunit.de/phpunit-9.phar"
 PHAR_PATH="/usr/local/lib/phpunit-9.phar"
 
-APP_CONTAINER="${ELGG_APP_CONTAINER:-bodyology-forum-app-1}"
+APP_CONTAINER="${ELGG_APP_CONTAINER:-elgg7-elgg-1}"
 DB_PREFIX="${ELGG_DB_PREFIX:-elgg_}"
 
 usage() {

@@ -18,7 +18,8 @@ is green.** Section-page status crawls are worthless — they miss:
 
 ### Verify with a real browser, as a real user AND admin
 
-Use the committed Playwright suite (`bodyology/e2e/`, portable to any Elgg site):
+Use a Playwright verification suite (scaffold one with the `elgg-js-test-writer`
+skill; the pattern below is portable to any Elgg site):
 per navigation it asserts, automatically, on **every** page:
 1. document status < 400
 2. **no PHP-fatal signature in the body** (`Fatal Error|ArgumentCountError|

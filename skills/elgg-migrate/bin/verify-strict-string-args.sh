@@ -10,7 +10,8 @@
 # `elgg_get_excerpt($entity->description)` is a TypeError — an HTTP 500 on any page
 # that renders an entity without a description. This is silent in 2.x/3.x (PHP was
 # lenient) and only fires against real data, so it survives every synthetic smoke
-# test. On bodyology it fataled /profile/{user} and the folder listing.
+# test. On a real production dataset it fataled /profile/{user} and the folder
+# listing.
 #
 # The fix at each site is a `(string)` cast, or a truthiness guard around the call.
 #

@@ -123,8 +123,8 @@ scan_one() {
   #         does NOT resolve view 'js/modal_info.mjs' (key 'js/modal_info'). The
   #         .mjs exists, so [esm-wrong-ext] stays silent, yet the browser throws
   #         "Failed to resolve module specifier" and the whole module aborts (page
-  #         still 200s). This bit modal_info, hypeprototyper, hypelists during the
-  #         bodyology 7.x preview. Fix: make the specifier EQUAL the .mjs view key. ---
+  #         still 200s). This bit three plugins during a real 7.x preview
+  #         deployment. Fix: make the specifier EQUAL the .mjs view key. ---
   # importmap key of every local .mjs = path after views/<type>/ minus .mjs
   local_mjs_keys="$(find "$dir/views" -name '*.mjs' 2>/dev/null | sed -E 's#.*/views/[^/]+/##; s#\.mjs$##')"
   while IFS= read -r line; do
