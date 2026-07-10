@@ -26,6 +26,12 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
+# Apache's stock mods-available/alias.conf maps /icons/ to /usr/share/apache2/icons/,
+# so ANY Elgg route under /icons/ (hypeicons registers /icons/{segments}) is answered by
+# Apache's directory alias and never reaches Elgg — a permanent 404 that looks like a
+# plugin bug. The decorative icon directory is useless here; drop the alias.
+RUN sed -i 's|^\(\s*\)Alias /icons/|\1#Alias /icons/|' /etc/apache2/mods-available/alias.conf
+
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
