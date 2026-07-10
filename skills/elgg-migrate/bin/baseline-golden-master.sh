@@ -211,6 +211,19 @@ fi" | LC_ALL=C sort > "$OUT"
   p3=$(awk -F'\t' '$3 ~ /^3/' "$OUT" | wc -l)
   echo "  wrote $OUT" >&2
   echo "  rows=$lines (anon=$anon auth=$auth)  2xx=$p2 3xx=$p3 5xx=$p5" >&2
+
+  # A snapshot in which nothing rendered is not a baseline — it is a trap. It will
+  # happily "match" the next equally-broken capture, or flag every route as fixed.
+  # The usual cause is a BASE that the CONTAINER cannot reach: the crawl runs inside
+  # the app container, so GM_BASE must be container-local (http://localhost/), not the
+  # host-mapped port.
+  if [ "$lines" -gt 0 ] && [ "$((p2 + p3))" -eq 0 ]; then
+    echo "  ERROR: not one route returned 2xx/3xx — this snapshot is worthless." >&2
+    echo "         The crawl runs INSIDE $CONTAINER; GM_BASE='$BASE' must be reachable" >&2
+    echo "         from there (default http://localhost/), not the host-mapped port." >&2
+    rm -f "$OUT"
+    return 1
+  fi
   if [ "$p5" -gt 0 ]; then
     echo "  --- 5xx routes in this snapshot (by plugin) ---" >&2
     awk -F'\t' '$3 ~ /^5/ {print "    "$2"\t"$1"\t"$3}' "$OUT" | sort | head -40 >&2
