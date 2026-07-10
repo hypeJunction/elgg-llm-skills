@@ -24,7 +24,7 @@ from pathlib import Path
 
 
 def get_plugins_dir():
-    d = os.environ.get('ELGG_PLUGINS_DIR')
+    d = os.environ.get('ELGG_MIGRATE_PLUGINS') or os.environ.get('ELGG_PLUGINS_DIR')
     if d:
         return Path(d).expanduser()
     try:

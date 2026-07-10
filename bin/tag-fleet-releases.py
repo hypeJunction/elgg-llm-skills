@@ -32,7 +32,7 @@ from pathlib import Path
 
 def _resolve_plugins_dir():
     """Resolve plugin workspace: ELGG_PLUGINS_DIR env > discover-plugins.sh > error."""
-    d = os.environ.get('ELGG_PLUGINS_DIR') or os.environ.get('PLUGINS_DIR')
+    d = os.environ.get('ELGG_MIGRATE_PLUGINS') or os.environ.get('ELGG_PLUGINS_DIR') or os.environ.get('PLUGINS_DIR')
     if d:
         return Path(d).expanduser()
     try:

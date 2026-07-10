@@ -18,7 +18,8 @@
 #   check-release-lag.sh <composer.lock> [<plugins-src-dir>] [--branch <ref>] \
 #                        [--vendor-prefix <p>] [--quiet]
 # Env fallbacks:
-#   ELGG_PLUGINS_DIR      plugins source dir (if arg omitted)
+#   ELGG_MIGRATE_PLUGINS  plugins source dir (if arg omitted). ELGG_PLUGINS_DIR is
+#                         accepted as a back-compat alias.
 #   ELGG_MIGRATE_BRANCH   migration branch to compare against (default migrate/elgg-7.x)
 #   ELGG_VENDOR_PREFIX    package-name prefix to check (default: empty = all
 #                         packages; those without a matching source repo in the
@@ -30,7 +31,10 @@ QUIET=0
 BRANCH="${ELGG_MIGRATE_BRANCH:-migrate/elgg-7.x}"
 PREFIX="${ELGG_VENDOR_PREFIX:-}"
 LOCK=""
-PLUGINS="${ELGG_PLUGINS_DIR:-}"
+# ELGG_MIGRATE_PLUGINS is the canonical plugins-root variable across the skills;
+# ELGG_PLUGINS_DIR is the older name the top-level fleet scripts use. Accept both
+# so a user who exported only one of them isn't silently left with no plugin dir.
+PLUGINS="${ELGG_PLUGINS_DIR:-${ELGG_MIGRATE_PLUGINS:-}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -43,7 +47,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$LOCK" ] && [ -f "$LOCK" ] || { echo "usage: check-release-lag.sh <composer.lock> [<plugins-src-dir>] [--branch REF] [--vendor-prefix P] [--quiet]" >&2; exit 2; }
-[ -n "$PLUGINS" ] && [ -d "$PLUGINS" ] || { echo "plugins source dir not found (arg or ELGG_PLUGINS_DIR): '$PLUGINS'" >&2; exit 2; }
+[ -n "$PLUGINS" ] && [ -d "$PLUGINS" ] || { echo "plugins source dir not found (arg, ELGG_MIGRATE_PLUGINS or ELGG_PLUGINS_DIR): '$PLUGINS'" >&2; exit 2; }
 
 command -v python3 >/dev/null 2>&1 || { echo "python3 required to parse composer.lock" >&2; exit 2; }
 

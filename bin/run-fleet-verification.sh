@@ -22,8 +22,8 @@ PLUGINS_DIR=""
 if [[ -n "${1:-}" ]] && [[ -d "$1" ]]; then
     PLUGINS_DIR="$1"
     shift
-elif [[ -n "${ELGG_PLUGINS_DIR:-}" ]]; then
-    PLUGINS_DIR="$ELGG_PLUGINS_DIR"
+elif [[ -n "${ELGG_MIGRATE_PLUGINS:-${ELGG_PLUGINS_DIR:-}}" ]]; then
+    PLUGINS_DIR="${ELGG_MIGRATE_PLUGINS:-${ELGG_PLUGINS_DIR:-}}"
 elif [[ -x "$SCRIPT_DIR/discover-plugins.sh" ]]; then
     _disc_out="$(bash "$SCRIPT_DIR/discover-plugins.sh" 2>/dev/null || true)"
     PLUGINS_DIR="$(echo "$_disc_out" | grep 'PLUGINS_DIR=' | head -1 | cut -d= -f2-)"

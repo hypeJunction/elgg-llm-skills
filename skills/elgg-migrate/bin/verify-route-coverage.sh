@@ -13,7 +13,9 @@
 # Usage: verify-route-coverage.sh [--container NAME] [--base http://localhost]
 #                                 [--user ADMIN --pass PW]   # adds auth crawl
 set -u
-CONTAINER="${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}"
+# Canonical name is ELGG_APP_CONTAINER; ELGG_CONTAINER/ROUTE_CHECK_CONTAINER are
+# accepted as back-compat aliases. Default stays 'elgg' (the compose service name).
+CONTAINER="${ELGG_APP_CONTAINER:-${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}}"
 BASE="http://localhost"; USER=""; PASS=""
 while [ $# -gt 0 ]; do case "$1" in
   --container) CONTAINER="$2"; shift 2;; --base) BASE="$2"; shift 2;;
@@ -21,6 +23,10 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "unknown arg: $1" >&2; exit 2;; esac; done
 
 dx() { docker exec "$CONTAINER" sh -c "$1"; }
+
+# Credentials go in as environment, never interpolated into the shell string:
+# a password containing a quote/&/space would break the command apart.
+dx_auth() { docker exec -e LUSER="$USER" -e LPASS="$PASS" "$CONTAINER" sh -c "$1"; }
 MARK="===ROUTE-CHECK-$$==="
 dx "echo '$MARK' >> /var/log/apache2/error.log" 2>/dev/null
 
@@ -64,7 +70,12 @@ crawl anon ""
 if [ -n "$USER" ] && [ -n "$PASS" ]; then
   TOK=$(dx "curl -s -c /tmp/rc.cj '$BASE/login' | grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2")
   TS=$(dx "curl -s -b /tmp/rc.cj '$BASE/login' | grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' | grep -oE '[0-9]+' | head -1")
-  dx "curl -s -b /tmp/rc.cj -c /tmp/rc.cj -o /dev/null -d 'username=$USER&password=$PASS&__elgg_token=$TOK&__elgg_ts=$TS' '$BASE/action/login'" >/dev/null 2>&1
+  # --data-urlencode (not -d) so '&', '=', '+' and spaces in the password are
+  # encoded rather than parsed as field separators.
+  dx_auth "curl -s -b /tmp/rc.cj -c /tmp/rc.cj -o /dev/null \
+    --data-urlencode \"username=\$LUSER\" --data-urlencode \"password=\$LPASS\" \
+    --data-urlencode '__elgg_token=$TOK' --data-urlencode '__elgg_ts=$TS' \
+    '$BASE/action/login'" >/dev/null 2>&1
   crawl auth "-b /tmp/rc.cj"
 fi
 

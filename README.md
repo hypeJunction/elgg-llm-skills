@@ -177,6 +177,16 @@ python3 bin/tag-fleet-releases.py
 
 Plugins are discovered via `bin/discover-plugins.sh`, which reads paths from env vars / XDG config — no hardcoded local paths are needed in the scripts.
 
+### Environment variables
+
+One canonical name per concept. The older names are still accepted so existing setups keep working, but new scripts should use the canonical one.
+
+| Concept | Canonical | Accepted aliases | Default |
+|---|---|---|---|
+| Plugin source workspace | `ELGG_MIGRATE_PLUGINS` | `ELGG_PLUGINS_DIR`, `PLUGINS_DIR` | `~/.config/elgg-migrate/config.json` → `plugins_source` |
+| Running Elgg container | `ELGG_APP_CONTAINER` | `ELGG_CONTAINER`, `ROUTE_CHECK_CONTAINER` | `elgg` (crawl/baseline scripts), `elgg7-elgg-1` (`run-plugin-tests.sh`) |
+| DB table prefix | `ELGG_DB_PREFIX` | — | `elgg_` |
+
 ## Task Tracking with Beads
 
 For structured migration of many plugins, we recommend [beads](https://github.com/beads-dev/beads) (`bd`) for issue tracking. Beads provides local-first issue management that integrates well with AI agent workflows.

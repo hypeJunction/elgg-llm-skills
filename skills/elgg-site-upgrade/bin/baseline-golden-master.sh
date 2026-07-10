@@ -18,7 +18,8 @@
 #                                             [--user U --pass P]
 #   baseline-golden-master.sh diff <fileA> <fileB>
 #
-# Env: ELGG_CONTAINER / ROUTE_CHECK_CONTAINER, GM_USER, GM_PASS, GM_BASE.
+# Env: ELGG_APP_CONTAINER (aliases: ELGG_CONTAINER, ROUTE_CHECK_CONTAINER),
+#      GM_USER, GM_PASS, GM_BASE.
 #
 # TSV line format (3 tab-separated columns, sorted, stable):
 #   <context> <method> <path> \t <owning_plugin> \t <http_status>
@@ -32,7 +33,9 @@ REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 # upgrade can keep baselines in the SITE repo instead of the skill's tree.
 BASELINE_DIR="${GM_BASELINE_DIR:-$REPO_ROOT/baselines}"
 
-CONTAINER="${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}"
+# Canonical name is ELGG_APP_CONTAINER; ELGG_CONTAINER/ROUTE_CHECK_CONTAINER are
+# accepted as back-compat aliases. Default stays 'elgg' (the compose service name).
+CONTAINER="${ELGG_APP_CONTAINER:-${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}}"
 BASE="${GM_BASE:-http://localhost}"
 USER="${GM_USER:-}"
 PASS="${GM_PASS:-}"

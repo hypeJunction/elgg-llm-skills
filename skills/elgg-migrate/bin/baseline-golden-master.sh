@@ -18,7 +18,8 @@
 #                                             [--user U --pass P]
 #   baseline-golden-master.sh diff <fileA> <fileB>
 #
-# Env: ELGG_CONTAINER / ROUTE_CHECK_CONTAINER, GM_USER, GM_PASS, GM_BASE.
+# Env: ELGG_APP_CONTAINER (aliases: ELGG_CONTAINER, ROUTE_CHECK_CONTAINER),
+#      GM_USER, GM_PASS, GM_BASE.
 #
 # TSV line format (3 tab-separated columns, sorted, stable):
 #   <context> <method> <path> \t <owning_plugin> \t <http_status>
@@ -32,12 +33,20 @@ REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 # upgrade can keep baselines in the SITE repo instead of the skill's tree.
 BASELINE_DIR="${GM_BASELINE_DIR:-$REPO_ROOT/baselines}"
 
-CONTAINER="${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}"
+# Canonical name is ELGG_APP_CONTAINER; ELGG_CONTAINER/ROUTE_CHECK_CONTAINER are
+# accepted as back-compat aliases. Default stays 'elgg' (the compose service name).
+CONTAINER="${ELGG_APP_CONTAINER:-${ELGG_CONTAINER:-${ROUTE_CHECK_CONTAINER:-elgg}}}"
 BASE="${GM_BASE:-http://localhost}"
 USER="${GM_USER:-}"
 PASS="${GM_PASS:-}"
 
 dx() { docker exec "$CONTAINER" sh -c "$1"; }
+
+# Same, but hands the login credentials to the container as ENVIRONMENT rather
+# than splicing them into the shell string. A password containing a quote, an
+# ampersand or a space would otherwise break the command apart (or worse).
+# Inside the script body they are read as "$LUSER" / "$LPASS".
+dx_auth() { docker exec -e LUSER="$USER" -e LPASS="$PASS" "$CONTAINER" sh -c "$1"; }
 
 # ---------------------------------------------------------------------------
 # diff mode: report status regressions (A passing -> B 5xx), attributed to plugin
@@ -164,7 +173,7 @@ foreach (_elgg_services()->routes->all() as $name=>$r) {
   local DO_AUTH=0
   [ -n "$USER" ] && [ -n "$PASS" ] && DO_AUTH=1
 
-  dx "BASE='$BASE'; DO_AUTH='$DO_AUTH'; LUSER='$USER'; LPASS='$PASS'
+  dx_auth "BASE='$BASE'; DO_AUTH='$DO_AUTH'
 crawl() {
   ctx=\"\$1\"; cookie=\"\$2\"
   while IFS=\$(printf '\t') read -r method path plugin; do
