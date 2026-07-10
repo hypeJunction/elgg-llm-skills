@@ -64,6 +64,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 | `references/git-hygiene.md` | Before every commit — what belongs (and doesn't) in plugin and site repos |
 | `references/migration-lessons.md` | **Once before any multi-version migration** — the synthesis of past failures: why "renders 200" ≠ done, the bug taxonomy (each class → signature → fix → gate), fix-at-origin/forward-port, and the real definition of done |
 | `references/migration-failure-catalog.md` | **The source of truth for `--verify`** — every failure CLASS this project has hit, per version step, reduced to a static detection signature + fix + test-to-write + `gate:` status (YES = caught by `--verify`; rule = an AST transform; NO = no static gate yet). Consult it to interpret a `--verify` finding and to know which classes are NOT yet auto-caught (still need a manual/render check) |
+| `references/upgrade-batch-contract.md` | **Before writing or debugging any `Elgg\Upgrade\Batch`** — the termination contract (`needsIncrementOffset()` / `countItems()` / `markComplete()`), why a batch that loops or reports a failure stalls EVERY upgrade behind it, and why `elgg-cli upgrade` silently skips the async batches (`upgrade all -n -f`). Orphaned upgrades cost bodyology 85 pages and every discussion reply. |
 
 **Linear knowledge rule**: When migrating from version N to N+1, only read the sections of these docs relevant to N and N+1. Do NOT read sections about versions beyond N+1 — that knowledge will leak into your migration and cause version drift.
 

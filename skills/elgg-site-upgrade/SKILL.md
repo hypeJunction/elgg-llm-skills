@@ -13,7 +13,7 @@ description: >
 
 ## Iron Laws (strict — do not improvise)
 
-These are the three rules that make site upgrades recoverable. Violate any
+These are the four rules that make site upgrades recoverable. Violate any
 one and a bad upgrade stops being a rollback and becomes a restoration.
 
 1. **ONE MAJOR VERSION AT A TIME.** Upgrade 2.x→3.x, then 3.x→4.x, and so on.
@@ -23,7 +23,15 @@ one and a bad upgrade stops being a rollback and becomes a restoration.
 2. **LATEST MINOR BEFORE JUMPING MAJOR.** From 2.3.x you can start on 3.x;
    from 2.0.x you cannot. Minor releases contain the compatibility shims
    that make the major jump safe.
-3. **PREPARE COMPLETELY BEFORE EXECUTING.** Part A (prepare) must produce a
+3. **THE DATA UPGRADES MUST ACTUALLY RUN.** `elgg-cli upgrade` executes only the
+   SYSTEM upgrades and silently skips every asynchronous `Elgg\Upgrade\Batch`.
+   Use `elgg-cli upgrade all -n -f` at EVERY tier, and assert zero pending
+   `elgg_upgrade` entities before moving to the next one. Skip this and the
+   upgrades pile up until a later Elgg release deletes their class — at which
+   point the work they were carrying is unreachable forever. On bodyology that
+   cost 85 pages and every discussion reply on the site. See "Finish the
+   upgrades Elgg deleted" below.
+4. **PREPARE COMPLETELY BEFORE EXECUTING.** Part A (prepare) must produce a
    fully tested migration branch before Part B (execute) touches production.
    Production is not where you discover problems — it's where you apply
    solutions you already verified work.
@@ -936,8 +944,62 @@ of them means production isn't ready:
 - Docker boots with all plugins active using the recorded order
 - No PHP errors in `error.log`
 - No JS console errors in the browser
+- **Zero pending `elgg_upgrade` entities** (see the query in "Finish the upgrades Elgg deleted")
+- **Every object subtype yields a non-empty `getURL()`** — an entity whose subtype was never
+  migrated has no class and no URL, so nothing links to it and nothing 404s. A route crawl
+  cannot see it. Ask each entity for its own permalink and fetch it.
+- **`check-release-lag.sh` reports zero lag** — `composer.lock` pin == newest tag == branch tip.
+  Source gates read the branch; the site installs the tag. A fix you never tagged is not deployed,
+  and rebuilding the image will not change that.
+- **Pretty/SEF URLs resolve on the deployed host** (`/@username`, `/blog/{guid}-{slug}`). On a
+  subpath deployment these are the canary: if the reverse proxy strips the prefix without sending
+  `X-Forwarded-Prefix`, every rewritten route 404s and nothing is logged.
 
 When all of these hold, the migration branches are ready for Part B.
+
+## Finish the upgrades Elgg deleted
+
+Run this against the migrated database, at every tier and again at the end:
+
+```sql
+SELECT e.guid, MAX(CASE WHEN m.name='class' THEN m.value END) AS class
+FROM elgg_entities e JOIN elgg_metadata m ON m.entity_guid = e.guid
+WHERE e.subtype = 'elgg_upgrade'
+GROUP BY e.guid
+HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0')
+    OR MAX(CASE WHEN m.name='is_completed' THEN m.value END) IS NULL;
+```
+
+Anything it returns is one of three things. `references/7x-prune-orphaned-upgrades.php` sorts them:
+
+| Kind | Why it never ran | What to do |
+|---|---|---|
+| Never invoked | the chain used `elgg-cli upgrade` instead of `upgrade all` | run `elgg-cli upgrade all -n -f` |
+| Dead class | a later Elgg release deleted the upgrade class; `getPendingUpgrades()` silently drops any upgrade whose batch cannot be instantiated | do the work by hand, then delete the entity |
+| camelCase twin | Elgg 4 lowercased plugin ids and an upgrade's identity is `{plugin_id}:{version}`; `hypeMaps:…` is orphaned while `hypemaps:…` completes | delete the camelCase entity |
+
+The two dead-class upgrades that cost bodyology real content, with the SQL that finishes each:
+
+- `\Elgg\Pages\Upgrades\MigratePageTop` → `references/7x-migrate-page-top.sql`
+- `\Elgg\Discussions\Upgrades\MigrateDiscussionReply(+River)` → `references/7x-migrate-discussion-replies.sql`
+
+Verify every other dead upgrade against live data before assuming it was a no-op. Most were
+(bodyology's groups had no icons to transfer), but `PublicLikesAnnotations` had left 80 of 780
+likes invisible to other members.
+
+Two more things will abort the run before it reaches any of this:
+
+- Core's `AlterDatabaseToMultiByteCharset` ALTERs `elgg_private_settings`, a table Elgg 4 removed,
+  and dies before converting anything. Do the conversion yourself
+  (`references/7x-utf8mb4-plugin-tables.sql`), then mark the upgrade completed.
+- One batch reporting a failure rejects Elgg's promise and aborts the whole run. See `FC-UPG-04`
+  and `FC-UPG-05` in the elgg-migrate failure catalog — six of bodyology's own batches looped
+  forever, and three failed on rows they could never convert.
+
+Then crawl the DEPLOYED preview, anonymously and as a logged-in member:
+`bin/verify-preview-live.sh`. It is the only gate here that reads the running site rather than
+source or a local stack. The authenticated pass is the point: `/discussion/all` was a hard 500 for
+every logged-in non-admin while anonymous visitors saw a clean 200.
 
 ---
 
