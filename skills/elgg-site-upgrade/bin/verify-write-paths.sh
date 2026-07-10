@@ -48,6 +48,7 @@ while [ $# -gt 0 ]; do
     --db-name) DB_NAME="$2"; shift 2 ;;
     --db-user) DB_USER="$2"; shift 2 ;;
     --db-pass) DB_PASS="$2"; shift 2 ;;
+    --strict-skips) STRICT_SKIPS=1; shift; continue ;;
     --forms-file) FORMS_FILE="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -79,10 +80,15 @@ harvest_tokens() {
 }
 
 PASS_N=0; FAIL_N=0
+SKIP_N=0
+STRICT_SKIPS="${STRICT_SKIPS:-0}"   # --strict-skips: treat a skipped journey as failure
 result() {
   local name="$1" code="$2" detail="$3" ok="$4"
-  if [ "$ok" = "1" ]; then PASS_N=$((PASS_N+1)); printf '  [PASS] %-24s HTTP %s  %s\n' "$name" "$code" "$detail"
-  else FAIL_N=$((FAIL_N+1)); printf '  [FAIL] %-24s HTTP %s  %s\n' "$name" "$code" "$detail"; fi
+  case "$ok" in
+    1) PASS_N=$((PASS_N+1)); printf '  [PASS] %-24s HTTP %s  %s\n' "$name" "$code" "$detail" ;;
+    skip) SKIP_N=$((SKIP_N+1)); printf '  [SKIP] %-24s HTTP %s  %s\n' "$name" "$code" "$detail" ;;
+    *) FAIL_N=$((FAIL_N+1)); printf '  [FAIL] %-24s HTTP %s  %s\n' "$name" "$code" "$detail" ;;
+  esac
 }
 
 ############ 1. LOGIN ############
@@ -101,7 +107,14 @@ echo "[auth] logged in as $USER (guid=$USER_GUID)"
 
 ############ 2. CREATE GROUP (core action) ############
 GNAME="wp-smoke-group-$$"
-if harvest_tokens "/groups/add"; then
+# Elgg renders a 404 page that still carries CSRF tokens, so harvest_tokens() alone
+# cannot tell "route exists" from "route missing". Ask for the status first: with the
+# groups plugin inactive this journey verifies nothing and must not report a failure
+# of the WRITE PATH — that would be indistinguishable from a real regression.
+GROUPS_CODE=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -c "$JAR" -L "$BASE/groups/add")
+if [ "$GROUPS_CODE" = "404" ]; then
+  result "create group" "$GROUPS_CODE" "route absent — groups plugin inactive? nothing verified" skip
+elif harvest_tokens "/groups/add"; then
   code=$(curl -s -o "$TMP/grp.html" -w '%{http_code}' -b "$JAR" -c "$JAR" -L \
     --data-urlencode "name=$GNAME" \
     --data-urlencode "description=write-path smoke test group" \
@@ -128,7 +141,11 @@ else result "edit user settings" "-" "no /settings tokens" 0; fi
 # GET each create/edit form authenticated and flag 5xx. Form-build code == submit
 # code, so a 500 here is a write-path break. {guid} expands to the logged-in user;
 # 403/404 are acceptable (wrong container / needs an existing entity) — only 5xx fails.
-echo "[forms] create/edit form render sweep (5xx = fail):"
+# A 404 means the ROUTE DOES NOT EXIST — the form was never rendered, so nothing was
+# verified. Counting that as a pass let a stack with the relevant plugins inactive
+# report a clean sweep while covering nothing. 404 is SKIPPED; only a rendered form
+# (2xx/3xx) passes, and 5xx fails.
+echo "[forms] create/edit form render sweep (2xx/3xx = pass, 404 = route absent/skipped, 5xx = fail):"
 CORE_FORMS=("/groups/add" "/blog/add/{guid}" "/bookmarks/add/{guid}" "/file/add/{guid}" "/pages/add/{guid}" "/messages/add")
 EXTRA=()
 [ -n "${EXTRA_FORM_ROUTES:-}" ] && read -r -a EXTRA <<< "$EXTRA_FORM_ROUTES"
@@ -142,8 +159,23 @@ for r in "${CORE_FORMS[@]}" "${EXTRA[@]}"; do
   route="${r//\{guid\}/$USER_GUID}"
   c=$(curl -s -o "$TMP/form.html" -w '%{http_code}' -b "$JAR" -c "$JAR" -L "$BASE$route")
   ttl=$(grep -oE '<title>[^<]*' "$TMP/form.html" | head -1 | sed 's/<title>//')
-  if [ "${c:0:1}" = "5" ]; then result "form $route" "$c" "FATAL" 0; else result "form $route" "$c" "${ttl:--}" 1; fi
+  if [ "${c:0:1}" = "5" ]; then
+    result "form $route" "$c" "FATAL" 0
+  elif [ "$c" = "404" ]; then
+    result "form $route" "$c" "route absent — plugin inactive? nothing verified" skip
+  else
+    result "form $route" "$c" "${ttl:--}" 1
+  fi
 done
 
-echo "[write-paths] $PASS_N passed, $FAIL_N failed"
+echo "[write-paths] $PASS_N passed, $FAIL_N failed, $SKIP_N skipped"
+if [ "$SKIP_N" -gt 0 ]; then
+  echo "  NOTE: $SKIP_N journey/route(s) returned 404 and verified NOTHING. On a stack where the" >&2
+  echo "        owning plugins are active this is a real failure; on a bare-core stack it is" >&2
+  echo "        expected. A skipped gate is not a passed gate." >&2
+  if [ "$STRICT_SKIPS" = "1" ]; then
+    echo "  --strict-skips: refusing to report success with $SKIP_N unverified route(s)." >&2
+    exit 1
+  fi
+fi
 [ "$FAIL_N" -eq 0 ]
