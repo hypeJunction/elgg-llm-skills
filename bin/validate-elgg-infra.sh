@@ -250,11 +250,31 @@ check_engine_mirror() {
   return $rc
 }
 
+# elgg-test-writer owns bin/scaffold-*.sh and bin/lib/extract-plugin-config.php.
+# Its tests/ dir is the mirrored engine (wiped on every generator run), so its own
+# scaffolding is covered by selftest/run.sh instead. Offline, seconds.
+check_test_writer_selftest() {
+  local st="$ROOT/skills/elgg-test-writer/selftest/run.sh"
+  [[ -x "$st" ]] || { echo "elgg-test-writer selftest: SKIP (not found)"; return 0; }
+  if bash "$st" >"$LOG_DIR/test-writer-selftest.log" 2>&1; then
+    # the summary line is "selftest: N passed, M failed" (the ok lines are ANSI-coloured)
+    echo "elgg-test-writer selftest: PASS ($(sed -n 's/^selftest: \([0-9]*\) passed.*/\1/p' "$LOG_DIR/test-writer-selftest.log") assertions)"
+    return 0
+  fi
+  echo "elgg-test-writer selftest: FAIL — see $LOG_DIR/test-writer-selftest.log" >&2
+  grep 'FAIL' "$LOG_DIR/test-writer-selftest.log" | head -10 >&2 || true
+  return 1
+}
+
 declare -A RESULTS
 declare -A TRESULTS
 rc_overall=0
 
 if ! check_engine_mirror; then
+  rc_overall=1
+fi
+
+if ! check_test_writer_selftest; then
   rc_overall=1
 fi
 
