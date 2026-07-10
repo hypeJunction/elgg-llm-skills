@@ -218,6 +218,50 @@ tar -C "$PLUGIN_SRC" \
   | docker exec -i "$APP_CONTAINER" tar -C "$SCRATCH" -xf - \
   || { echo "ERROR: failed to stage $PLUGIN_ID source into container." >&2; exit 1; }
 
+# --- preflight: duplicate global declarations ------------------------------
+#
+# An INTEGRATION suite boots real Elgg, which loads the LIVE plugin from mod/<id>.
+# If that plugin declares global functions from a file it require_once's off its
+# own plugin root — `require_once __DIR__ . '/lib/functions.php'` in elgg-plugin.php,
+# or a Bootstrap::load() doing `dirname(__DIR__, 3) . '/lib/functions.php'` — then
+# the STAGED copy under mod-test/<id> is a second, distinct realpath. require_once
+# de-duplicates by realpath, so both files are included and PHP dies with
+#
+#   Fatal error: Cannot redeclare foo() (previously declared in
+#   /var/www/html/mod/<id>/lib/functions.php:12) in
+#   /var/www/html/mod-test/<id>/lib/functions.php on line 12
+#
+# ...part-way through the run, after some tests have already reported.
+#
+# This is not a bug in the staging that can be patched here: the whole point of
+# mod-test/ is to exercise the CURRENT workspace source while the container keeps
+# serving its baked mod/ copy, and both copies of a global-declaring file cannot
+# coexist in one PHP process. Detect it and say so, instead of failing obscurely.
+# The sound way to test such a plugin is one process, one copy: an isolated stack
+# whose mod/<id> IS the workspace source (bin/elgg-migrate-run).
+if [ "$SUITE" != "unit" ]; then
+    _globals_file=""
+    for _f in lib/functions.php autoloader.php; do
+        if [ -f "$PLUGIN_SRC/$_f" ] \
+           && docker exec "$APP_CONTAINER" test -f "/var/www/html/mod/$PLUGIN_ID/$_f" 2>/dev/null \
+           && grep -qE '^[[:space:]]*function[[:space:]]+[a-zA-Z_]' "$PLUGIN_SRC/$_f" 2>/dev/null; then
+            _globals_file="$_f"
+            break
+        fi
+    done
+    if [ -n "$_globals_file" ]; then
+        echo "ERROR: $PLUGIN_ID declares global functions in $_globals_file, and the container" >&2
+        echo "       already loads mod/$PLUGIN_ID/$_globals_file when Elgg boots." >&2
+        echo "       Staging a second copy at mod-test/ would redeclare them and fatal mid-run." >&2
+        echo "" >&2
+        echo "       An integration suite for this plugin needs ONE copy in the process." >&2
+        echo "       Run it against an isolated stack whose mod/$PLUGIN_ID is the workspace" >&2
+        echo "       source:  bin/elgg-migrate-run   (see the skill's SKILL.md)" >&2
+        echo "       The unit suite (--suite=unit) does not boot Elgg and is unaffected." >&2
+        exit 3
+    fi
+fi
+
 # --- run -------------------------------------------------------------------
 if [ "$CONFIG_SUBDIR" = "tests" ]; then
     RUN_DIR="$SCRATCH/tests"
