@@ -24,10 +24,10 @@ set -uo pipefail
 
 source "$(dirname "$0")/preview-7x/config.sh"
 
-APP_C="${PREVIEW_APP_CONTAINER:?set PREVIEW_APP_CONTAINER}"
+APP_C="${PREVIEW_APP_CONTAINER:-forum-7x-app-1}"
 PORT="${ELGG_PORT:-8287}"
-HOSTHDR="${PREVIEW_HOST:?set PREVIEW_HOST}"
-PREFIX="${PREVIEW_PREFIX:-}"
+HOSTHDR="${PREVIEW_HOST:-bodyologymassagecourses.co.uk}"
+PREFIX="${PREVIEW_PREFIX:-/forum-7.x}"
 TMP_USER="preview_verify_$$"
 TMP_PASS="Verify$$!aA"
 ANON_ONLY=0
@@ -84,8 +84,7 @@ crawl anon "" /this-route-does-not-exist-xyz 404
 # hypeseo SEF pretty URLs. These are the canary for the subpath deployment: the
 # rewritten request only routes when nginx forwards X-Forwarded-Prefix, and every
 # one of them 404s silently when it does not.
-# Set SEF_PROBE_PATHS to a couple of known pretty URLs on your site.
-for u in \${SEF_PROBE_PATHS:-}; do crawl sef "" "\$u" 200; done
+for u in /@dror /@kevin.macaulay; do crawl sef "" "\$u" 200; done
 
 if [ "\$ANON_ONLY" = 1 ]; then
   echo; echo "anon-only: fails=\$fails"; exit \$([ \$fails -eq 0 ] && echo 0 || echo 1)
@@ -144,6 +143,96 @@ else
   crawl member "\$JAR" /admin gate
 fi
 rm -f "\$JAR"
+
+echo
+# The entity pass below must not trip over ACLs: a private folder or a walled-group
+# discussion legitimately 403s for a member, which says nothing about whether the
+# entity is REACHABLE. Promote the throwaway account for that pass only.
+echo "── promoting the temporary account to admin for the entity pass"
+cat > /tmp/mkadmin.php <<'PHPEOF'
+<?php
+require '/var/www/html/vendor/autoload.php';
+\Elgg\Application::getInstance()->bootCore();
+[\$_s, \$username] = \$argv;
+elgg_call(ELGG_IGNORE_ACCESS, function () use (\$username) {
+    \$u = elgg_get_user_by_username(\$username);
+    if (\$u && !\$u->isAdmin()) { \$u->makeAdmin(); echo "promoted\n"; }
+});
+PHPEOF
+docker cp /tmp/mkadmin.php "\$APP_C:/var/www/html/mkadmin.php" >/dev/null
+docker exec "\$APP_C" chmod 0644 /var/www/html/mkadmin.php
+docker exec -u www-data "\$APP_C" sh -c "cd /var/www/html && php mkadmin.php '\$TMP_USER' 2>/dev/null" | sed 's/^/  /'
+docker exec "\$APP_C" rm -f /var/www/html/mkadmin.php; rm -f /tmp/mkadmin.php
+
+# re-login: the admin bit is read at session start
+ADMIN_JAR=\$(mktemp)
+LOGIN2=\$(curl -s "\${H[@]}" -c "\$ADMIN_JAR" "\$BASE/login")
+TS2=\$(printf '%s' "\$LOGIN2" | grep -o 'name="__elgg_ts" value="[0-9]*"' | grep -o '[0-9]*' | head -1)
+TOK2=\$(printf '%s' "\$LOGIN2" | grep -o 'name="__elgg_token" value="[^"]*"' | sed 's/.*value="//;s/"//' | head -1)
+curl -s "\${H[@]}" -b "\$ADMIN_JAR" -c "\$ADMIN_JAR" -o /dev/null -X POST "\$BASE/action/login" \
+  --data-urlencode "username=\$TMP_USER" --data-urlencode "password=\$TMP_PASS" \
+  --data-urlencode "__elgg_ts=\$TS2" --data-urlencode "__elgg_token=\$TOK2"
+
+echo
+echo "── entity permalinks (getURL() per subtype)"
+# Route crawls miss the worst failure mode: an entity whose subtype was never
+# migrated has NO class and NO url, so it is unreachable and no route 404s to tell
+# you. 85 page_top entities and 17 discussion replies were invisible this way.
+# Ask ONE entity per subtype for its own URL, then fetch it.
+cat > /tmp/permalinks.php <<'PHPEOF'
+<?php
+require '/var/www/html/vendor/autoload.php';
+\Elgg\Application::getInstance()->bootCore();
+elgg_call(ELGG_IGNORE_ACCESS, function () {
+    \$seen = [];
+    foreach (elgg_get_entities(['type' => 'object', 'limit' => 0]) as \$e) {
+        \$st = \$e->getSubtype();
+        if (isset(\$seen[\$st])) { continue; }
+        \$seen[\$st] = true;
+        printf("%s\t%d\t%s\n", \$st, \$e->guid, \$e->getURL() ?: '-');
+    }
+});
+PHPEOF
+docker cp /tmp/permalinks.php "\$APP_C:/var/www/html/permalinks.php" >/dev/null
+docker exec "\$APP_C" chmod 0644 /var/www/html/permalinks.php
+docker exec -u www-data "\$APP_C" sh -c "cd /var/www/html && php permalinks.php 2>/dev/null" > /tmp/permalinks.tsv
+docker exec "\$APP_C" rm -f /var/www/html/permalinks.php; rm -f /tmp/permalinks.php
+
+# Subtypes Elgg deliberately gives no page: bookkeeping, notifications, avatars,
+# access-collection shims. Anything ELSE without a URL is unreachable content.
+PARITY_404="river_object anypage"
+NO_PAGE="elgg_upgrade avatar notification notification_template notification_mass_mail site_feedback embed_code user_invite quasi_access_metacollection exam library_file tincan_package widget plugin comment river_object"
+subtypes=0; urlless=0
+while IFS=\$'\t' read -r st guid url; do
+  [ -n "\$st" ] || continue
+  subtypes=\$((subtypes+1))
+  if [ "\$url" = "-" ] || [ -z "\$url" ]; then
+    case " \$NO_PAGE " in
+      *" \$st "*) continue ;;
+    esac
+    printf '  FAIL entity  --   subtype=%s guid=%s HAS NO URL (subtype never migrated)\n' "\$st" "\$guid"
+    urlless=\$((urlless+1)); fails=\$((fails+1))
+    continue
+  fi
+  path="/\$(printf '%s' "\$url" | sed -e 's|^[a-z]*://[^/]*/||' -e "s|^\${PREFIX#/}/||")"
+
+  # Subtypes that advertise a getURL() which 404s ON PRODUCTION TOO. Not migration
+  # damage — verified against 2.x on 2026-07-10. Kept separate from NO_PAGE (which
+  # is "no URL at all") so neither list can quietly absorb a real regression:
+  #   river_object  internal river bookkeeping. Its URL points at the comment route
+  #                 (stream/view/{guid}), which gatekeeps to subtype `comment`.
+  #   anypage       the plugin's two shipped example pages (guids 24636/24637).
+  case " \$PARITY_404 " in
+    *" \$st "*)
+      printf '  skip entity  --   subtype=%s %s (404 on production too)\n' "\$st" "\$path"
+      continue ;;
+  esac
+
+  crawl entity "\$ADMIN_JAR" "\$path" ok
+done < /tmp/permalinks.tsv
+rm -f /tmp/permalinks.tsv
+rm -f "\$ADMIN_JAR"
+echo "  (\$subtypes object subtypes; \$urlless unreachable)"
 
 echo
 echo "── removing the temporary member"

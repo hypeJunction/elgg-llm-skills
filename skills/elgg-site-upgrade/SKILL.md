@@ -991,7 +991,11 @@ Two more things will abort the run before it reaches any of this:
 
 - Core's `AlterDatabaseToMultiByteCharset` ALTERs `elgg_private_settings`, a table Elgg 4 removed,
   and dies before converting anything. Do the conversion yourself
-  (`references/7x-utf8mb4-plugin-tables.sql`), then mark the upgrade completed.
+  (`references/7x-utf8mb4-convert.sh` — it discovers the table list at runtime rather than
+  hardcoding it, and skips the ARCHIVE/MEMORY tables that cannot be converted), then mark the
+  upgrade completed. **Marking it complete is not enough on its own**: on bodyology the preview's
+  eight core tables (`elgg_entities`, `elgg_metadata`, `elgg_annotations`, …) were still
+  `utf8_general_ci` afterwards, because the upgrade had never converted anything.
 - One batch reporting a failure rejects Elgg's promise and aborts the whole run. See `FC-UPG-04`
   and `FC-UPG-05` in the elgg-migrate failure catalog — six of bodyology's own batches looped
   forever, and three failed on rows they could never convert.
