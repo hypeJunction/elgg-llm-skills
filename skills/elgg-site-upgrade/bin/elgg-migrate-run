@@ -595,12 +595,13 @@ cmd_status() {
 # ---------------------------------------------------------------------------
 cmd_test() {
   local plugin="${1:?plugin id required}"; shift || true
-  local suite="integration" version="elgg7" keep=0
+  local suite="integration" version="elgg7" keep=0 allow_branch=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --suite=*)   suite="${1#*=}"; shift ;;
       --version=*) version="${1#*=}"; shift ;;
       --keep)      keep=1; shift ;;
+      --allow-branch-mismatch) allow_branch=1; shift ;;
       *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
   done
@@ -639,6 +640,22 @@ cmd_test() {
                  [[ -n "$integration_dir" ]] && targets+=("$(rel_to_cfg "$integration_dir")")
                  [[ ${#targets[@]} -gt 0 ]]  || { echo "ERROR: $plugin has no populated test dirs" >&2; exit 1; } ;;
   esac
+
+  # The stack bind-mounts the plugin's WORKING TREE. Testing a migrate/elgg-6.x
+  # checkout inside an Elgg 7 stack measures pre-migration code against the new
+  # core: it manufactures "boot fatals" (name() missing a return type, a non-static
+  # getType()) that the plugin's own migrate/elgg-7.x branch already fixed. Every
+  # such result is noise. Refuse unless the caller is explicit.
+  local want_branch="migrate/elgg-${version#elgg}.x" cur_branch
+  cur_branch="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  if [[ -n "$cur_branch" && "$cur_branch" != "$want_branch" && "$allow_branch" -eq 0 ]]; then
+    echo "ERROR: $plugin is checked out on '$cur_branch' but the stack is $version." >&2
+    echo "       The stack mounts the working tree, so this would test $cur_branch code" >&2
+    echo "       against $version core and report defects the $want_branch branch has" >&2
+    echo "       already fixed." >&2
+    echo "       git -C <plugins>/$plugin checkout $want_branch   (or pass --allow-branch-mismatch)" >&2
+    exit 7
+  fi
 
   cmd_up "$plugin" "--version=$version" || { echo "ERROR: could not bring up the isolated stack" >&2; exit 1; }
 
@@ -706,6 +723,7 @@ elgg-migrate-run — isolated per-plugin migration orchestrator
   resolve <plugin>
   up      <plugin> [--version=elgg2|elgg3|elgg4|elgg5|elgg6|elgg7]
   test    <plugin> [--suite=unit|integration|all] [--version=elggN] [--keep]
+                   [--allow-branch-mismatch]
   down    <plugin>
   status  [<plugin>]
 
