@@ -17,8 +17,12 @@
 #   --auto-restore    On step failure, roll the DB back to the pre-step snapshot
 #                     without asking. Not implied by --yes: restoring discards
 #                     whatever the failed step accomplished.
+#   --no-dataroot-backup
+#                     Skip the per-step dataroot tar. The DB dump alone is NOT a
+#                     complete rollback point — upgrades rewrite icon/thumbnail
+#                     artifacts under the dataroot. Skipping is announced.
 #   --dry-run         Print what would be done without executing.
-#   --backup-dir DIR  Where to store DB backups (default: <project>/../elgg-backups/).
+#   --backup-dir DIR  Where to store DB + dataroot backups (default: <project>/../elgg-backups/).
 #   --site-url URL    Override site URL for curl verification (auto-detected from settings.php).
 #
 # Gates (opt-in; both drive the site through docker, this script otherwise does not):
@@ -60,6 +64,8 @@ BACKUP_DIR=""
 SITE_URL_OVERRIDE=""
 LAST_BACKUP=""      # path written by the most recent backup_db(); restore target
 AUTO_RESTORE=0      # --auto-restore: roll back the DB on step failure unattended
+SKIP_DATAROOT=0   # --no-dataroot-backup: skip the (potentially large) dataroot tar
+DATAROOT=""       # resolved from elgg-config/settings.php by read_settings()
 
 # Per-version branch overrides (empty = auto-detect from the git repo)
 ELGG_BRANCH_2="${ELGG_BRANCH_2:-}"
@@ -79,11 +85,12 @@ while [[ $# -gt 0 ]]; do
         --to)         TO_VER="$2"; shift 2 ;;
         --yes|-y)     YES=1; shift ;;
         --auto-restore) AUTO_RESTORE=1; shift ;;
+        --no-dataroot-backup) SKIP_DATAROOT=1; shift ;;
         --dry-run)    DRY_RUN=1; shift ;;
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
         --site-url)   SITE_URL_OVERRIDE="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -211,6 +218,7 @@ read_settings() {
             'prefix' => \$CONFIG->dbprefix ?? 'elgg_',
             'port'   => \$CONFIG->dbport   ?? '3306',
             'wwwroot'=> \$CONFIG->wwwroot  ?? '',
+            'dataroot'=> \$CONFIG->dataroot ?? '',
         ]);
     " 2>/dev/null
 }
@@ -226,6 +234,7 @@ load_db_settings() {
     DB_PASS="$(  echo "$json" | php -r "echo json_decode(file_get_contents('php://stdin'),true)['pass'];")"
     DB_PREFIX="$(echo "$json" | php -r "echo json_decode(file_get_contents('php://stdin'),true)['prefix'];")"
     SITE_URL="$( echo "$json" | php -r "echo json_decode(file_get_contents('php://stdin'),true)['wwwroot'];")"
+    DATAROOT="$( echo "$json" | php -r "echo json_decode(file_get_contents('php://stdin'),true)['dataroot'];")"
     if [[ -n "$SITE_URL_OVERRIDE" ]]; then
         SITE_URL="$SITE_URL_OVERRIDE"
     fi
@@ -275,6 +284,38 @@ backup_db() {
     size="$(du -sh "$outfile" | cut -f1)"
     tables="$(zcat "$outfile" | grep -c '^CREATE TABLE' || true)"
     log "Backup complete: $size, $tables tables → $outfile"
+}
+
+# ---------------------------------------------------------------------------
+# Dataroot backup. The rollback target documented in cutover-runbook.md is
+# "DB + dataroot + code", and Elgg upgrades do rewrite dataroot artifacts (icon
+# and thumbnail regeneration), so a DB-only snapshot is not a restorable point.
+# Skipped only with --no-dataroot-backup, and skipping is announced.
+# ---------------------------------------------------------------------------
+backup_dataroot() {
+    local label="$1"
+    if [[ $SKIP_DATAROOT -eq 1 ]]; then
+        warn "SKIPPING dataroot backup (--no-dataroot-backup). The DB dump alone is NOT a"
+        warn "  complete rollback point — icon/thumbnail artifacts will not be restored."
+        return 0
+    fi
+    if [[ -z "${DATAROOT:-}" || ! -d "$DATAROOT" ]]; then
+        warn "SKIPPING dataroot backup — dataroot not found in settings.php ('${DATAROOT:-}')"
+        warn "  Back it up by hand before proceeding, or pass --no-dataroot-backup to silence."
+        return 0
+    fi
+
+    local outfile="$BACKUP_DIR/dataroot-${label}-$(date +%Y%m%d-%H%M%S).tar.gz"
+    log "Backing up dataroot $DATAROOT → $outfile"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  [dry-run] tar czf $outfile -C $(dirname "$DATAROOT") $(basename "$DATAROOT")"
+        return 0
+    fi
+    if ! tar czf "$outfile" -C "$(dirname "$DATAROOT")" "$(basename "$DATAROOT")"; then
+        warn "dataroot backup failed: $outfile"
+        return 1
+    fi
+    log "Dataroot backup complete: $(du -sh "$outfile" | cut -f1) → $outfile"
 }
 
 # ---------------------------------------------------------------------------
@@ -561,6 +602,7 @@ do_step() {
     # here needs no restore and no maintenance window.
     info "1/8 Backup"
     backup_db "before-${to}x" || { warn "Backup failed — aborting step (site untouched)"; return 1; }
+    backup_dataroot "before-${to}x" || { warn "Dataroot backup failed — aborting step (site untouched)"; return 1; }
 
     # The parity oracle must be captured while the site still runs the OLD
     # version and is still serving (i.e. before maintenance mode goes up).
