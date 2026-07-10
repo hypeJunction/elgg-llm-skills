@@ -27,7 +27,15 @@ cd /var/www/html
 
 # Check if Elgg is already installed
 if [ ! -f /var/www/html/.elgg-installed ]; then
-    echo "Installing Elgg 5.x..."
+    # Only announce a FRESH install. verify-migration-chain.sh greps the entrypoint
+    # log for "Installing Elgg" to detect that a tier wrongly reinstalled over
+    # carried-forward state; printing it unconditionally made that check fire on
+    # every preseeded tier.
+    if [ "$ELGG_PRESEEDED" != "1" ]; then
+        echo "Installing Elgg 5.x..."
+    else
+        echo "Configuring Elgg against the preseeded database..."
+    fi
 
     # Create settings.php
     mkdir -p elgg-config
