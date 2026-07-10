@@ -21,6 +21,9 @@
 #                     Skip the per-step dataroot tar. The DB dump alone is NOT a
 #                     complete rollback point — upgrades rewrite icon/thumbnail
 #                     artifacts under the dataroot. Skipping is announced.
+#   --skip-minor-guard
+#                     Bypass Iron Law 2 (latest minor before a major jump). Unsafe:
+#                     minor releases carry the shims the next major assumes have run.
 #   --dry-run         Print what would be done without executing.
 #   --backup-dir DIR  Where to store DB + dataroot backups (default: <project>/../elgg-backups/).
 #   --site-url URL    Override site URL for curl verification (auto-detected from settings.php).
@@ -65,6 +68,7 @@ SITE_URL_OVERRIDE=""
 LAST_BACKUP=""      # path written by the most recent backup_db(); restore target
 AUTO_RESTORE=0      # --auto-restore: roll back the DB on step failure unattended
 SKIP_DATAROOT=0   # --no-dataroot-backup: skip the (potentially large) dataroot tar
+SKIP_MINOR_GUARD=0 # --skip-minor-guard: bypass the Iron Law 2 latest-minor assertion
 DATAROOT=""       # resolved from elgg-config/settings.php by read_settings()
 
 # Per-version branch overrides (empty = auto-detect from the git repo)
@@ -86,11 +90,12 @@ while [[ $# -gt 0 ]]; do
         --yes|-y)     YES=1; shift ;;
         --auto-restore) AUTO_RESTORE=1; shift ;;
         --no-dataroot-backup) SKIP_DATAROOT=1; shift ;;
+        --skip-minor-guard) SKIP_MINOR_GUARD=1; shift ;;
         --dry-run)    DRY_RUN=1; shift ;;
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
         --site-url)   SITE_URL_OVERRIDE="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -203,6 +208,67 @@ detect_version() {
         \$v = \$j['version'] ?? \$j['extra']['branch-alias']['dev-master'] ?? '';
         if (preg_match('/^(\d+)\./', \$v, \$m)) { echo \$m[1]; } else { exit(1); }
     " || fail "Could not parse Elgg version from $composer_json"
+}
+
+# Full <major>.<minor> of the installed core, or empty if unknowable.
+detect_minor() {
+    local composer_json="$PROJECT/vendor/elgg/elgg/composer.json"
+    [[ -f "$composer_json" ]] || return 0
+    php -r "
+        \$j = json_decode(file_get_contents('$composer_json'), true);
+        \$v = \$j['version'] ?? '';
+        if (preg_match('/^v?(\d+)\.(\d+)/', \$v, \$m)) { echo \$m[1] . '.' . \$m[2]; }
+    " 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Iron Law 2 — LATEST MINOR BEFORE JUMPING MAJOR.
+#
+# From 2.3.x you may start on 3.x; from 2.0.x you may not. The minor releases
+# carry the compatibility shims and the upgrade scripts the next major assumes
+# have already run. detect_version() parses only the major, so nothing enforced
+# this and a 2.0.x site was walked straight to 3.x.
+#
+# Highest published minor per major (packagist elgg/elgg, 2026-07-10). Override
+# per major with ELGG_LAST_MINOR_<N> when a new minor ships.
+# ---------------------------------------------------------------------------
+ELGG_LAST_MINOR_2="${ELGG_LAST_MINOR_2:-3}"
+ELGG_LAST_MINOR_3="${ELGG_LAST_MINOR_3:-3}"
+ELGG_LAST_MINOR_4="${ELGG_LAST_MINOR_4:-3}"
+ELGG_LAST_MINOR_5="${ELGG_LAST_MINOR_5:-1}"
+ELGG_LAST_MINOR_6="${ELGG_LAST_MINOR_6:-3}"
+ELGG_LAST_MINOR_7="${ELGG_LAST_MINOR_7:-0}"
+
+assert_latest_minor() {
+    local major="$1"
+    if [[ $SKIP_MINOR_GUARD -eq 1 ]]; then
+        warn "Iron Law 2 guard disabled (--skip-minor-guard): not checking that ${major}.x is on its latest minor."
+        return 0
+    fi
+
+    local full varname required minor
+    full="$(detect_minor)"
+    if [[ -z "$full" ]]; then
+        warn "Could not read the installed minor version (vendor/elgg/elgg/composer.json has no 'version')."
+        warn "  Iron Law 2 NOT verified: confirm the site is on the latest ${major}.x minor before continuing."
+        return 0
+    fi
+
+    minor="${full#*.}"
+    varname="ELGG_LAST_MINOR_${major}"
+    required="${!varname:-}"
+    if [[ -z "$required" ]]; then
+        warn "No known latest minor for Elgg ${major}.x — skipping the Iron Law 2 check."
+        return 0
+    fi
+
+    if (( minor < required )); then
+        fail "Iron Law 2 violated: site is on Elgg ${full}, but ${major}.${required} is the latest ${major}.x minor.
+       Minor releases carry the compatibility shims and upgrade scripts that Elgg $((major+1)).x assumes have run.
+       Upgrade to ${major}.${required}.x first, then re-run this script.
+       Override the expected minor with ELGG_LAST_MINOR_${major}=<n>, or bypass with --skip-minor-guard (unsafe)."
+    fi
+    log "Iron Law 2 OK — on Elgg ${full}, the latest ${major}.x minor is ${major}.${required}"
 }
 
 # ---------------------------------------------------------------------------
@@ -559,6 +625,9 @@ do_step() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  Step: Elgg ${from}.x → ${to}.x  (branch: $branch)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Iron Law 2: refuse to jump majors from a stale minor.
+    assert_latest_minor "$from"
 
     confirm "Step Elgg ${from}.x → ${to}.x: backup DB, checkout $branch, run upgrade" || return 1
 
