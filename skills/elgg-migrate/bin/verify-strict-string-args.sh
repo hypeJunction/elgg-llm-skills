@@ -5,6 +5,7 @@
 # Elgg 7 tightened these signatures:
 #     elgg_get_excerpt(string $text, int $num_chars = 250): string
 #     elgg_strip_tags(string $string, ?string $allowable_tags = null): string
+#     elgg_echo(string $message_key, array $args = [], string $language = ''): string
 #
 # An entity property that was never set reads back as NULL, so
 # `elgg_get_excerpt($entity->description)` is a TypeError — an HTTP 500 on any page
@@ -49,8 +50,13 @@ while IFS= read -r hit; do
   printf 'UNGUARDED %s:%s  %s\n' "$file" "$line" "$(sed -n "${line}p" "$file" | sed 's/^[[:space:]]*//' | cut -c1-90)"
   found=$((found+1))
 done < <(
-  grep -rn --include=*.php -E "(elgg_get_excerpt|elgg_strip_tags)\([[:space:]]*${NULLABLE}${NOT_A_CALL}" "$PLUGINS_DIR" \
-    | grep -v '/vendor/\|/vendors/\|/tests/\|/node_modules/\|/_legacy/' || true
+  {
+    grep -rn --include=*.php -E "(elgg_get_excerpt|elgg_strip_tags|elgg_echo)\([[:space:]]*${NULLABLE}${NOT_A_CALL}" "$PLUGINS_DIR"
+    # elgg_echo() is usually handed a plain local, not a property read. A variable
+    # assigned from elgg_extract() is null whenever the key is absent — which is how
+    # a context-less layout fataled every images/ and gallery/ entity page.
+    grep -rn --include=*.php -E "elgg_echo\([[:space:]]*\\$[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[,)]" "$PLUGINS_DIR"
+  } | grep -v '/vendor/\|/vendors/\|/tests/\|/node_modules/\|/_legacy/' | sort -u || true
 )
 
 echo
