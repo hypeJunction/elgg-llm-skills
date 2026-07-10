@@ -706,6 +706,32 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
   every item has a non-empty `getName()` and `getText()`, whatever the feature constants say.
 - **gate:** NO · **Sources:** bodyology 2026-07-10 (hypegallery 7.0.10)
 
+### FC-ALL-15 — A plugin vendors a SECOND Elgg core, silently shadowing core classes
+- **Detection (script):** `bin/verify-no-nested-core.sh <plugins-dir>` — fails on any
+  `mod/*/vendor/elgg/elgg` directory.
+- **Cause:** Elgg plugins conventionally list `elgg/elgg` in composer `require` (that is how the
+  site resolves a compatible core, and it is NOT itself a bug). But run `composer install` *inside*
+  a plugin directory and a complete second core installs at `mod/<plugin>/vendor/elgg/elgg`.
+  Composer's autoloader then resolves some `Elgg\*` classes to that stale copy.
+- **Why nothing sees it:** the plugin activates, boots, and passes every source gate. Only a
+  runtime path touching a shadowed class fails — and the class *exists*, so `class_exists()`
+  guards pass too.
+- **Real instance:** hypefaker had vendored **Elgg 5.1.12**. `\Elgg\Email\Address` resolved to
+  that 5.x class (a `Laminas\Mail\Address` subclass) while `\Elgg\Email` was the real 7.x class,
+  whose `setFrom()`/`setTo()` declare `Symfony\Component\Mime\Address`. **Every outbound email**
+  — registration, password reset, every notification — died with a TypeError. It had been broken
+  for the entire migration, through every gate, every crawl, and a green E2E suite.
+- **The mask:** the stale core was *supplying* `\Elgg\Email\Address`, which Elgg 6 removed —
+  and hypenotifications still imported it. Delete the nested core and the TypeError becomes a
+  fatal "class not found". **Two bugs, one hiding the other.** Fix both.
+- **Also fix in the image build:** `rm -rf mod/*/vendor/elgg/elgg` and fail the build if one
+  survives. `.dockerignore`'s `vendor/` matches only the context root, and a `.gitignore` `/vendor`
+  likewise. A stray dev install is copied straight into the image by `COPY . .`.
+- **Test-to-write:** unit — `assertFalse(class_exists('Elgg\Email\Address'))`; a removed core
+  class that exists at runtime means a stale core is on the autoload path.
+- **gate:** `verify-no-nested-core.sh` · **Sources:** bodyology 2026-07-10 (hypefaker 7.0.2,
+  hypenotifications 7.0.5)
+
 ## Known data-file refinements
 
 - **RESOLVED 2026-07-08 — removal-version placement is now core-verified.** A
