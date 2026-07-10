@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # verify-migration-chain.sh — chain DB-UPGRADE test across version tiers
+#
+# SCOPE: this is the SITE-AGNOSTIC reference implementation shipped with the
+# skill. It is NOT a backup of, and does not track, a site's own chain harness.
+# Downstream sites grow their own (bodyology's is ~540 lines and adds parity
+# crawling, per-tier page snapshots and plugin-state summaries; this one is
+# ~260). The two have DIVERGED and neither is a mirror of the other — do not
+# assume a fix here reaches a site, or that a site's copy can be restored from
+# here. Port deliberately, in whichever direction, and keep the site's copy under
+# version control (bd elgg-migrate-w754h).
 # (2.x → 3.x → … → 7.x). Companion to verify-migration-path.sh: where the path
 # script proves each tier INSTALLS cleanly in isolation, this proves Elgg's
 # UPGRADE scripts (core Phinx schema migrations + plugin Elgg\Upgrade\Batch jobs)
