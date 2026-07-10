@@ -28,6 +28,12 @@ dx() { docker exec "$CONTAINER" sh -c "$1"; }
 # a password containing a quote/&/space would break the command apart.
 dx_auth() { docker exec -e LUSER="$USER" -e LPASS="$PASS" "$CONTAINER" sh -c "$1"; }
 MARK="===ROUTE-CHECK-$$==="
+# Per-run temp names. Fixed /tmp paths collided when two version tiers were checked
+# concurrently (host-side route list) or against the same container (cookie jar).
+RUN="$$"
+ROUTES="/tmp/rc_routes.$RUN.txt"
+CJ="/tmp/rc.$RUN.cj"
+trap 'rm -f "$ROUTES"' EXIT
 dx "echo '$MARK' >> /var/log/apache2/error.log" 2>/dev/null
 
 # Build concrete URLs for EVERY route: substitute {guid} with a real entity guid,
@@ -51,9 +57,9 @@ foreach (_elgg_services()->routes->all() as \$name=>\$r) {
   }, \$p);
   \$p=preg_replace(\"#//+#\",\"/\",\$p);
   echo \$p.PHP_EOL;
-}' 2>/dev/null" | sort -u > /tmp/rc_routes.txt
+}' 2>/dev/null" | sort -u > $ROUTES
 
-total=$(grep -c . /tmp/rc_routes.txt); fail=""
+total=$(grep -c . $ROUTES); fail=""
 crawl() { # $1=label, cookie file optional via $2
   local cnt=0
   while IFS= read -r p; do
@@ -61,22 +67,22 @@ crawl() { # $1=label, cookie file optional via $2
     local code
     code=$(dx "curl -s -o /dev/null -w '%{http_code}' ${2:-} '$BASE$p'" 2>/dev/null)
     case "$code" in 5*) fail="${fail}[$1]$p($code) ";; esac
-  done < /tmp/rc_routes.txt
+  done < $ROUTES
   echo "  [$1] crawled $cnt routes"
 }
 echo "Route coverage check — $total routes — container=$CONTAINER"
 crawl anon ""
 
 if [ -n "$USER" ] && [ -n "$PASS" ]; then
-  TOK=$(dx "curl -s -c /tmp/rc.cj '$BASE/login' | grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2")
-  TS=$(dx "curl -s -b /tmp/rc.cj '$BASE/login' | grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' | grep -oE '[0-9]+' | head -1")
+  TOK=$(dx "curl -s -c $CJ '$BASE/login' | grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2")
+  TS=$(dx "curl -s -b $CJ '$BASE/login' | grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' | grep -oE '[0-9]+' | head -1")
   # --data-urlencode (not -d) so '&', '=', '+' and spaces in the password are
   # encoded rather than parsed as field separators.
-  dx_auth "curl -s -b /tmp/rc.cj -c /tmp/rc.cj -o /dev/null \
+  dx_auth "curl -s -b $CJ -c $CJ -o /dev/null \
     --data-urlencode \"username=\$LUSER\" --data-urlencode \"password=\$LPASS\" \
     --data-urlencode '__elgg_token=$TOK' --data-urlencode '__elgg_ts=$TS' \
     '$BASE/action/login'" >/dev/null 2>&1
-  crawl auth "-b /tmp/rc.cj"
+  crawl auth "-b $CJ"
 fi
 
 echo "=== new PHP Fatal / undefined function during crawl ==="

@@ -24,6 +24,26 @@ while [ $# -gt 0 ]; do case "$1" in
 
 br() { echo "migrate/elgg-$1.x"; }
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "not a git repo" >&2; exit 2; }
+
+# This script checks out several branches in the user's working repo. A dirty tree
+# would either block the checkout half-way through the loop or be dragged onto the
+# wrong branch and swept into a cherry-pick. Refuse up front.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "REFUSING: working tree has uncommitted changes." >&2
+  echo "  Commit or stash them first — this script checks out migrate/elgg-*.x branches." >&2
+  git status --short --untracked-files=no >&2
+  exit 2
+fi
+
+# Return the caller to the branch they started on, whatever happens.
+ORIG_REF="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+restore_branch() {
+  [ -n "$ORIG_REF" ] && [ "$ORIG_REF" != "HEAD" ] || return 0
+  [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$ORIG_REF" ] && return 0
+  git checkout "$ORIG_REF" >/dev/null 2>&1 && echo "restored branch: $ORIG_REF"
+}
+trap restore_branch EXIT
+
 git checkout "$(br "$FROM")" 2>/dev/null || { echo "no $(br "$FROM")" >&2; exit 2; }
 [ -n "$COMMIT" ] || COMMIT="$(git rev-parse HEAD)"
 echo "Forward-porting $COMMIT from $(br "$FROM") up to $(br "$TO")"

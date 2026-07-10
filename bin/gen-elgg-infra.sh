@@ -421,6 +421,10 @@ mirror_engine_to_siblings() {
     # canonical one gained the dependency resolver, core-plugin classification,
     # --env-file wiring and node-service mount masking.
     rsync -a "$migrate_root/bin/elgg-migrate-run" "$dst/bin/elgg-migrate-run"
+    # Route-render capture/diff engine. elgg-site-upgrade's verify-parity.sh wraps it
+    # (GM_ENGINE), and its copy had frozen as a fork: it still spliced credentials into
+    # the docker-exec string and used fixed /tmp paths.
+    rsync -a "$migrate_root/bin/baseline-golden-master.sh" "$dst/bin/baseline-golden-master.sh"
     rsync -a --delete "$migrate_root/src/"         "$dst/src/"
     rsync -a --delete "$migrate_root/rules/"       "$dst/rules/"
     rsync -a "$migrate_root/references/"           "$dst/references/"

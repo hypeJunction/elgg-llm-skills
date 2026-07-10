@@ -42,6 +42,19 @@ PASS="${GM_PASS:-}"
 
 dx() { docker exec "$CONTAINER" sh -c "$1"; }
 
+# Same, but hands the login credentials to the container as ENVIRONMENT rather
+# than splicing them into the shell string. A password containing a quote, an
+# ampersand or a space would otherwise break the command apart (or worse).
+# Inside the script body they are read as "$LUSER" / "$LPASS".
+dx_auth() { docker exec -e LUSER="$USER" -e LPASS="$PASS" "$CONTAINER" sh -c "$1"; }
+
+# Per-run temp names inside the container. Fixed paths collided when two captures
+# ran concurrently against the same container (route list, cookie jar, login page).
+RUN="$$"
+GM_ROUTES="/tmp/gm_routes.$RUN.tsv"
+GM_CJ="/tmp/gm.$RUN.cj"
+GM_LOGIN="/tmp/gm_login.$RUN.html"
+
 # ---------------------------------------------------------------------------
 # diff mode: report status regressions (A passing -> B 5xx), attributed to plugin
 # ---------------------------------------------------------------------------
@@ -105,7 +118,7 @@ do_capture() {
   echo "Golden master capture — label=$LABEL container=$CONTAINER base=$BASE" >&2
 
   # 1. Enumerate every GET route, fill params with REAL values, attribute plugin.
-  #    Emit: <method>\t<path>\t<plugin>   (one line per route) to /tmp/gm_routes.tsv
+  #    Emit: <method>\t<path>\t<plugin>   (one line per route) to $GM_ROUTES
   dx 'cd /var/www/html && php -r '"'"'
 require "vendor/autoload.php"; $a=\Elgg\Application::getInstance(); $a->bootCore();
 $views = _elgg_services()->views;
@@ -156,10 +169,10 @@ foreach (_elgg_services()->routes->all() as $name=>$r) {
 
   echo $method . "\t" . $path . "\t" . $plugin . "\n";
 }
-'"'"' 2>/dev/null | sort -u > /tmp/gm_routes.tsv'
+'"'"' 2>/dev/null | sort -u > '"$GM_ROUTES"
 
   local total
-  total=$(dx "grep -c . /tmp/gm_routes.tsv" 2>/dev/null)
+  total=$(dx "grep -c . $GM_ROUTES" 2>/dev/null)
   echo "  enumerated $total GET routes" >&2
 
   # 2. Crawl anon, then (if creds) auth — emit context\tmethod path\tplugin\tstatus
@@ -167,26 +180,26 @@ foreach (_elgg_services()->routes->all() as $name=>$r) {
   local DO_AUTH=0
   [ -n "$USER" ] && [ -n "$PASS" ] && DO_AUTH=1
 
-  dx "BASE='$BASE'; DO_AUTH='$DO_AUTH'; LUSER='$USER'; LPASS='$PASS'
+  dx_auth "BASE='$BASE'; DO_AUTH='$DO_AUTH'
 crawl() {
   ctx=\"\$1\"; cookie=\"\$2\"
   while IFS=\$(printf '\t') read -r method path plugin; do
     [ -z \"\$path\" ] && continue
     code=\$(curl -s -o /dev/null -w '%{http_code}' \$cookie \"\$BASE\$path\" 2>/dev/null)
     printf '%s %s %s\t%s\t%s\n' \"\$ctx\" \"\$method\" \"\$path\" \"\$plugin\" \"\$code\"
-  done < /tmp/gm_routes.tsv
+  done < $GM_ROUTES
 }
 crawl anon ''
 if [ \"\$DO_AUTH\" = '1' ]; then
   # Fetch /login ONCE — __elgg_token is an HMAC over __elgg_ts, so they MUST
   # come from the same page load or CSRF validation rejects the login.
-  curl -s -c /tmp/gm.cj \"\$BASE/login\" > /tmp/gm_login.html
-  TOK=\$(grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' /tmp/gm_login.html | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2)
-  TS=\$(grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' /tmp/gm_login.html | grep -oE '[0-9]+' | head -1)
-  curl -s -b /tmp/gm.cj -c /tmp/gm.cj -o /dev/null --data-urlencode \"username=\$LUSER\" --data-urlencode \"password=\$LPASS\" --data-urlencode \"__elgg_token=\$TOK\" --data-urlencode \"__elgg_ts=\$TS\" \"\$BASE/action/login\" >/dev/null 2>&1
-  AUTHCHK=\$(curl -s -b /tmp/gm.cj -o /dev/null -w '%{http_code}' \"\$BASE/dashboard\")
+  curl -s -c $GM_CJ \"\$BASE/login\" > $GM_LOGIN
+  TOK=\$(grep -oE '__elgg_token[^>]*value=\"[^\"]+\"' $GM_LOGIN | grep -oE 'value=\"[^\"]+\"' | head -1 | cut -d'\"' -f2)
+  TS=\$(grep -oE '__elgg_ts[^>]*value=\"[0-9]+\"' $GM_LOGIN | grep -oE '[0-9]+' | head -1)
+  curl -s -b $GM_CJ -c $GM_CJ -o /dev/null --data-urlencode \"username=\$LUSER\" --data-urlencode \"password=\$LPASS\" --data-urlencode \"__elgg_token=\$TOK\" --data-urlencode \"__elgg_ts=\$TS\" \"\$BASE/action/login\" >/dev/null 2>&1
+  AUTHCHK=\$(curl -s -b $GM_CJ -o /dev/null -w '%{http_code}' \"\$BASE/dashboard\")
   [ \"\$AUTHCHK\" = '200' ] || echo \"  WARN: auth login FAILED (dashboard=\$AUTHCHK) — auth crawl mirrors anon; check creds/username\" >&2
-  crawl auth '-b /tmp/gm.cj'
+  crawl auth '-b $GM_CJ'
 fi" | LC_ALL=C sort > "$OUT"
 
   local lines anon auth p5 p3 p2
