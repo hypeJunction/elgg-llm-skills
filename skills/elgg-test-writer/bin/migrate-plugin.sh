@@ -47,18 +47,22 @@ php bin/migrate.php "$MANIFEST" "$PLUGIN_PATH" 2>&1
 # Step 4: Verify PHP syntax
 echo
 echo "--- SYNTAX CHECK ---"
+# NUL-delimited: paths with spaces must not word-split. `php -l` exit status is
+# authoritative — grepping stdout for "Parse error" misses other lint failures.
 errors=0
-for f in $(command find "$PLUGIN_PATH" -name "*.php" -not -path "*/vendor/*"); do
-    result=$(php -l "$f" 2>&1)
-    if echo "$result" | grep -q "Parse error"; then
+while IFS= read -r -d '' f; do
+    if ! result=$(php -l "$f" 2>&1); then
         echo "FAIL: $f"
+        echo "$result" | sed 's/^/      /'
         errors=$((errors + 1))
     fi
-done
-if [ $errors -eq 0 ]; then
+done < <(command find "$PLUGIN_PATH" -name "*.php" -not -path "*/vendor/*" -print0)
+if [ "$errors" -eq 0 ]; then
     echo "All PHP files pass syntax check."
 else
     echo "ERROR: $errors file(s) have syntax errors!"
+    echo "Refusing to commit broken PHP. Fix the files above and re-run."
+    exit 1
 fi
 
 # Step 5: Commit
