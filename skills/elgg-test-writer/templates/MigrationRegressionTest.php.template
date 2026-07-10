@@ -210,7 +210,7 @@ final class MigrationRegressionTest extends TestCase
             if (preg_match('#/(vendor|vendors|bower_components|node_modules)/#', $path)) {
                 continue;
             }
-            if (str_ends_with($path, '.' . $ext)) {
+            if (substr($path, -strlen($ext) - 1) === '.' . $ext) {
                 $out[] = $path;
             }
         }
@@ -263,7 +263,7 @@ final class MigrationRegressionTest extends TestCase
 
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             foreach (explode("\n", (string) file_get_contents($file)) as $n => $line) {
@@ -289,7 +289,7 @@ final class MigrationRegressionTest extends TestCase
 
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             if (preg_match_all($re, (string) file_get_contents($file), $m)) {
@@ -309,7 +309,7 @@ final class MigrationRegressionTest extends TestCase
         }
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             if (preg_match('/(ElggFile::|->)detectMimeType\s*\(/', (string) file_get_contents($file))) {
@@ -335,7 +335,7 @@ final class MigrationRegressionTest extends TestCase
         }
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             foreach (explode("\n", (string) file_get_contents($file)) as $n => $line) {
@@ -392,7 +392,7 @@ final class MigrationRegressionTest extends TestCase
         }
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             $src = (string) file_get_contents($file);
@@ -498,11 +498,11 @@ final class MigrationRegressionTest extends TestCase
     {
         $violations = [];
         foreach (self::files('', 'php') as $file) {
-            if (str_contains($file, '/tests/')) {
+            if (strpos($file, '/tests/') !== false) {
                 continue;
             }
             foreach (explode("\n", (string) file_get_contents($file)) as $n => $line) {
-                if (preg_match('/(?<![\w>$:\\\\])unserialize\s*\(/', $line) && !str_contains($line, 'allowed_classes')) {
+                if (preg_match('/(?<![\w>$:\\\\])unserialize\s*\(/', $line) && strpos($line, 'allowed_classes') === false) {
                     $violations[] = basename($file) . ':' . ($n + 1) . ' unserialize() without allowed_classes => false (PHP object-injection RCE)';
                 }
             }
@@ -622,7 +622,7 @@ final class MigrationRegressionTest extends TestCase
             if (is_file($root . '/views/default/elements/' . $base)) {
                 continue;
             }
-            if (str_contains($allPhp, 'css/elements/' . $stem)) {
+            if (strpos($allPhp, 'css/elements/' . $stem) !== false) {
                 continue;
             }
             $violations[] = "css/elements/{$base} has no relocated twin and is not loaded explicitly → never loads on Elgg 7.x";

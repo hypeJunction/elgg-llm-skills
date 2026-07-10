@@ -64,7 +64,7 @@ final class RegressionTest extends TestCase
             if (preg_match('#/(vendor|vendors|bower_components|node_modules)/#', $path)) {
                 continue;
             }
-            if (str_ends_with($path, '.' . $ext)) {
+            if (substr($path, -strlen($ext) - 1) === '.' . $ext) {
                 $out[] = $path;
             }
         }
@@ -178,7 +178,7 @@ final class RegressionTest extends TestCase
             if (is_file($root . '/views/default/elements/' . $base)) {
                 continue;
             }
-            if (str_contains($allPhp, 'css/elements/' . $stem)) {
+            if (strpos($allPhp, 'css/elements/' . $stem) !== false) {
                 continue;
             }
             $violations[] = "css/elements/{$base} has no relocated twin and is not loaded explicitly → never loads on Elgg 7";
