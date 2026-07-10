@@ -117,6 +117,82 @@ final class VersionGuardTest extends TestCase
         }
     }
 
+    public function testDetects7xPlugin(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'composer.json' => '{"require":{"elgg/elgg":"~7.0.0"}}',
+        ]);
+
+        try {
+            $this->assertSame('7.x', $this->guard->detectVersion($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * A 7.x plugin registers ESM just like a 6.x one, so the ESM indicator used
+     * to claim it first and detectVersion() returned '6.x' for every migrated
+     * 7.x plugin. That made the '6.x->7.x' completeness block unreachable.
+     */
+    public function testDetects7xPluginThatAlsoRegistersEsm(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'composer.json' => '{"require":{"elgg/elgg":"~7.0.0"}}',
+        ]);
+        mkdir($dir . '/classes', 0755, true);
+        file_put_contents($dir . '/classes/Bootstrap.php', "<?php\nelgg_register_esm('mymodule');\n");
+
+        try {
+            $this->assertSame('7.x', $this->guard->detectVersion($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testEsmPluginPinnedToElgg6StillDetectsAs6x(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'composer.json' => '{"require":{"elgg/elgg":"~6.0.0"}}',
+        ]);
+        mkdir($dir . '/classes', 0755, true);
+        file_put_contents($dir . '/classes/Bootstrap.php', "<?php\nelgg_register_esm('mymodule');\n");
+
+        try {
+            $this->assertSame('6.x', $this->guard->detectVersion($dir));
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * The payoff: with 7.x detectable, detectIncompletePatterns() now resolves the
+     * '6.x->7.x' key and flags functions removed in 7.x. Before the indicator
+     * existed this returned zero findings for every plugin — silently, because the
+     * pattern list for the key was never consulted.
+     */
+    public function testDetectsRemovedIn7xFunctionCallInMigrated7xPlugin(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'composer.json' => '{"require":{"elgg/elgg":"~7.0.0"}}',
+            'start.php' => "<?php\nelgg_reset_system_cache();\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir);
+            $this->assertNotEmpty($findings, 'expected the 6.x->7.x completeness block to flag a removed-in-7.x call');
+            $this->assertSame('removed-function-call-7x', $findings[0]->patternId);
+            $this->assertSame('6.x', $findings[0]->sourceVersion);
+            $this->assertSame('7.x', $findings[0]->claimedVersion);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     public function testThrowsForUnrecognizedPlugin(): void
     {
         $dir = sys_get_temp_dir() . '/elgg-migrate-' . uniqid();

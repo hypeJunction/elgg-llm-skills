@@ -27,6 +27,12 @@ final class VersionGuard
      * Each check is tried in sequence; the first match wins.
      */
     private const VERSION_INDICATORS = [
+        // 7.x: composer.json requires elgg/elgg ~7.0. Must precede the 6.x check —
+        // a 7.x plugin also registers ESM, so hasEsmRegistration would claim it
+        // first and the 6.x->7.x completeness block would never be reachable.
+        // Rule 000-update-manifest-version sets this constraint, so it is the
+        // authoritative marker that a plugin has been migrated to 7.x.
+        ['version' => '7.x', 'check' => 'hasElgg7Constraint'],
         // 6.x: ES modules
         ['version' => '6.x', 'check' => 'hasEsmRegistration'],
         // 5.x: events-only (no hooks key)
@@ -42,7 +48,7 @@ final class VersionGuard
     /**
      * Detect the plugin's current Elgg version from its file structure and content.
      *
-     * @return string Version string like '2.x', '3.x', '4.x', '5.x', '6.x'
+     * @return string Version string like '2.x', '3.x', '4.x', '5.x', '6.x', '7.x'
      * @throws \RuntimeException If version cannot be determined
      */
     public function detectVersion(string $pluginPath): string
@@ -503,6 +509,38 @@ final class VersionGuard
     }
 
     // --- Version detection methods ---
+
+    /**
+     * True when composer.json declares a require on elgg/elgg whose major is 7.
+     *
+     * Constraint spellings vary ("~7.0.0", "^7.0", ">=7.0 <8.0", "7.*"); the first
+     * integer in the constraint is the major in every form Composer accepts here.
+     */
+    private function hasElgg7Constraint(string $path): bool
+    {
+        return $this->elggMajorConstraint($path) === 7;
+    }
+
+    /**
+     * Major version from composer.json's require."elgg/elgg" constraint, or null
+     * when there is no composer.json, no such require, or no parseable major.
+     */
+    private function elggMajorConstraint(string $path): ?int
+    {
+        $composer = $path . '/composer.json';
+        if (!is_file($composer)) {
+            return null;
+        }
+        $data = json_decode((string) file_get_contents($composer), true);
+        if (!is_array($data)) {
+            return null;
+        }
+        $constraint = $data['require']['elgg/elgg'] ?? null;
+        if (!is_string($constraint) || !preg_match('/(\d+)/', $constraint, $m)) {
+            return null;
+        }
+        return (int) $m[1];
+    }
 
     private function hasEsmRegistration(string $path): bool
     {
