@@ -52,8 +52,15 @@
 # Concurrency: each plugin stages into its own mod-test/<plugin-id>, so distinct
 # plugins can run in parallel. The PHAR is read-only once present.
 #
-# Exit codes: 0 = all tests passed; non-zero = phpunit reported failures/errors,
-# or a setup problem (missing plugin, no tests, container down).
+# Exit codes:
+#   0  all tests passed
+#   1  phpunit reported failures/errors, or a setup problem (missing plugin,
+#      no tests, container down)
+#   2  usage error
+#   3  the plugin redeclares a global function: the staged copy and the container's
+#      live mod/<id> both declare it. Not runnable this way — use an isolated stack.
+#   4  refused: $ELGG_DB_PREFIX is the site's LIVE table prefix
+#   5  the disposable test schema is missing (run bin/provision-test-db.sh)
 
 set -uo pipefail
 
@@ -334,11 +341,39 @@ else
     RUN_DIR="$SCRATCH"
 fi
 echo ">> $PLUGIN_ID  (suite=$SUITE, config=${CONFIG_SUBDIR}/phpunit.xml, dirs=${TARGET_DIRS[*]})"
+
+# Stream the run AND keep a copy, so a duplicate-global fatal can be classified.
+PHPUNIT_LOG="$(mktemp "${TMPDIR:-/tmp}/run-plugin-tests.$PLUGIN_ID.XXXXXX")"
+trap 'rm -f "$PHPUNIT_LOG"' EXIT
+
 docker exec \
     -e ELGG_DB_PREFIX="$DB_PREFIX" \
     -w "$RUN_DIR" \
     "$APP_CONTAINER" \
-    php "$PHAR_PATH" -c phpunit.xml "${TARGET_DIRS[@]}" --do-not-cache-result
-STATUS=$?
+    php "$PHAR_PATH" -c phpunit.xml "${TARGET_DIRS[@]}" --do-not-cache-result 2>&1 | tee "$PHPUNIT_LOG"
+STATUS="${PIPESTATUS[0]}"
 
-exit $STATUS
+# The preflight above catches the common shape (a globals file the plugin includes
+# off its own root). It cannot catch every one: plugins include such files through
+# Includer::requireFileOnce($this->getRoot() . '/lib/x.php'), from a Bootstrap, or
+# straight from a test — and the filename is arbitrary (lib/tokeninput.php,
+# lib/hooks.php). Rather than broaden the preflight into false positives (forms_api
+# and private_profiles carry lib/ globals and run fine), classify the fatal itself.
+# It is unambiguous, and it costs nothing when it does not occur.
+if [ "$STATUS" -ne 0 ] && grep -qi 'Cannot redeclare' "$PHPUNIT_LOG"; then
+    _fn="$(grep -oiE 'Cannot redeclare [a-zA-Z_][a-zA-Z0-9_]*' "$PHPUNIT_LOG" | head -1 | awk '{print $3}')"
+    _file="$(grep -oE '/var/www/html/mod-test/[^ :]+' "$PHPUNIT_LOG" | head -1)"
+    echo "" >&2
+    echo "ERROR: $PLUGIN_ID redeclared ${_fn:-a global function} — the staged copy and the" >&2
+    echo "       container's live mod/$PLUGIN_ID both declare it." >&2
+    [ -n "$_file" ] && echo "       staged file: $_file" >&2
+    echo "       Elgg boots the live plugin, and something in this plugin (Bootstrap," >&2
+    echo "       elgg-plugin.php, or a test) also includes the file from the STAGED root." >&2
+    echo "       Two realpaths, two includes, one fatal — see the note above the preflight." >&2
+    echo "" >&2
+    echo "       Run this suite against an isolated stack whose mod/$PLUGIN_ID IS the" >&2
+    echo "       workspace source:  bin/elgg-migrate-run" >&2
+    exit 3
+fi
+
+exit "$STATUS"
