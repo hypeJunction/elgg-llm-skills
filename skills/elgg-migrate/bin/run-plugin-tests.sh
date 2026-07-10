@@ -9,9 +9,11 @@
 # Options:
 #   --suite=unit         run the unit tests only (default). Static, no DB writes.
 #   --suite=integration  run the integration tests. These extend
-#                        Elgg\IntegrationTestCase and WRITE real entities to the
-#                        DB at $ELGG_DB_PREFIX — point ELGG_DB_PREFIX/host at a
-#                        DISPOSABLE database, never the live site prefix.
+#                        Elgg\IntegrationTestCase, WRITE real entities and have NO
+#                        transaction rollback. They run against $ELGG_DB_PREFIX,
+#                        which defaults to the disposable c_i_elgg_ table set —
+#                        create it with bin/provision-test-db.sh. The script
+#                        refuses to run against the site's live prefix.
 #   --suite=all          run whichever of unit/integration dirs are populated.
 #
 # The plugin's populated test directory is targeted explicitly (tests/Unit or
@@ -26,7 +28,11 @@
 #   ELGG_APP_CONTAINER    running Elgg 7 container name. Default: elgg7-elgg-1
 #                         (the skill's own infra/elgg7 stack); set it to your
 #                         site's app container when testing against a real site.
-#   ELGG_DB_PREFIX        DB table prefix for integration tests. Default: elgg_
+#   ELGG_DB_PREFIX        DB table prefix for integration tests. Default: c_i_elgg_
+#                         (Elgg\BaseTestCase's own default). NEVER set this to the
+#                         site's live prefix: IntegrationTestCase writes real
+#                         entities and has no transaction rollback. Provision the
+#                         test tables once with bin/provision-test-db.sh.
 #
 # Why a scratch copy: the container's /var/www/html/mod/<plugin> is a baked,
 # possibly-stale snapshot that the LIVE site serves. We must not mutate it (other
@@ -55,7 +61,9 @@ PHAR_URL="https://phar.phpunit.de/phpunit-9.phar"
 PHAR_PATH="/usr/local/lib/phpunit-9.phar"
 
 APP_CONTAINER="${ELGG_APP_CONTAINER:-elgg7-elgg-1}"
-DB_PREFIX="${ELGG_DB_PREFIX:-elgg_}"
+# Elgg\BaseTestCase already defaults to 'c_i_elgg_'; passing 'elgg_' here silently
+# overrode that and aimed integration tests at the LIVE tables.
+DB_PREFIX="${ELGG_DB_PREFIX:-c_i_elgg_}"
 
 usage() {
     sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
@@ -217,6 +225,63 @@ tar -C "$PLUGIN_SRC" \
     -cf - . \
   | docker exec -i "$APP_CONTAINER" tar -C "$SCRATCH" -xf - \
   || { echo "ERROR: failed to stage $PLUGIN_ID source into container." >&2; exit 1; }
+
+# --- preflight: never let an integration suite touch the live tables --------
+#
+# Elgg\IntegrationTestCase writes real entities and has no transaction rollback;
+# cleanup is whatever each test's down() remembers to do. Pointed at the site's
+# prefix it mutates the running site.
+#
+# Elgg\BaseTestCase resolves the prefix as getenv('ELGG_DB_PREFIX') ?: 'c_i_elgg_',
+# so those tables must EXIST or every test errors with "table doesn't exist" and the
+# run reads like a code failure. bin/provision-test-db.sh creates them.
+
+if [ "$SUITE" != "unit" ]; then
+    LIVE_PREFIX="$(docker exec -e KEY=dbprefix "$APP_CONTAINER" php -r '
+        $s = @file_get_contents("/var/www/html/elgg-config/settings.php");
+        echo preg_match("/dbprefix[^=]*=\s*\x27([^\x27]*)/", $s, $m) ? $m[1] : "";
+    ' 2>/dev/null)"
+
+    if [ -n "$LIVE_PREFIX" ] && [ "$DB_PREFIX" = "$LIVE_PREFIX" ]; then
+        echo "ERROR: refusing to run integration tests against the LIVE table prefix '$LIVE_PREFIX'." >&2
+        echo "       Elgg\\IntegrationTestCase writes real entities and does not roll back." >&2
+        echo "       Provision the disposable set once:" >&2
+        echo "         ELGG_DB_CONTAINER=<db-container> bin/provision-test-db.sh" >&2
+        echo "       then re-run (ELGG_DB_PREFIX defaults to c_i_elgg_)." >&2
+        exit 4
+    fi
+
+    # NB: capture the probe's own exit status. Piping it (e.g. into sed) would make
+    # the test read the LAST command's status instead.
+    probe_err="$(docker exec -e TP="$DB_PREFIX" "$APP_CONTAINER" php -r '
+        $s = @file_get_contents("/var/www/html/elgg-config/settings.php");
+        $c = [];
+        foreach (["dbhost", "dbname", "dbuser", "dbpass"] as $k) {
+            preg_match("/" . $k . "[^=]*=\s*\x27([^\x27]*)/", $s, $m);
+            $c[$k] = $m[1] ?? "";
+        }
+        try {
+            $pdo = new PDO("mysql:host=" . $c["dbhost"] . ";dbname=" . $c["dbname"], $c["dbuser"], $c["dbpass"]);
+            $q = $pdo->query("SHOW TABLES LIKE " . $pdo->quote(getenv("TP") . "entities"));
+            exit($q && $q->fetchAll() ? 0 : 1);
+        } catch (Throwable $e) {
+            fwrite(STDERR, $e->getMessage());
+            exit(2);
+        }
+    ' 2>&1)"
+    probe_rc=$?
+
+    if [ "$probe_rc" -eq 2 ]; then
+        echo "ERROR: could not probe the test schema: $probe_err" >&2
+        exit 5
+    fi
+    if [ "$probe_rc" -ne 0 ]; then
+        echo "ERROR: no '${DB_PREFIX}entities' table — the disposable test schema is missing." >&2
+        echo "       Every integration test would error with \"table doesn't exist\"." >&2
+        echo "       Create it once:  ELGG_DB_CONTAINER=<db-container> bin/provision-test-db.sh" >&2
+        exit 5
+    fi
+fi
 
 # --- preflight: duplicate global declarations ------------------------------
 #
