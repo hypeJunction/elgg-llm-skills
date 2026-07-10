@@ -143,7 +143,17 @@ fi
 # (some plugins carry a vestigial second config, so we do NOT trust suite names).
 # We pick the config whose bootstrap loads Elgg core, then point phpunit at the
 # real test *directory* explicitly — sidestepping suite-name/casing drift.
-if [ -f "$PLUGIN_SRC/tests/phpunit.xml" ]; then
+# A plugin may ship a DEDICATED integration config with its own bootstrap — hypeseo's
+# tests/phpunit.xml boots stubs only (unit), while tests/phpunit-integration.xml boots
+# real Elgg core. Running the integration dir against the unit bootstrap dies with
+# "Class Elgg\IntegrationTestCase not found", which reads as a plugin defect. Prefer the
+# dedicated config when the suite calls for it.
+CONFIG_FILE="phpunit.xml"
+if [ "$SUITE" = "integration" ] && [ -f "$PLUGIN_SRC/tests/phpunit-integration.xml" ]; then
+    CONFIG_SUBDIR="tests"; CONFIG_FILE="phpunit-integration.xml"
+elif [ "$SUITE" = "integration" ] && [ -f "$PLUGIN_SRC/phpunit-integration.xml" ]; then
+    CONFIG_SUBDIR="."; CONFIG_FILE="phpunit-integration.xml"
+elif [ -f "$PLUGIN_SRC/tests/phpunit.xml" ]; then
     CONFIG_SUBDIR="tests"
 elif [ -f "$PLUGIN_SRC/phpunit.xml" ]; then
     CONFIG_SUBDIR="."
@@ -359,7 +369,7 @@ if [ "$CONFIG_SUBDIR" = "tests" ]; then
 else
     RUN_DIR="$SCRATCH"
 fi
-echo ">> $PLUGIN_ID  (suite=$SUITE, config=${CONFIG_SUBDIR}/phpunit.xml, dirs=${TARGET_DIRS[*]})"
+echo ">> $PLUGIN_ID  (suite=$SUITE, config=${CONFIG_SUBDIR}/${CONFIG_FILE}, dirs=${TARGET_DIRS[*]})"
 
 # Stream the run AND keep a copy, so a duplicate-global fatal can be classified.
 PHPUNIT_LOG="$(mktemp "${TMPDIR:-/tmp}/run-plugin-tests.$PLUGIN_ID.XXXXXX")"
@@ -369,7 +379,7 @@ docker exec \
     -e ELGG_DB_PREFIX="$DB_PREFIX" \
     -w "$RUN_DIR" \
     "$APP_CONTAINER" \
-    php "$PHAR_PATH" -c phpunit.xml "${TARGET_DIRS[@]}" --do-not-cache-result 2>&1 | tee "$PHPUNIT_LOG"
+    php "$PHAR_PATH" -c "$CONFIG_FILE" "${TARGET_DIRS[@]}" --do-not-cache-result 2>&1 | tee "$PHPUNIT_LOG"
 STATUS="${PIPESTATUS[0]}"
 
 # The preflight above catches the common shape (a globals file the plugin includes
