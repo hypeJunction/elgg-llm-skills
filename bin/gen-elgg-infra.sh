@@ -416,6 +416,11 @@ mirror_engine_to_siblings() {
     rsync -a "$migrate_root/bin/scan-frontend-residue.sh" "$dst/bin/scan-frontend-residue.sh"
     # elgg-site-upgrade's cutover runbook invokes this as a go/no-go gate.
     rsync -a "$migrate_root/bin/check-release-lag.sh" "$dst/bin/check-release-lag.sh"
+    # Per-plugin orchestrator CLI. elgg-site-upgrade's SKILL.md tells users to run
+    # its bundled copy, which had frozen at the commit that created it while the
+    # canonical one gained the dependency resolver, core-plugin classification,
+    # --env-file wiring and node-service mount masking.
+    rsync -a "$migrate_root/bin/elgg-migrate-run" "$dst/bin/elgg-migrate-run"
     rsync -a --delete "$migrate_root/src/"         "$dst/src/"
     rsync -a --delete "$migrate_root/rules/"       "$dst/rules/"
     rsync -a "$migrate_root/references/"           "$dst/references/"

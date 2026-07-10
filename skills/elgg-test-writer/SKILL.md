@@ -203,10 +203,14 @@ version-gates each check, so the same template guards a 3.x→4.x or a 6.x→7.x
 step. Its embedded maps mirror the engine-side detectors — keep them in
 lock-step:
 
-- `skills/elgg-migrate/references/removed-functions.json` (removed symbols)
-- `skills/elgg-migrate/references/changed-class-contracts.json` (interface⇄class)
-- `skills/elgg-migrate/references/migration-failure-catalog.md` (the full class list)
-- `skills/elgg-migrate/bin/scan-frontend-residue.sh` (`CORE_SIG`)
+These ship inside this skill (mirrored from `elgg-migrate`, the canonical source,
+by `bin/gen-elgg-infra.sh`), so paths are skill-local and a standalone vendoring
+of `elgg-test-writer` resolves them:
+
+- `references/removed-functions.json` (removed symbols)
+- `references/changed-class-contracts.json` (interface⇄class)
+- `references/migration-failure-catalog.md` (the full class list)
+- `bin/scan-frontend-residue.sh` (`CORE_SIG`)
 
 Failure classes it asserts absent (target-gated): removed core functions +
 constants + `ElggFile::detectMimeType`; changed class contracts (`Hook`,
@@ -227,8 +231,8 @@ execution in the static scans. The LLM-driven phases below add richer
 per-feature coverage (action 200/403 paths, route reachability, view rendering,
 UI flows) on top of these files.
 
-The post-migration verifier in `skills/elgg-migrate/src/PostMigrationVerifier.php`
-emits a warning for plugins missing this scaffold.
+The post-migration verifier in `src/PostMigrationVerifier.php` (bundled with this
+skill) emits a warning for plugins missing this scaffold.
 
 ---
 
@@ -903,7 +907,13 @@ docker compose -f docker/docker-compose.yml exec elgg \
   composer require --dev phpunit/phpunit:^9.6 --no-interaction
 ```
 
-Use PHPUnit 9.x for PHP 7.4 (Elgg 3.x/4.x), PHPUnit 10.x for PHP 8.1+ (Elgg 5.x+).
+Pin PHPUnit to the container's PHP, not to the Elgg version:
+
+| Stack | PHP | PHPUnit |
+|---|---|---|
+| Elgg 2.x (`php:7.2-apache`) | 7.2 | **8.x** — PHPUnit 9 requires PHP ≥ 7.3 |
+| Elgg 3.x / 4.x (`php:7.4-apache`) | 7.4 | 9.x |
+| Elgg 5.x+ | 8.1+ | 10.x |
 
 ### Test database setup (REQUIRED for IntegrationTestCase)
 

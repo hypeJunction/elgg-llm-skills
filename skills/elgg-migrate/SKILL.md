@@ -78,7 +78,7 @@ Before starting any migration, the agent MUST consult the relevant docs in `refe
 7. **LINEAR VERSION KNOWLEDGE ONLY** — When migrating from version N to N+1, the agent MUST only apply N+1 APIs, patterns, and conventions. Do NOT use APIs from version N+2 or later. Example: when migrating 3.x→4.x, use `\Elgg\Hook` (4.x), NOT `\Elgg\Event` (5.x); use `elgg_trigger_plugin_hook()` (4.x, deprecated), NOT `elgg_trigger_event_results()` (5.x). Run `--verify` after every migration to catch leakage.
 8. **SECURITY SWEEP AFTER EVERY MIGRATION** — Run `--security` after applying rules. Fix critical findings before committing. Security debt from legacy code gets inherited — catch it at the version boundary.
 9. **DOCUMENT AFTER MIGRATION** — After each version step, generate a plugin architecture summary documenting the current structure, registered hooks/events, entities, routes, and any migration notes for future reference.
-10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `docs/coding-standards.md` for version-specific rules.
+10. **FOLLOW ELGG CODING STYLE** — Migrated code must follow Elgg's coding standards for the target version. Run PHP_CodeSniffer with Elgg's ruleset after each change. See `references/coding-standards.md` for version-specific rules.
 11. **COMPOSER CONSTRAINTS ARE NON-NEGOTIABLE** — Set `elgg/elgg` and `php` per the version table in "Composer Requirements Per Migration Branch" below. Wrong constraints are silent bugs that only surface when someone tries to install the plugin.
 12. **EVERY MIGRATE BRANCH NEEDS DOCKER INFRA** — Copy the template from `<skill-infra>/infra/elgg{N}/` to `docker/` on every migrate branch. Without Docker infra, the branch cannot be tested.
 13. **EACH BRANCH MUST BE BASED ON THE PREVIOUS** — `migrate/elgg-N.x` must be based on `migrate/elgg-(N-1).x`. Create it with `git checkout migrate/elgg-(N-1).x && git checkout -b migrate/elgg-N.x` or merge it in before starting migration work.
@@ -361,6 +361,8 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | Flag | Purpose |
 |------|---------|
 | `--dry-run` | Analyze only, don't modify files |
+| `--check` | Run **only** the incomplete-migration check: scan for prior-version patterns left over by an earlier migration attempt. Exit **0** if clean, **6** if findings. Shape-based version detection cannot see these — a plugin whose files look like 4.x can still carry 3.x hook signatures. |
+| `--strict-completeness` | After migrating, fail if any source-version patterns remain. Pair with `--verify`. |
 | `--report` | Show LLM instructions for manual rules |
 | `--verify` | Run the failure-catalog gate: version-boundary checks PLUS ~29 concrete FC-* failure-class detectors (removed functions/constants, changed class contracts, hook-signature leftovers, ESM/jQuery/i18n residue, DBAL param bugs, …) from `references/migration-failure-catalog.md`. Treat a non-empty report as your ready-made worklist, not a prompt to go hunting. |
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
@@ -881,7 +883,7 @@ business-logic flaws (IDOR, race conditions, mass assignment), hook/event
 handlers trusting unvalidated input, and migration-introduced issues like
 Bootstrap classes doing privileged operations or custom endpoints missing
 CSRF. Address HIGH and MEDIUM findings before committing. See
-`docs/llm-security-review.md` for the full workflow.
+`references/llm-security-review.md` for the full workflow.
 
 #### Coding standards
 

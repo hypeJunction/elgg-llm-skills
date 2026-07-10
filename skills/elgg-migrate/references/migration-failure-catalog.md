@@ -242,7 +242,7 @@ Two data files feed the automated gates and are kept in lock-step with this cata
 - **Fix:** drop `jquery-ui`; `elgg_view('navigation/menu/elements/item', …)`; iterate
   `foreach ($menu as $section)`; use a plain string extension target.
 - **Test-to-write:** unit — `AmdRemovedApis` / `JqueryUiRequires` rule rewrites the require array.
-- **gate:** rule (`V4ToV5/AmdRemovedApis`, `JqueryUiRequires`) · **Sources:** cerebrum DNR 2026-04-20, bd memory jquery-ui-split
+- **gate:** rule (`V3ToV4/AmdRemovedApis`, `JqueryUiRequires`) · **Sources:** cerebrum DNR 2026-04-20, bd memory jquery-ui-split
 
 ### FC-4x5x-07 — 5.x requires a non-empty subtype; `$e->subtype =` throws
 - **Detection (regex):** entity `save()` with empty subtype; `$entity->subtype = $value` assignment;
@@ -308,12 +308,19 @@ Two data files feed the automated gates and are kept in lock-step with this cata
 - **Sources:** cerebrum DNR 2026-05-11, bd elgg-migrate-gqrjf, bd memory seeder-rule
 
 ### FC-5x6x-04 — `Elgg\Upgrade\Batch` became an abstract class
-- **Detection (class contract):** `implements Batch` (`changed-class-contracts.json[6.x]`,
-  `illegal_keyword: implements`). Was an interface in 3.x-5.x.
+- **Boundary:** the change lands at **5.0**, not 6.0. Verified against upstream:
+  `interface Batch` in Elgg 4.0, `abstract class Batch` in 5.0 and 6.0. (The FC id
+  keeps its historical `5x6x` label; it was first observed at the 5x→6x tier
+  because plugins skipped straight past it.)
+- **Detection (class contract):** `implements Batch` (`changed-class-contracts.json[5.x]`,
+  `illegal_keyword: implements`). Was an interface in 3.x-4.x. The verifier applies
+  contracts cumulatively (`major <= target`), so this fires for any target ≥ 5.x.
 - **Fix:** `extends \Elgg\Upgrade\AsynchronousUpgrade` (admin-run) or `\Elgg\Upgrade\SystemUpgrade`;
   implement `run(Result $result, $offset): Result`.
-- **Test-to-write:** unit — `implements Batch` flags at `6.x`; `extends AsynchronousUpgrade` passes.
-- **gate:** YES · **Sources:** `changed-class-contracts.json`, cerebrum feedback_elgg6_batch_abstract, verify-migration-chain 2026-06-05
+- **Test-to-write:** unit — `implements Batch` flags at `5.x` and `6.x`, is silent at `4.x`;
+  `extends AsynchronousUpgrade` passes.
+- **gate:** YES · **Sources:** `changed-class-contracts.json` (Reflection-verified),
+  upstream Elgg 4.0/5.0 sources, verify-migration-chain 2026-06-05
 
 ### FC-5x6x-05 — AMD → ESM
 - **Detection (symbol/future-api):** `elgg_load_js(`, `elgg_require_js(`, `elgg_define_js(`
