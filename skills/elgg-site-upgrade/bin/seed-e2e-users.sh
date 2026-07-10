@@ -82,9 +82,13 @@ $results = elgg_call(ELGG_IGNORE_ACCESS, function () use ($upsert, $admin_user, 
     $admin = $upsert($admin_user, $admin_pass, true);
     $normal = $upsert($normal_user, $normal_pass, false);
 
-    // Join both users to every enabled group that has discussions, so the authed
-    // group/discussion specs have something to read. Membership is what unlocks a
-    // members_only group's content — see Gatekeeper::assertAccessibleGroup().
+    // Join both users to every PUBLICLY-ACCESSIBLE group that has discussions, so
+    // the authed group/discussion specs have something to read. Membership is what
+    // unlocks a members_only group's content — see Gatekeeper::assertAccessibleGroup().
+    //
+    // Deliberately NOT the ACL-restricted groups (access_id != ACCESS_PUBLIC): the
+    // access-boundary specs need a group these accounts are *not* in, and joining
+    // every group turned "closed group blocks a non-member with 403" into a 200.
     $groups = elgg_get_entities([
         'type' => 'group',
         'limit' => 0,
@@ -92,6 +96,10 @@ $results = elgg_call(ELGG_IGNORE_ACCESS, function () use ($upsert, $admin_user, 
 
     $joined = 0;
     foreach ($groups as $group) {
+        if ((int) $group->access_id !== ACCESS_PUBLIC) {
+            continue;
+        }
+
         $has_discussions = elgg_get_entities([
             'type' => 'object',
             'subtype' => 'discussion',
