@@ -61,6 +61,7 @@
 #      live mod/<id> both declare it. Not runnable this way — use an isolated stack.
 #   4  refused: $ELGG_DB_PREFIX is the site's LIVE table prefix
 #   5  the disposable test schema is missing (run bin/provision-test-db.sh)
+#   6  the plugin is not installed in the container, so Elgg never boots it
 
 set -uo pipefail
 
@@ -232,6 +233,24 @@ tar -C "$PLUGIN_SRC" \
     -cf - . \
   | docker exec -i "$APP_CONTAINER" tar -C "$SCRATCH" -xf - \
   || { echo "ERROR: failed to stage $PLUGIN_ID source into container." >&2; exit 1; }
+
+# --- preflight: is the plugin even installed in this container? -------------
+#
+# An integration suite asserts against a BOOTED plugin: routes registered, events
+# wired, elgg_get_plugin_from_id() returning an active plugin. Elgg only boots what
+# is in mod/. If mod/<id> is absent the plugin never loads, and the suite reports a
+# wall of failures that look like code regressions but only mean "not deployed
+# here". 17 of the 69 plugins in this workspace are in that position against the
+# preview container. A wrong-environment result must not read as a code failure.
+if [ "$SUITE" != "unit" ]; then
+    if ! docker exec "$APP_CONTAINER" test -d "/var/www/html/mod/$PLUGIN_ID" 2>/dev/null; then
+        echo "ERROR: $PLUGIN_ID is not installed in $APP_CONTAINER (no mod/$PLUGIN_ID)." >&2
+        echo "       Elgg will not boot it, so its integration assertions — routes, events," >&2
+        echo "       elgg_get_plugin_from_id() — would fail for the environment, not the code." >&2
+        echo "       Run it against a stack that installs this plugin:  bin/elgg-migrate-run" >&2
+        exit 6
+    fi
+fi
 
 # --- preflight: never let an integration suite touch the live tables --------
 #
