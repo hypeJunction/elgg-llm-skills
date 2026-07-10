@@ -541,10 +541,22 @@ EOF
 
 cmd_down() {
   local plugin="${1:?plugin id required}"
-  local jdir jshort version sha
-  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -exec basename {} \; | head -n1)"
-  [[ -n "$jdir" ]] || { echo "no job for $plugin" >&2; exit 1; }
-  jdir="$JOBS_DIR/$jdir"
+  local jdir version sha src pdir
+  # Prefer the job for the CURRENT checkout: scanning for "<plugin>-*" and taking
+  # the first match tears down an arbitrary stale job when the plugin has been
+  # spawned at more than one commit. Fall back to a scan only if that job is gone.
+  src="$(resolve_plugins_source)"; pdir="$src/$plugin"
+  if [[ -d "$pdir" ]]; then
+    sha="$(job_sha "$pdir")"
+    jdir="$(job_path "$plugin" "$sha")"
+  fi
+  if [[ -z "${jdir:-}" || ! -d "$jdir" ]]; then
+    local found
+    found="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" | head -n1)"
+    [[ -n "$found" ]] || { echo "no job for $plugin" >&2; exit 1; }
+    jdir="$found"
+  fi
+  [[ -f "$jdir/report.json" ]] || { echo "no report.json in $jdir" >&2; exit 1; }
   sha="$(jq -r '.sha'     "$jdir/report.json")"
   version="$(jq -r '.version' "$jdir/report.json")"
   # shellcheck disable=SC2046
@@ -565,6 +577,127 @@ cmd_status() {
   jq . "$jdir/deps.lock.json"
 }
 
+# ---------------------------------------------------------------------------
+# test — run a plugin's PHPUnit suite in its OWN isolated stack.
+#
+# run-plugin-tests.sh runs against a SHARED, already-serving container. It must
+# stage the workspace source at mod-test/<id> because mod/<id> is the code the
+# live site serves, and that second copy is what makes plugins declaring global
+# functions fatal with "Cannot redeclare", and what leaves plugins absent from
+# mod/ untestable at all. Here there is no such conflict: the isolated stack
+# bind-mounts the workspace source AT mod/<id>, so there is exactly one copy and
+# Elgg boots it. This is the sound way to test the plugins that runner refuses.
+#
+#   elgg-migrate-run test <plugin> [--suite=unit|integration|all]
+#                                  [--version=elggN] [--keep]
+#
+# --keep leaves the stack up for inspection; otherwise it is torn down.
+# ---------------------------------------------------------------------------
+cmd_test() {
+  local plugin="${1:?plugin id required}"; shift || true
+  local suite="integration" version="elgg7" keep=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --suite=*)   suite="${1#*=}"; shift ;;
+      --version=*) version="${1#*=}"; shift ;;
+      --keep)      keep=1; shift ;;
+      *) echo "unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+  case "$suite" in unit|integration|all) : ;; *) echo "--suite must be unit|integration|all" >&2; exit 2 ;; esac
+
+  local src pdir
+  src="$(resolve_plugins_source)"
+  [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
+  pdir="$src/$plugin"
+  is_plugin_dir "$pdir" || { echo "not a plugin: $pdir" >&2; exit 1; }
+
+  # Locate the phpunit config + populated suite dirs, exactly as run-plugin-tests.sh
+  # does: two authored layouts exist and suite NAMES are unreliable.
+  local cfg_subdir
+  if   [[ -f "$pdir/tests/phpunit.xml" ]]; then cfg_subdir="tests"
+  elif [[ -f "$pdir/phpunit.xml" ]];       then cfg_subdir="."
+  else echo "ERROR: $plugin has no phpunit.xml (root or tests/)" >&2; exit 1; fi
+
+  local unit_dir="" integration_dir="" c
+  for c in tests/Unit tests/phpunit/unit; do
+    [[ -d "$pdir/$c" ]] && [[ -n "$(find "$pdir/$c" -name '*Test.php' -print -quit 2>/dev/null)" ]] && { unit_dir="$c"; break; }
+  done
+  for c in tests/Integration tests/phpunit/integration; do
+    [[ -d "$pdir/$c" ]] && [[ -n "$(find "$pdir/$c" -name '*Test.php' -print -quit 2>/dev/null)" ]] && { integration_dir="$c"; break; }
+  done
+
+  rel_to_cfg() { local d="$1"; [[ "$cfg_subdir" == "tests" ]] && printf '%s' "${d#tests/}" || printf '%s' "$d"; }
+
+  local -a targets=()
+  case "$suite" in
+    unit)        [[ -n "$unit_dir" ]] || { echo "ERROR: $plugin has no populated unit test dir" >&2; exit 1; }
+                 targets+=("$(rel_to_cfg "$unit_dir")") ;;
+    integration) [[ -n "$integration_dir" ]] || { echo "ERROR: $plugin has no populated integration test dir" >&2; exit 1; }
+                 targets+=("$(rel_to_cfg "$integration_dir")") ;;
+    all)         [[ -n "$unit_dir" ]]        && targets+=("$(rel_to_cfg "$unit_dir")")
+                 [[ -n "$integration_dir" ]] && targets+=("$(rel_to_cfg "$integration_dir")")
+                 [[ ${#targets[@]} -gt 0 ]]  || { echo "ERROR: $plugin has no populated test dirs" >&2; exit 1; } ;;
+  esac
+
+  cmd_up "$plugin" "--version=$version" || { echo "ERROR: could not bring up the isolated stack" >&2; exit 1; }
+
+  # Derive the sha the same way cmd_up did. Scanning $JOBS_DIR for "<plugin>-*"
+  # and taking the first hit picks an arbitrary STALE job when the plugin has been
+  # spawned at more than one commit, and then addresses containers that do not exist.
+  local sha project jdir
+  sha="$(job_sha "$pdir")"
+  jdir="$(job_path "$plugin" "$sha")"
+  project="em-${plugin}-${sha}"
+
+  local app_c="${project}-elgg-1" db_c="${project}-db-1"
+  local rc=0
+
+  # cmd_down calls `exit` on some paths; run it in a subshell so a teardown problem
+  # cannot kill this function before it returns the test status.
+  cleanup_stack() {
+    if [[ "$keep" -eq 1 ]]; then
+      echo "stack left running: $project (elgg=$app_c db=$db_c) — 'elgg-migrate-run down $plugin' to remove"
+    else
+      ( cmd_down "$plugin" ) >/dev/null 2>&1 || echo "warning: teardown of $project failed — 'elgg-migrate-run down $plugin'" >&2
+    fi
+  }
+
+  # Integration suites write through Elgg\IntegrationTestCase, which resolves its
+  # prefix as getenv('ELGG_DB_PREFIX') ?: 'c_i_elgg_'. Those tables must exist.
+  if [[ "$suite" != "unit" ]]; then
+    if ! ELGG_DB_CONTAINER="$db_c" ELGG_DB_NAME=elgg ELGG_DB_USER=elgg ELGG_DB_PASS=elgg \
+         "$BIN_DIR/provision-test-db.sh" >/dev/null; then
+      echo "ERROR: could not provision the disposable test schema in $db_c" >&2
+      cleanup_stack
+      exit 1
+    fi
+  fi
+
+  # Same pinned PHAR contract as run-plugin-tests.sh; the site composer.json is
+  # never touched.
+  docker exec "$app_c" sh -c '
+    [ -f /usr/local/lib/phpunit-9.phar ] && exit 0
+    mkdir -p /usr/local/lib
+    curl -fsSL https://phar.phpunit.de/phpunit-9.phar -o /usr/local/lib/phpunit-9.phar 2>/dev/null \
+      || wget -qO /usr/local/lib/phpunit-9.phar https://phar.phpunit.de/phpunit-9.phar
+  ' || { echo "ERROR: could not obtain phpunit in $app_c" >&2; cleanup_stack; exit 1; }
+
+  # ONE copy: the plugin lives at mod/<id> and it is the workspace source.
+  local run_dir="/var/www/html/mod/$plugin"
+  [[ "$cfg_subdir" == "tests" ]] && run_dir="$run_dir/tests"
+
+  echo ">> $plugin  (isolated, suite=$suite, dirs=${targets[*]})"
+  # The script runs under `set -e`: a failing phpunit would abort here and leak the
+  # stack. Capture the status explicitly so teardown always runs.
+  rc=0
+  docker exec -e ELGG_DB_PREFIX=c_i_elgg_ -w "$run_dir" "$app_c" \
+      php /usr/local/lib/phpunit-9.phar -c phpunit.xml "${targets[@]}" --do-not-cache-result || rc=$?
+
+  cleanup_stack
+  return "$rc"
+}
+
 usage() {
   cat <<'EOF'
 elgg-migrate-run — isolated per-plugin migration orchestrator
@@ -572,6 +705,7 @@ elgg-migrate-run — isolated per-plugin migration orchestrator
   init    [--plugins-source=<dir>] [--from=N.x] [--to=N.x]
   resolve <plugin>
   up      <plugin> [--version=elgg2|elgg3|elgg4|elgg5|elgg6|elgg7]
+  test    <plugin> [--suite=unit|integration|all] [--version=elggN] [--keep]
   down    <plugin>
   status  [<plugin>]
 
@@ -586,6 +720,7 @@ main() {
     init)    cmd_init    "$@" ;;
     resolve) cmd_resolve "$@" ;;
     up)      cmd_up      "$@" ;;
+    test)    cmd_test    "$@" ;;
     down)    cmd_down    "$@" ;;
     status)  cmd_status  "$@" ;;
     ""|-h|--help|help) usage ;;
