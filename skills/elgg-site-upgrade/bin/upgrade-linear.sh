@@ -21,6 +21,16 @@
 #   --backup-dir DIR  Where to store DB backups (default: <project>/../elgg-backups/).
 #   --site-url URL    Override site URL for curl verification (auto-detected from settings.php).
 #
+# Gates (opt-in; both drive the site through docker, this script otherwise does not):
+#   ELGG_APP_CONTAINER  running Elgg container. Enables the render-parity gate:
+#                       a route-render golden master is captured on the OLD version
+#                       before each step and diffed after it. Without this the only
+#                       render check is the anonymous homepage — see SKILL.md.
+#   AUTH_USER/AUTH_PASS/DB_CONTAINER
+#                       Enable the write-path gate (authenticated create/edit).
+#   GM_BASELINE_DIR     Where golden masters are stored (default <project>/baselines).
+# A gate that cannot run says so loudly; it never silently passes.
+#
 # Branch auto-detection (for each target version N, tried in order):
 #   1. ELGG_BRANCH_N env var (explicit override)
 #   2. migrate/elgg-N.x
@@ -39,6 +49,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # sibling gate scripts live here
+
 PROJECT=""
 FROM_VER=""
 TO_VER=6
@@ -396,6 +408,65 @@ schema_prefix() {
 }
 
 # ---------------------------------------------------------------------------
+# Render-parity + write-path gates.
+#
+# verify_site() only proves the anonymous homepage answers. SKILL.md is explicit
+# that this is NOT the definition of done: a walled-garden community renders
+# almost nothing anonymously, and a route can 500 for logged-in users while every
+# activation and homepage check stays green. The executable definition lives in
+# verify-parity.sh (route-render golden master, anon + auth, diffed forward) and
+# verify-write-paths.sh (authenticated create/edit journeys). Those were shipped
+# but never invoked by this orchestrator.
+#
+# Both drive the site through `docker exec`, and this script otherwise targets a
+# plain host install, so they run only when ELGG_APP_CONTAINER names the running
+# container. When they cannot run we say so loudly — a skipped gate must never
+# read as a passed gate.
+# ---------------------------------------------------------------------------
+GM_BASELINE_DIR="${GM_BASELINE_DIR:-$PROJECT/baselines}"
+
+parity_available() {
+    [[ -n "${ELGG_APP_CONTAINER:-}" && -x "$SELF_DIR/verify-parity.sh" ]]
+}
+
+parity_capture() {
+    local label="$1"
+    if ! parity_available; then
+        warn "SKIPPING render-parity baseline for ${label} — set ELGG_APP_CONTAINER to enable"
+        warn "  (without it the only render check is the anonymous homepage)"
+        return 0
+    fi
+    log "Capturing render-parity baseline: ${label}"
+    run "GM_BASELINE_DIR='$GM_BASELINE_DIR' '$SELF_DIR/verify-parity.sh' capture '$label'" || {
+        warn "parity capture for ${label} failed — the post-upgrade diff will have no oracle"
+        return 1
+    }
+}
+
+parity_check() {
+    local from="$1" to="$2"
+    if ! parity_available; then
+        warn "SKIPPING render-parity check ${from} -> ${to} (ELGG_APP_CONTAINER unset)"
+        return 0
+    fi
+    log "Render-parity gate: ${from} -> ${to}"
+    run "GM_BASELINE_DIR='$GM_BASELINE_DIR' '$SELF_DIR/verify-parity.sh' check '$from' '$to'"
+}
+
+write_paths_check() {
+    if [[ ! -x "$SELF_DIR/verify-write-paths.sh" ]]; then
+        return 0
+    fi
+    if [[ -z "${AUTH_USER:-}" || -z "${AUTH_PASS:-}" || -z "${DB_CONTAINER:-}" ]]; then
+        warn "SKIPPING write-path gate — set AUTH_USER, AUTH_PASS and DB_CONTAINER to enable"
+        warn "  (render gates are GET-only; action/CRUD breaks stay latent without this)"
+        return 0
+    fi
+    log "Write-path gate (authenticated create/edit journeys)"
+    run "'$SELF_DIR/verify-write-paths.sh' --base '${SITE_URL%/}' --user '$AUTH_USER' --pass '$AUTH_PASS'"
+}
+
+# ---------------------------------------------------------------------------
 # Run Elgg upgrade (cd into project so elgg-cli resolves paths from CWD)
 # ---------------------------------------------------------------------------
 run_upgrade() {
@@ -488,22 +559,27 @@ do_step() {
 
     # Backup runs before maintenance mode: nothing is mutated yet, so a failure
     # here needs no restore and no maintenance window.
-    info "1/7 Backup"
+    info "1/8 Backup"
     backup_db "before-${to}x" || { warn "Backup failed — aborting step (site untouched)"; return 1; }
 
-    info "2/7 Enable maintenance mode"
+    # The parity oracle must be captured while the site still runs the OLD
+    # version and is still serving (i.e. before maintenance mode goes up).
+    info "2/8 Capture render-parity baseline (${from}.x)"
+    parity_capture "${from}.x" || true
+
+    info "3/8 Enable maintenance mode"
     enable_maintenance
 
-    info "3/7 Checkout $branch"
+    info "4/8 Checkout $branch"
     checkout_branch "$branch" || { abort_step "git checkout failed"; return 1; }
 
-    info "4/7 Composer install"
+    info "5/8 Composer install"
     run_composer || { abort_step "composer install failed"; return 1; }
 
-    info "5/7 Schema pre-fix"
+    info "6/8 Schema pre-fix"
     schema_prefix "$from" "$to" || { abort_step "Schema pre-fix failed"; return 1; }
 
-    info "6/7 Upgrade"
+    info "7/8 Upgrade"
     run_upgrade || { abort_step "elgg-cli upgrade failed"; return 1; }
 
     # Maintenance mode must come off BEFORE verifying: while it is on, Elgg serves
@@ -511,7 +587,7 @@ do_step() {
     # verify_site makes. Verifying first reported every successful step as a
     # failure — and on versions that answer 200 it verified the maintenance
     # template rather than the site.
-    info "7/7 Disable maintenance, then verify"
+    info "8/8 Disable maintenance, then verify"
     disable_maintenance
 
     if ! verify_site; then
@@ -519,6 +595,22 @@ do_step() {
         warn "Re-enabling maintenance mode so the site does not serve a broken upgrade."
         enable_maintenance
         abort_step "post-upgrade verification failed"
+        return 1
+    fi
+
+    # The real gates. A route that regressed from 2xx to 5xx, or a write journey
+    # that now fatals, fails the step even though the homepage answered 200.
+    if ! parity_check "${from}.x" "${to}.x"; then
+        warn "Render-parity gate FAILED: a route that worked on ${from}.x is broken on ${to}.x."
+        enable_maintenance
+        abort_step "render-parity regression"
+        return 1
+    fi
+
+    if ! write_paths_check; then
+        warn "Write-path gate FAILED: an authenticated create/edit journey broke."
+        enable_maintenance
+        abort_step "write-path regression"
         return 1
     fi
 
