@@ -80,6 +80,19 @@ docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugin/tests/playwright && npm ci && npx playwright test"
 ```
 
+`npm ci` **requires a committed `package-lock.json`** — it exits with `ENOENT` when
+there is none. Copy both files from this skill before the first run, and commit them:
+
+```bash
+cp <skill>/templates/playwright/package.json      <plugin>/tests/playwright/
+cp <skill>/templates/playwright/package-lock.json <plugin>/tests/playwright/
+```
+
+`@playwright/test` is pinned to an exact `1.49.0` — **not** `^1.x`. It must match the
+browser build baked into the `node` service image
+(`mcr.microsoft.com/playwright:v1.49.0-noble`); a floating range silently installs a
+client newer than the browsers in the image. If you bump one, bump the other.
+
 The `node` service uses the official Playwright Docker image (includes Node.js 20).
 The plugin's source directory is mounted at `/plugin` inside the node container via the per-plugin `docker/docker-compose.yml`.
 
@@ -161,28 +174,24 @@ docker compose -f docker/docker-compose.yml --profile test run --rm node sh -c \
   "cd /plugin && npm init -y && npm install -D vitest jsdom"
 ```
 
-**vitest.config.ts:**
-```typescript
-import { defineConfig } from 'vitest/config';
+**vitest.config.mjs** — copy `templates/js/vitest.config.mjs` (do not retype it):
 
-export default defineConfig({
-  test: {
-    environment: 'jsdom',
-    include: ['tests/js/**/*.test.{ts,js,mjs}'],
-    globals: true,
-  },
-  resolve: {
-    alias: {
-      // Mock Elgg core modules that won't be available in test env
-      'elgg': './tests/js/mocks/elgg.mjs',
-      'elgg/Ajax': './tests/js/mocks/Ajax.mjs',
-      'elgg/hooks': './tests/js/mocks/hooks.mjs',
-      'elgg/i18n': './tests/js/mocks/i18n.mjs',
-      'jquery': './tests/js/mocks/jquery.mjs',
-    },
-  },
-});
+```bash
+cp <skill>/templates/js/vitest.config.mjs <plugin>/vitest.config.mjs
+cp -r <skill>/templates/js/mocks <plugin>/tests/js/mocks
 ```
+
+Two things in that file are load-bearing, and getting either wrong produces a
+"Failed to resolve import" that looks like a missing mock:
+
+1. **Aliases use the ARRAY form, most specific first.** Vite/rollup alias matching
+   is prefix-based (`id === find || id.startsWith(find + '/')`) and takes the first
+   match. An object with a bare `'elgg'` key ahead of `'elgg/Ajax'` rewrites
+   `elgg/Ajax` to `<elgg mock>/Ajax`, and the import dies. The bare module is
+   matched with `/^elgg$/` so it can never swallow a submodule.
+2. **Replacements are absolute** (`fileURLToPath(new URL(...))`). A relative
+   `'./tests/js/mocks/x.mjs'` is resolved against the importer, not the project
+   root, and resolves only sometimes.
 
 **package.json scripts:**
 ```json
@@ -317,65 +326,27 @@ export function reset() {
 
 ### tests/js/mocks/i18n.mjs
 
+Shipped at `templates/js/mocks/i18n.mjs`.
+
 On 7.x the real `elgg/i18n` has a **default export only**, so a module under test
 doing `import i18n from 'elgg/i18n'` receives `undefined` from a mock that exports
-only named bindings — and every call on it throws. The mock must therefore ship a
-default export. Named exports are kept alongside it so the same mock still serves
-6.x modules written as `import { echo } from 'elgg/i18n'`.
-
-```javascript
-// Mock Elgg i18n module
-const translations = {};
-
-export function echo(key, args = []) {
-  let str = translations[key] || key;
-  args.forEach((arg) => {
-    str = str.replace(`%s`, arg);
-  });
-  return str;
-}
-
-export function addTranslation(lang, strings) {
-  Object.assign(translations, strings);
-}
-
-// 7.x shape: `import i18n from 'elgg/i18n'` → i18n.echo(...)
-export default { echo, addTranslation };
-```
+only named bindings — and every call on it throws. The shipped mock exports a
+default, and keeps the named exports alongside it so it still serves 6.x modules
+written as `import { echo } from 'elgg/i18n'`.
 
 ### tests/js/mocks/jquery.mjs
 
-**Do not hand-roll a jQuery mock for a module that uses jQuery.** A `$` built from
-`document.querySelector` returns a bare DOM node, so the first `.on()`, `.each()`,
-`.addClass()` or `.data()` the module under test calls throws — which is nearly all
-real plugin JS. Depend on the real thing instead; it runs fine under Vitest's jsdom
-environment:
+Shipped at `templates/js/mocks/jquery.mjs`. Requires the real library:
 
 ```bash
 npm i -D jquery
 ```
 
-```javascript
-// tests/js/mocks/jquery.mjs — real jQuery bound to the jsdom window
-import jq from 'jquery';
-
-const $ = jq(globalThis.window);   // vitest environment: 'jsdom'
-globalThis.$ = globalThis.jQuery = $;   // 7.x: jQuery is no longer auto-global
-
-export default $;
-```
-
-The minimal stub below is adequate **only** for pure-logic modules that never touch
-the DOM or jQuery's fluent API — reach for it when the module under test imports
-`jquery` but only ever calls `$.extend` / `$.ajax`:
-
-```javascript
-const $ = () => { throw new Error('this mock has no DOM API — use the real jquery dep'); };
-$.ajax = async () => ({});
-$.extend = Object.assign;
-
-export default $;
-```
+**Do not hand-roll a jQuery mock for a module that uses jQuery.** A `$` built from
+`document.querySelector` returns a bare DOM node, so the first `.on()`, `.each()`,
+`.addClass()` or `.data()` the module under test calls throws — which is nearly all
+real plugin JS. The shipped mock binds the real library to the jsdom window and
+exposes `window.$` / `window.jQuery`, which 7.x no longer does automatically.
 
 ---
 
@@ -960,7 +931,8 @@ await expect(page.locator('.elgg-system-messages .elgg-message-error')).toBeVisi
   tests/
     playwright/
       playwright.config.ts
-      package.json          # { "devDependencies": { "@playwright/test": "^1.x" } }
+      package.json          # copy templates/playwright/package.json
+      package-lock.json     # copy templates/playwright/package-lock.json — COMMIT IT
       helpers/
         login.ts            # loginAsAdmin(), loginAsUser()
       fixtures/

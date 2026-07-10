@@ -402,7 +402,7 @@ npx playwright test
 # docker-compose.e2e.yml
 services:
   playwright:
-    image: mcr.microsoft.com/playwright:v1.50.0-noble
+    image: mcr.microsoft.com/playwright:v1.49.0-noble
     depends_on:
       app:
         condition: service_healthy

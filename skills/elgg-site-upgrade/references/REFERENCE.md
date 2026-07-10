@@ -213,7 +213,7 @@ services:
       interval: 10s
       start_period: 60s  # Allow time for plugin activation
   playwright:
-    image: mcr.microsoft.com/playwright:v1.50.0-noble
+    image: mcr.microsoft.com/playwright:v1.49.0-noble
     working_dir: /e2e
     volumes:
       - ./e2e:/e2e
