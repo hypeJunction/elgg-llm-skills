@@ -87,6 +87,16 @@
   },
   "7.x": {
     "ELGG_CACHE_PERSISTENT": "removed cache-layer flag — the persistent cache layer was dropped in 7.x; use ELGG_CACHE_RUNTIME / ELGG_CACHE_FILESYSTEM (NOTE: a bare constant, not a call — documented here but not flagged by the call-shaped gate)",
-    "elgg_reset_system_cache": "_elgg_services()->systemCache->clear() (CacheService::clear)"
+    "elgg_disable_simplecache": "_elgg_services()->simpleCache->disable()",
+    "elgg_disable_system_cache": "_elgg_services()->systemCache->disable()",
+    "elgg_dump": "Use elgg_log($value) — elgg_dump() was deprecated in favor of elgg_log()",
+    "elgg_enable_simplecache": "_elgg_services()->simpleCache->enable()",
+    "elgg_enable_system_cache": "_elgg_services()->systemCache->enable()",
+    "elgg_get_system_cache": "Use the _elgg_services()->systemCache service directly (Elgg\\Cache\\CacheService)",
+    "elgg_is_simplecache_enabled": "_elgg_services()->simpleCache->isEnabled()",
+    "elgg_is_system_cache_enabled": "_elgg_services()->systemCache->isEnabled()",
+    "elgg_plugin_exists": "Use elgg_get_plugin_from_id($id) instanceof \\ElggPlugin — the plugins service no longer exposes exists()",
+    "elgg_reset_system_cache": "_elgg_services()->systemCache->clear() (CacheService::clear)",
+    "notify_user": "Use elgg_notify_user(\\ElggUser $recipient, string $action, \\ElggData $subject, array $params = [], ?\\ElggEntity $from = null) — SIGNATURE DIFFERS from notify_user(int|array $to, int $from, string $subject, string $message, ...); not a mechanical rename"
   }
 }

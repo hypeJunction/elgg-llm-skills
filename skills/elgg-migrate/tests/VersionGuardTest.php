@@ -612,6 +612,41 @@ final class VersionGuardTest extends TestCase
         }
     }
 
+    /**
+     * references/removed-functions.json['7.x'] listed only elgg_reset_system_cache
+     * (plus a bare constant), so a 6->7 migration never flagged the other nine
+     * global functions Elgg 7.0 dropped. The full set was derived by diffing
+     * upstream Elgg 6.0 and 7.0 engine/lib. Guard against the list silently
+     * shrinking again.
+     */
+    public function testIncompletePatternsFlagsTheFull7xRemovalSet(): void
+    {
+        $calls = [
+            'elgg_dump' => 'elgg_dump($x);',
+            'notify_user' => 'notify_user(1, 2, "s", "m");',
+            'elgg_plugin_exists' => 'elgg_plugin_exists("foo");',
+            'elgg_is_simplecache_enabled' => 'elgg_is_simplecache_enabled();',
+            'elgg_disable_system_cache' => 'elgg_disable_system_cache();',
+            'elgg_enable_simplecache' => 'elgg_enable_simplecache();',
+            'elgg_get_system_cache' => 'elgg_get_system_cache();',
+        ];
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'composer.json' => '{"require":{"elgg/elgg":"~7.0.0"}}',
+            'lib/f.php' => "<?php\n" . implode("\n", $calls) . "\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir);
+            $descs = implode('|', array_map(fn ($f) => $f->description, $findings));
+            foreach (array_keys($calls) as $fn) {
+                $this->assertStringContainsString($fn, $descs, "expected '{$fn}()' to be flagged as removed in 7.x");
+            }
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     public function testIncompletePatternsSilentOnMigrated7xCode(): void
     {
         // The replacements must NOT trip the 7.x leftover detector.

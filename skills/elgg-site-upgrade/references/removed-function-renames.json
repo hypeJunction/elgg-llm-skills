@@ -30,5 +30,7 @@
     "elgg_strrchr": "mb_strrchr",
     "elgg_strripos": "mb_strripos"
   },
-  "7.x": {}
+  "7.x": {
+    "elgg_dump": "elgg_log"
+  }
 }
