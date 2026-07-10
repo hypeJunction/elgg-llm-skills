@@ -156,12 +156,52 @@
       "priority": 170
     },
     {
+      "id": "030-remove-implements-interface",
+      "name": "Strip removed interfaces from class implements clauses",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\RemoveImplementsInterface",
+      "breaking_change": "Elgg\\Cache\\Pool, Exportable, Importable interfaces removed in 3.0",
+      "priority": 170
+    },
+    {
+      "id": "031-subtable-join-warning",
+      "name": "Warn about raw SQL referencing removed entity subtables",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\SubtableJoinWarning",
+      "breaking_change": "groups_entity, users_entity, objects_entity, sites_entity tables removed in 3.0",
+      "priority": 175
+    },
+    {
+      "id": "034-remove-vendor-autoload",
+      "name": "Remove redundant require_once of Elgg's root vendor/autoload.php",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\RemoveVendorAutoload",
+      "breaking_change": "dirname()-chained requires of the Elgg root autoloader break when the plugin is symlinked; Elgg already loads it before start.php",
+      "priority": 179
+    },
+    {
       "id": "018-layout-views",
       "name": "Update layout view calls",
       "automated": false,
       "llm_instructions": "Layout views simplified in 3.0. Replace:\n- `elgg_view_layout('one_sidebar', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('one_column', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('two_sidebar', $vars)` → `elgg_view_layout('default', $vars)`\n- `elgg_view_layout('content', $vars)` → `elgg_view_layout('default', $vars)` with appropriate content/filter/sidebar vars\n\nAll layouts now use `page/layouts/default`. The layout name is still passed but maps to the same template.",
       "breaking_change": "Layout system simplified — all layouts use page/layouts/default",
       "priority": 180
+    },
+    {
+      "id": "032-guard-vendor-require",
+      "name": "Add file_exists() guard to plugin-local vendor/autoload.php requires",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\GuardVendorRequire",
+      "breaking_change": "Plugin vendor autoload crashes if composer install not run",
+      "priority": 180
+    },
+    {
+      "id": "033-removed-functions-in-expressions",
+      "name": "Replace removed function calls in expressions with default values",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionsInExpressions",
+      "breaking_change": "Removed functions used in if/ternary/assignment expressions need value replacements",
+      "priority": 185
     },
     {
       "id": "019-removed-view-vars",
@@ -220,47 +260,6 @@
       "priority": 250
     },
     {
-      "id": "026-upgrade-scripts",
-      "name": "Generate plugin upgrade scripts",
-      "automated": false,
-      "needs_upgrade_script": true,
-      "llm_instructions": "After all other rules have been applied, determine if the plugin needs `Elgg\\Upgrade\\Batch` classes:\n\n1. If plugin used `add_subtype()` → generate upgrade that verifies subtype strings in DB\n2. If plugin used metastring-dependent queries → generate upgrade that verifies metadata is direct\n3. If plugin used `ACCESS_FRIENDS` → verify access collections\n4. If plugin stored data in entity subtables (users_entity, objects_entity, etc.) → generate upgrade to migrate to metadata\n\nUpgrade classes go in `classes/PluginNamespace/Upgrades/` and are registered in the plugin bootstrap.",
-      "breaking_change": "Existing installations need data migration scripts",
-      "priority": 999
-    },
-    {
-      "id": "030-remove-implements-interface",
-      "name": "Strip removed interfaces from class implements clauses",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V2ToV3\\RemoveImplementsInterface",
-      "breaking_change": "Elgg\\Cache\\Pool, Exportable, Importable interfaces removed in 3.0",
-      "priority": 170
-    },
-    {
-      "id": "031-subtable-join-warning",
-      "name": "Warn about raw SQL referencing removed entity subtables",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V2ToV3\\SubtableJoinWarning",
-      "breaking_change": "groups_entity, users_entity, objects_entity, sites_entity tables removed in 3.0",
-      "priority": 175
-    },
-    {
-      "id": "032-guard-vendor-require",
-      "name": "Add file_exists() guard to plugin-local vendor/autoload.php requires",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V2ToV3\\GuardVendorRequire",
-      "breaking_change": "Plugin vendor autoload crashes if composer install not run",
-      "priority": 180
-    },
-    {
-      "id": "033-removed-functions-in-expressions",
-      "name": "Replace removed function calls in expressions with default values",
-      "automated": true,
-      "class": "ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionsInExpressions",
-      "breaking_change": "Removed functions used in if/ternary/assignment expressions need value replacements",
-      "priority": 185
-    },
-    {
       "id": "027-menu-hook-array-to-menuitems",
       "name": "Wrap plain arrays in MenuItems when triggering menu:register hooks",
       "automated": false,
@@ -301,6 +300,14 @@
       "priority": 310
     },
     {
+      "id": "034-search-rewrite",
+      "name": "Replace 2.x search-hook results pattern with elgg_search() (Elgg 3.0 rewrite)",
+      "automated": false,
+      "priority": 340,
+      "breaking_change": "Elgg 3.0 rewrote search: search_*_hook functions removed; the 'search' hook no longer returns an ['entities'=>...] array",
+      "llm_instructions": "Elgg 3.0 rewrote search to be query-based. The `search_*_hook` functions and the old `'search'` hook return-shape are GONE: the hook/event now MODIFIES the query, it does NOT return `['entities' => [...], 'count' => N]`. Any 2.x code like:\n\n  $results = elgg_trigger_plugin_hook('search', $type, $options, []);  // 5.x+: elgg_trigger_event_results\n  $entities = elgg_extract('entities', $results);\n  echo elgg_view_entity_list($entities, ...);   // $entities is NULL on 3.x+ -> TypeError\n\nis broken from 3.0 onward. It typically passes activation + homepage render and only FATALS (or silently returns nothing) when the search/listing page is actually exercised — so it survives every server-side gate and surfaces much later.\n\nFIX — use the query-based API:\n- Render a list: `echo elgg_list_entities($options, 'elgg_search');` (the `elgg_search` callback runs the search query).\n- Get entities: `$entities = elgg_search($options);` then pass to `elgg_view_entity_list($entities, ...)`. Set `$options['query']` and `$options['type']` (and `subtypes`). For a count, `elgg_search($options + ['count' => true])`.\n\nThis is NOT a 7.x-only fix — it belongs on the migrate/elgg-3.x branch and forward-merges through 4.x/5.x/6.x/7.x (Iron Law 13). The intermediate branches carry the same latent bug. Verify by actually loading the search + every listing/directory page in a browser (see the route battery in elgg-migrate-verify).\n\nDetection: `bin/scan-frontend-residue.sh` flags `[dead-search-event]`; also `grep -rn \"elgg_trigger_\\(plugin_hook\\|event_results\\)(\\s*['\\\"]search\" --include='*.php'` and check each for a following `elgg_extract('entities', ...)`.\n\nRelated 3.0 removals to refactor the same way: `members_list_*` / `members_nav_*` functions (custom members directories), and from Elgg 7 the core members routes moved from the `members:list` event / resource model to route CONTROLLERS (collection:user:user:*), so plugins that customised members via that event must re-register their own route/resource on 7.x."
+    },
+    {
       "id": "033-psr3-logging",
       "name": "Modernize legacy logging calls to PSR-3 via elgg()->logger",
       "automated": true,
@@ -317,12 +324,13 @@
       "priority": 500
     },
     {
-      "id": "034-search-rewrite",
-      "name": "Replace 2.x search-hook results pattern with elgg_search() (Elgg 3.0 rewrite)",
+      "id": "026-upgrade-scripts",
+      "name": "Generate plugin upgrade scripts",
       "automated": false,
-      "priority": 340,
-      "breaking_change": "Elgg 3.0 rewrote search: search_*_hook functions removed; the 'search' hook no longer returns an ['entities'=>...] array",
-      "llm_instructions": "Elgg 3.0 rewrote search to be query-based. The `search_*_hook` functions and the old `'search'` hook return-shape are GONE: the hook/event now MODIFIES the query, it does NOT return `['entities' => [...], 'count' => N]`. Any 2.x code like:\n\n  $results = elgg_trigger_plugin_hook('search', $type, $options, []);  // 5.x+: elgg_trigger_event_results\n  $entities = elgg_extract('entities', $results);\n  echo elgg_view_entity_list($entities, ...);   // $entities is NULL on 3.x+ -> TypeError\n\nis broken from 3.0 onward. It typically passes activation + homepage render and only FATALS (or silently returns nothing) when the search/listing page is actually exercised — so it survives every server-side gate and surfaces much later.\n\nFIX — use the query-based API:\n- Render a list: `echo elgg_list_entities($options, 'elgg_search');` (the `elgg_search` callback runs the search query).\n- Get entities: `$entities = elgg_search($options);` then pass to `elgg_view_entity_list($entities, ...)`. Set `$options['query']` and `$options['type']` (and `subtypes`). For a count, `elgg_search($options + ['count' => true])`.\n\nThis is NOT a 7.x-only fix — it belongs on the migrate/elgg-3.x branch and forward-merges through 4.x/5.x/6.x/7.x (Iron Law 13). The intermediate branches carry the same latent bug. Verify by actually loading the search + every listing/directory page in a browser (see the route battery in elgg-migrate-verify).\n\nDetection: `bin/scan-frontend-residue.sh` flags `[dead-search-event]`; also `grep -rn \"elgg_trigger_\\(plugin_hook\\|event_results\\)(\\s*['\\\"]search\" --include='*.php'` and check each for a following `elgg_extract('entities', ...)`.\n\nRelated 3.0 removals to refactor the same way: `members_list_*` / `members_nav_*` functions (custom members directories), and from Elgg 7 the core members routes moved from the `members:list` event / resource model to route CONTROLLERS (collection:user:user:*), so plugins that customised members via that event must re-register their own route/resource on 7.x."
+      "needs_upgrade_script": true,
+      "llm_instructions": "After all other rules have been applied, determine if the plugin needs `Elgg\\Upgrade\\Batch` classes:\n\n1. If plugin used `add_subtype()` → generate upgrade that verifies subtype strings in DB\n2. If plugin used metastring-dependent queries → generate upgrade that verifies metadata is direct\n3. If plugin used `ACCESS_FRIENDS` → verify access collections\n4. If plugin stored data in entity subtables (users_entity, objects_entity, etc.) → generate upgrade to migrate to metadata\n\nUpgrade classes go in `classes/PluginNamespace/Upgrades/` and are registered in the plugin bootstrap.",
+      "breaking_change": "Existing installations need data migration scripts",
+      "priority": 999
     },
     {
       "id": "999-add-docblocks",
