@@ -384,11 +384,33 @@ final class PostMigrationVerifier
                     continue;
                 }
 
+                // A type that was REMOVED outright cannot be referenced at all: a
+                // fully-qualified type hint (`function h(\Elgg\Hook $hook)`), a `new`,
+                // a `::class` — none of them carry the `use` keyword its contract names,
+                // and all of them fatal. Keying only on illegal_keyword missed every
+                // reference without an import (bd elgg-migrate-od8jc).
+                $removed = str_contains(strtolower((string) ($info['now'] ?? '')), 'removed');
+
                 foreach ($lines as $lineNum => $line) {
-                    // `implements ... Batch` (short name, valid only when imported)
-                    // or `implements ... \Elgg\Upgrade\Batch` (inline FQN).
-                    $hitShort = $imported && preg_match('/\b' . $keyword . '\b[^{]*\b' . $shortEscaped . '\b/', $line);
-                    $hitFqn = preg_match('/\b' . $keyword . '\b[^{]*\\\\?' . $fqnEscaped . '\b/', $line);
+                    if ($removed) {
+                        // Comments mention the old type on purpose; flagging them is noise.
+                        $trimmed = ltrim($line);
+                        if ($trimmed === '' || str_starts_with($trimmed, '//') || str_starts_with($trimmed, '*')
+                            || str_starts_with($trimmed, '/*') || str_starts_with($trimmed, '#')) {
+                            continue;
+                        }
+                        // Inline fully-qualified reference, or the import itself.
+                        $hitFqn = (bool) preg_match('/\\\\' . $fqnEscaped . '\b/', $line)
+                            || (bool) preg_match('/\buse\s+\\\\?' . $fqnEscaped . '\s*;/', $line);
+                        // Short name in a code position (not $var, not ->member, not ::member).
+                        $hitShort = $imported
+                            && (bool) preg_match('/(?<![$\w>:\\\\])' . $shortEscaped . '\b/', $line);
+                    } else {
+                        // `implements ... Batch` (short name, valid only when imported)
+                        // or `implements ... \Elgg\Upgrade\Batch` (inline FQN).
+                        $hitShort = $imported && preg_match('/\b' . $keyword . '\b[^{]*\b' . $shortEscaped . '\b/', $line);
+                        $hitFqn = preg_match('/\b' . $keyword . '\b[^{]*\\\\?' . $fqnEscaped . '\b/', $line);
+                    }
                     if ($hitShort || $hitFqn) {
                         $violations[] = new Violation(
                             file: $relativePath,

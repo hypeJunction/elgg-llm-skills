@@ -47,6 +47,39 @@ final class ChangedContractsCoreVerifiedTest extends TestCase
         $this->assertNotFlagged('7.x', "<?php\n\$o = new \\ElggUndefinedObject();\n");
     }
 
+    /**
+     * \Elgg\Hook was REMOVED in 6.x, so ANY reference to it is illegal — not only the
+     * `use Elgg\Hook;` import that its illegal_keyword names. A fully-qualified inline
+     * type hint carries no import and slipped through the gate entirely (bd od8jc).
+     */
+    public function testRemovedClassFlaggedViaUseImport(): void
+    {
+        $this->assertFlagged('6.x', "<?php\nuse Elgg\\Hook;\nfunction h(Hook $hook) {}\n");
+    }
+
+    public function testRemovedClassFlaggedViaFullyQualifiedTypeHint(): void
+    {
+        // No import at all — the shape the old gate missed.
+        $this->assertFlagged('6.x', "<?php\nfunction h(\\Elgg\\Hook $hook) {}\n");
+    }
+
+    public function testRemovedClassFlaggedViaFullyQualifiedNewAndStatic(): void
+    {
+        $this->assertFlagged('6.x', "<?php\n\$h = new \\Elgg\\Hook();\n");
+        $this->assertFlagged('6.x', "<?php\n\$n = \\Elgg\\Hook::class;\n");
+    }
+
+    public function testRemovedClassNotFlaggedInComments(): void
+    {
+        // A docblock mentioning the old type is not code; flagging it is noise.
+        $this->assertNotFlagged('6.x', "<?php\n/**\n * @param \\Elgg\\Hook \$hook legacy\n */\nfunction h(\\Elgg\\Event \$e) {}\n");
+    }
+
+    public function testRemovedClassDoesNotFlagASimilarlyNamedClass(): void
+    {
+        $this->assertNotFlagged('6.x', "<?php\nfunction h(\\Elgg\\HookHandler \$h) {}\n");
+    }
+
     private function assertFlagged(string $target, string $code): void
     {
         $dir = $this->dir($code);
