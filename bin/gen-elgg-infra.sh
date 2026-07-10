@@ -19,7 +19,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATE_INFRA="$ROOT/skills/elgg-migrate/infra"
-SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
+# Skills that bundle the PHP AST engine. elgg-js-test-writer is deliberately NOT
+# here: it is a JavaScript testing skill (Vitest/Playwright) and never invokes
+# migrate.php. It used to receive the whole engine — 2 MB of PHP whose composer.json
+# was literally named acme/elgg-migrate — purely because it sat in this list.
+SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer)
 INFRA_SIBLINGS=(elgg-site-upgrade elgg-test-writer)
 FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1

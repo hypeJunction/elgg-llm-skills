@@ -129,7 +129,7 @@ This project ships skill definitions for AI coding agents (designed for Claude C
 | `skills/elgg-test-writer/` | Generate PHPUnit test coverage for Elgg plugins |
 | `skills/elgg-js-test-writer/` | Generate Vitest / Playwright test coverage for plugin JS |
 
-Each skill is self-contained: it bundles its own CLI, rules, references, and Docker infra, so it can be vendored into a downstream project independently. (`elgg-js-test-writer` bundles no Docker infra — see the note above.)
+Each PHP skill is self-contained: it bundles its own CLI, rules, references, and Docker infra, so it can be vendored into a downstream project independently. (`elgg-js-test-writer` is JavaScript-only — it ships `SKILL.md` alone and bundles no PHP engine and no Docker infra; see the note above.)
 
 ### Using Skills with Claude Code
 
@@ -148,12 +148,16 @@ claude "upgrade my Elgg site from 3.x to 7.x"
 Each skill bundles a complete Docker stack per Elgg major version under `skills/<skill>/infra/elgg{2..7}/`. The canonical templates live in `skills/elgg-migrate/infra/`; `bin/gen-elgg-infra.sh` mirrors them into the sibling skills.
 
 ```bash
-# Regenerate all per-version infra bundles from the elgg-migrate templates
-./bin/gen-elgg-infra.sh            # safe — skips existing dirs
-./bin/gen-elgg-infra.sh --force    # overwrite
+# Regenerate infra bundles + re-mirror the engine into the sibling skills.
+# Existing canonical infra/elggN dirs are left alone; the sibling mirrors are
+# always refreshed (rsync --delete), so this is NOT a no-op.
+./bin/gen-elgg-infra.sh
+./bin/gen-elgg-infra.sh --force    # also regenerate canonical infra/elggN dirs
 
-# Verify the generated stacks build and Elgg installs cleanly
+# Verify the generated stacks build and Elgg installs cleanly.
+# Also fails if any sibling's mirrored engine has drifted from the canonical one.
 ./bin/validate-elgg-infra.sh
+./bin/validate-elgg-infra.sh --templates-only   # static gates only, no docker
 ```
 
 ## Fleet Management

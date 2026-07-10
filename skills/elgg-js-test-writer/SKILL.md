@@ -317,13 +317,19 @@ export function reset() {
 
 ### tests/js/mocks/i18n.mjs
 
+On 7.x the real `elgg/i18n` has a **default export only**, so a module under test
+doing `import i18n from 'elgg/i18n'` receives `undefined` from a mock that exports
+only named bindings — and every call on it throws. The mock must therefore ship a
+default export. Named exports are kept alongside it so the same mock still serves
+6.x modules written as `import { echo } from 'elgg/i18n'`.
+
 ```javascript
 // Mock Elgg i18n module
 const translations = {};
 
 export function echo(key, args = []) {
   let str = translations[key] || key;
-  args.forEach((arg, i) => {
+  args.forEach((arg) => {
     str = str.replace(`%s`, arg);
   });
   return str;
@@ -332,17 +338,39 @@ export function echo(key, args = []) {
 export function addTranslation(lang, strings) {
   Object.assign(translations, strings);
 }
+
+// 7.x shape: `import i18n from 'elgg/i18n'` → i18n.echo(...)
+export default { echo, addTranslation };
 ```
 
 ### tests/js/mocks/jquery.mjs
 
-```javascript
-// Use jsdom's built-in document or a minimal jQuery mock
-import { JSDOM } from 'jsdom';
+**Do not hand-roll a jQuery mock for a module that uses jQuery.** A `$` built from
+`document.querySelector` returns a bare DOM node, so the first `.on()`, `.each()`,
+`.addClass()` or `.data()` the module under test calls throws — which is nearly all
+real plugin JS. Depend on the real thing instead; it runs fine under Vitest's jsdom
+environment:
 
-const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
-const $ = (selector) => dom.window.document.querySelector(selector);
-$.fn = {};
+```bash
+npm i -D jquery
+```
+
+```javascript
+// tests/js/mocks/jquery.mjs — real jQuery bound to the jsdom window
+import jq from 'jquery';
+
+const $ = jq(globalThis.window);   // vitest environment: 'jsdom'
+globalThis.$ = globalThis.jQuery = $;   // 7.x: jQuery is no longer auto-global
+
+export default $;
+```
+
+The minimal stub below is adequate **only** for pure-logic modules that never touch
+the DOM or jQuery's fluent API — reach for it when the module under test imports
+`jquery` but only ever calls `$.extend` / `$.ajax`:
+
+```javascript
+const $ = () => { throw new Error('this mock has no DOM API — use the real jquery dep'); };
 $.ajax = async () => ({});
 $.extend = Object.assign;
 

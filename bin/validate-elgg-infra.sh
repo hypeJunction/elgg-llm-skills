@@ -198,7 +198,9 @@ check_template_invariants() {
 # match the rules, and whole-site upgrades skip rules the canonical skill has.
 # That happened for 034-migrate-camelcase-plugin-settings + 035-strict-string-params
 # (bd elgg-migrate-7jgbj). Fail loudly instead.
-SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
+# Must match gen-elgg-infra.sh's SIBLING_SKILLS. elgg-js-test-writer is excluded:
+# it ships no PHP engine.
+SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer)
 # Mirrored with --delete: must be byte-identical. references/ is merge-mirrored
 # (siblings own extra files there), so it is checked one-way below.
 MIRRORED_TREES=(src rules tests infra/migrate)

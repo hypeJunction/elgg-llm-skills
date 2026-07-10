@@ -85,8 +85,8 @@ The repo ships as a set of **self-contained skills** plus shared shell scripts. 
 - `skills/elgg-migrate/` — PHP migration engine (the workhorse). Owns `bin/migrate.php`, the `RuleRunner`, all five safety gates (`VersionGuard`, `PostMigrationVerifier`, `SecuritySweep`, `DependencyAudit`, Docker verification), the rule manifests under `rules/{2x-to-3x..6x-to-7x}/`, and reference docs under `references/`.
 - `skills/elgg-site-upgrade/` — orchestrates whole-site upgrades; ships a beads formula in `formulas/`.
 - `skills/elgg-test-writer/` — scaffolds PHPUnit coverage for migrated plugins; ships templates and a beads formula.
-- `skills/elgg-js-test-writer/` — scaffolds Vitest/Playwright coverage for plugin JS.
-- `bin/` (top-level) — `discover-plugins.sh`, `gen-elgg-infra.sh`, `validate-elgg-infra.sh`. The infra generator mirrors canonical Docker stacks from `skills/elgg-migrate/infra/elgg{2..7}/` into the sibling skills.
+- `skills/elgg-js-test-writer/` — scaffolds Vitest/Playwright coverage for plugin JS. JavaScript-only: `SKILL.md` alone, no PHP engine, no `infra/`. It delegates its Playwright docker stack to `elgg-test-writer/bin/scaffold-docker.sh`.
+- `bin/` (top-level) — `discover-plugins.sh`, `gen-elgg-infra.sh`, `validate-elgg-infra.sh`. The infra generator mirrors canonical Docker stacks from `skills/elgg-migrate/infra/elgg{2..7}/` plus the AST engine (`src/`, `rules/`, `tests/`, `references/`, and the exec'd `bin/*.sh`) into the two PHP sibling skills. `validate-elgg-infra.sh` fails if any mirror has drifted — always re-run the generator after touching the canonical engine, and commit the sibling deltas.
 
 Migration model: rules are **either** automated (AST transform via nikic/php-parser, implemented under `src/Rules/V{From}ToV{To}/`) **or** LLM-guided (markdown instructions in the manifest entry, applied by an AI agent or developer). One major version at a time — the version guard rejects skipping.
 
