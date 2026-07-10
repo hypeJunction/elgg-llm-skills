@@ -73,8 +73,29 @@ echo "[build-anon-seed] restoring prod dump: $DUMP"
 case "$DUMP" in *.gz) gunzip -c "$DUMP" ;; *) cat "$DUMP" ;; esac \
   | docker exec -i "$NAME" mysql -uroot -proot elgg
 
+# Pre-flight: refuse an input that has ALREADY been through this transform.
+# Anonymisation is destructive and NOT reversible — the original metastring values
+# are gone. Re-running on an anonymised dump cannot repair earlier damage, but the
+# assertions below would report it as if this run had caused it. Feed a RAW
+# production dump. (snapshots/prod-dump-2026-05-28.sql.gz is misnamed: it is an
+# anonymised artifact carrying the bd elgg-migrate-2knpd damage.)
+pre_placeholders=$(docker exec "$NAME" mysql -uroot -proot elgg -N -e "
+  SELECT COUNT(*) FROM elgg_metastrings WHERE string LIKE 'metastring\\_%';" 2>/dev/null || echo 0)
+if [ "${pre_placeholders:-0}" -gt 0 ] 2>/dev/null; then
+    echo "[build-anon-seed] REFUSING: input already contains $pre_placeholders 'metastring_<id>' values." >&2
+    echo "  This dump has already been anonymised. Anonymisation is destructive and cannot be" >&2
+    echo "  re-applied to recover the originals — supply a RAW production dump instead." >&2
+    echo "  Override with ALLOW_REANONYMIZE=1 if you really mean to (assertions will be unreliable)." >&2
+    [ "${ALLOW_REANONYMIZE:-0}" = "1" ] || exit 1
+fi
+
 echo "[build-anon-seed] applying anonymize transform: $ANON"
-docker exec -i "$NAME" mysql -uroot -proot elgg < "$ANON"
+# mysql exits non-zero on the first error; without this check a transform that
+# aborted half-way would still be dumped and shipped as the chain seed.
+if ! docker exec -i "$NAME" mysql -uroot -proot elgg < "$ANON"; then
+    echo "[build-anon-seed] FAIL: the anonymize transform errored — refusing to dump a partially anonymized DB" >&2
+    exit 1
+fi
 
 echo "[build-anon-seed] login-critical assertions:"
 fail=0
@@ -87,9 +108,32 @@ devh=$(docker exec "$NAME" mysql -uroot -proot elgg -N -e "
   SELECT COUNT(*) FROM elgg_users_entity
    WHERE password_hash='\$2y\$10\$TunwvKLLEw5s1XbW59mXoOzBbTJ67lU3x2L2dXtAQL9ldhQN/Xo2G';" 2>/dev/null || echo "?")
 users=$(docker exec "$NAME" mysql -uroot -proot elgg -N -e "SELECT COUNT(*) FROM elgg_users_entity;" 2>/dev/null || echo "?")
-echo "  validated_flags_clobbered = $clob (must be 0)"
-echo "  users_with_dev_hash       = $devh / $users users"
+
+# elgg_metastrings is a deduplicated shared pool: a string used as a metadata NAME
+# is the same row as that string used as some entity's free-text VALUE. Scrubbing
+# by value alone renames metadata names and clobbers functional values, and the
+# resulting DB is an unsound oracle for anything access-related (bd 2knpd).
+names=$(docker exec "$NAME" mysql -uroot -proot elgg -N -e "
+  SELECT COUNT(*) FROM (
+    SELECT m.name_id AS id FROM elgg_metadata m
+    UNION SELECT a.name_id FROM elgg_annotations a
+  ) n JOIN elgg_metastrings ms ON ms.id=n.id
+   WHERE ms.string LIKE 'metastring\\_%';" 2>/dev/null || echo "?")
+func=$(docker exec "$NAME" mysql -uroot -proot elgg -N -e "
+  SELECT COUNT(*) FROM elgg_metadata m
+    JOIN elgg_metastrings mn ON mn.id=m.name_id
+    JOIN elgg_metastrings mv ON mv.id=m.value_id
+   WHERE mv.string LIKE 'metastring\\_%'
+     AND (mn.string IN ('content_access_mode','membership','access_id','admin','banned','language')
+          OR mn.string LIKE '%\\_enable');" 2>/dev/null || echo "?")
+
+echo "  validated_flags_clobbered     = $clob (must be 0)"
+echo "  metadata_names_clobbered      = $names (must be 0)"
+echo "  functional_metadata_clobbered = $func (must be 0)"
+echo "  users_with_dev_hash           = $devh / $users users"
 [ "$clob" = "0" ] || { echo "  FAIL: metastring scrub clobbered 'validated' — login would break for migrated users" >&2; fail=1; }
+[ "$names" = "0" ] || { echo "  FAIL: metastring scrub rewrote metadata NAMES — those metadata rows have lost their name" >&2; fail=1; }
+[ "$func" = "0" ] || { echo "  FAIL: metastring scrub clobbered FUNCTIONAL metadata (group access / tool options) — seed is an unsound oracle" >&2; fail=1; }
 [ "$devh" = "$users" ] || { echo "  FAIL: not every user has the dev password hash" >&2; fail=1; }
 [ "$fail" -eq 0 ] || exit 1
 

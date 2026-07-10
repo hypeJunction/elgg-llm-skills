@@ -436,6 +436,165 @@ Two data files feed the automated gates and are kept in lock-step with this cata
 
 ---
 
+### FC-6x7x-14 — Core functions took non-nullable `string` (a 500 only real data can trigger)
+- **Detection (script):** `bin/verify-strict-string-args.sh <plugins-dir>`. Flags a PROPERTY read
+  (`$e->description`, `$e->$prop`) passed straight to `elgg_get_excerpt(string $text, int)` or
+  `elgg_strip_tags(string $string, ?string)`. Method calls are safe (`getDisplayName(): string`).
+- **Fix:** `(string)` cast, or keep an existing truthiness guard. See rule
+  `035-strict-string-params` in `rules/6x-to-7x/manifest.json`.
+- **Why nothing caught it:** PHP was lenient before 8.x; the AST rules only hunt removed symbols;
+  and synthetic smoke tests seed entities that always HAVE a description. It fires only against
+  real data. On bodyology it fataled `/profile/{username}` for every member (hypeseo's SEF
+  metadata builder) and `/folders/all`, and lay dormant in seven more plugins.
+- **Careful:** `strip_tags(null)` / `trim(null)` are DEPRECATIONS, not fatals. Do not confuse them.
+- **Test-to-write:** integration — render an entity with no description.
+- **gate:** rule (035) + `verify-strict-string-args.sh` · **Sources:** bodyology 2026-07-09
+
+### FC-6x7x-15 — A permission handler that calls the API which fires its own event (infinite recursion)
+- **Detection (regex):** inside a handler registered on `permissions_check:comment`, a call to
+  `$entity->canComment(...)`. `UserCapabilities::canComment()` TRIGGERS that same event.
+- **Symptom:** `Maximum call stack size ... reached. Infinite recursion?` — a hard 500 for every
+  logged-in NON-admin. Admins are immune: `canBypassPermissionsCheck()` short-circuits before the
+  event fires, so the page looks fine to whoever is testing.
+- **Fix:** return the value core already computed and passed in as the event's default —
+  `canWriteToContainer($user->guid, 'object', 'comment')` — never re-enter the event.
+- **Also:** these handlers receive `null` for an anonymous visitor. `canComment(null)` /
+  `canWriteToContainer(null)` are TypeErrors. Guard `$user instanceof \ElggUser` first.
+- **Test-to-write:** integration — call the real `$discussion->canComment($user->guid)`, so a
+  reintroduced recursion blows up in the suite rather than in production.
+- **gate:** NO · **Sources:** bodyology 2026-07-09 (hypediscussions)
+
+### FC-6x7x-16 — `elgg.security` / AMD `require()` / `.js` ESM views
+- **Detection (regex):** `elgg.security.` in any `.mjs`/`.js`; `require([` in a PHP view or JS;
+  an ESM-syntax file with a `.js` extension.
+- **Fix:**
+  - `elgg.security.addToken(...)` → `import security from 'elgg/security'`. Elgg 7 does not hang
+    `security` off the global `elgg`. It was a TypeError on every page with a dropzone input, so
+    chunked uploads never started.
+  - `require(['x'], cb)` → `elgg_import_esm('x')` + an inline `<script type="module">`. The AMD
+    loader is gone; it is a bare `ReferenceError: require is not defined`.
+  - Elgg 7 registers **only `.mjs` views** in the importmap. An ESM-syntax `.js` view yields
+    `Failed to resolve module specifier`. Rename it.
+  - There is no `elgg/events` module; the client bus is the DEFAULT export of `elgg/hooks`
+    (`hooks.register(...)`, `hooks.trigger(...)`). There is no `elgg/components/` directory and no
+    RequireJS `text!` plugin.
+  - A UMD jQuery plugin (select2, tokeninput) needs a GLOBAL jQuery, which Elgg 7 no longer
+    exposes. Set `window.jQuery = window.$ = $` and then load it with a **dynamic** `await
+    import('select2')` — a static import is hoisted above the assignment.
+- **gate:** NO · **Sources:** bodyology 2026-07-10 (hypeajax, hypeautocomplete, hypedropzone)
+
+### FC-6x7x-17 — `$path` heuristics resolve to the Elgg root under composer
+- **Detection (regex):** in `elgg-plugin.php`, a views alias built from a `$path` chosen by
+  `file_exists("$plugin_root/vendor/autoload.php")`.
+- **Fix:** use `__DIR__` (`$plugin_root`) for anything that lives beside `elgg-plugin.php`.
+  Composer installs a plugin WITHOUT its own `vendor/`, so the heuristic falls through to
+  `/var/www/html` and the alias points at `/var/www/html/vendors/<lib>/`. It only "works" in
+  development, where a stray plugin-local `composer install` left a `vendor/` behind.
+- **Symptom:** `RecursiveDirectoryIterator::__construct(...): Failed to open directory` at boot.
+- **gate:** NO · **Sources:** bodyology 2026-07-10 (hypeautocomplete)
+
+## Upgrade batches (`Elgg\Upgrade\Batch`) — the silent-skip family
+
+Every failure below is invisible to a static gate, to a render battery, and to a route crawl.
+An orphaned upgrade breaks **data**, not code: entities keep their rows and lose their subtype,
+their class and their URL. Nothing 404s, because nothing links to them any more.
+
+Detect the whole family in one query, on the migrated database:
+
+```sql
+SELECT e.guid, MAX(CASE WHEN m.name='class' THEN m.value END) AS class
+FROM elgg_entities e JOIN elgg_metadata m ON m.entity_guid = e.guid
+WHERE e.subtype = 'elgg_upgrade'
+GROUP BY e.guid
+HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
+       MAX(CASE WHEN m.name='is_completed' THEN m.value END) IS NULL;
+```
+
+`references/7x-prune-orphaned-upgrades.php` (in `elgg-site-upgrade`) classifies each hit.
+
+### FC-UPG-01 — `elgg-cli upgrade` silently skips every asynchronous batch
+- **Detection (process):** the chain/cutover runs `elgg-cli upgrade` without the `all` argument.
+  After the run, the query above still returns rows.
+- **Fix:** `elgg-cli upgrade all -n -f`. `all` runs the asynchronous `Elgg\Upgrade\Batch` jobs;
+  bare `upgrade` runs only the SYSTEM (Phinx-adjacent) upgrades. `-n` because the bare command
+  blocks on a confirmation prompt and looks like a hang; `-f` to force past the lock an aborted
+  run leaves in `elgg_config.upgrade_running`.
+- **Consequence if missed:** upgrades accumulate "pending" tier after tier. When a later Elgg
+  release DELETES the upgrade class, the work becomes permanently unreachable — see FC-UPG-02.
+- **Test-to-write:** integration — after the chain, assert zero pending `elgg_upgrade` entities.
+- **gate:** NO (data) · **Sources:** bodyology 2026-07-10; `verify-migration-chain.sh` fixed
+
+### FC-UPG-02 — Orphaned upgrade: the class no longer exists (work never happens)
+- **Detection (data):** a pending `elgg_upgrade` entity whose `class` metadata fails
+  `class_exists()`. `UpgradeService::getPendingUpgrades()` silently drops any upgrade whose batch
+  cannot be instantiated, so it never runs and never errors.
+- **Fix:** do the work by hand, then delete the entity. Two mattered on bodyology and BOTH lost
+  production content:
+  - `\Elgg\Pages\Upgrades\MigratePageTop` — 85 pages stranded on the `page_top` subtype Elgg 3
+    removed. They load as `ElggUndefinedObject`, `getURL()` returns `''`, `/pages/view/{guid}`
+    404s. Fix: `references/7x-migrate-page-top.sql`.
+  - `\Elgg\Discussions\Upgrades\MigrateDiscussionReply(+River)` — 17 replies stranded on
+    `discussion_reply`. Every discussion showed ZERO comments. Fix:
+    `references/7x-migrate-discussion-replies.sql`.
+  Also seen dead: `SetSecurityConfigDefaults`, `MigrateFriendsACL`, `MigrateCronLog`,
+  `SecurityEmailChangeConfirmation`, `TrackValidationStatus`, `GroupIconTransfer`,
+  `PublicLikesAnnotations`, `AnnotationMigration`, `MoveFiles`. Verify each against live data
+  before assuming it was a no-op.
+- **Test-to-write:** integration — for every object subtype present, assert `getURL() !== ''`.
+  A route crawl cannot see this; an entity with no URL is simply never linked.
+- **gate:** NO (data) · **Sources:** bodyology 2026-07-10
+
+### FC-UPG-03 — Orphaned upgrade: camelCase twin from the 4.x plugin-id lowercasing
+- **Detection (data):** two `elgg_upgrade` entities share a `class`; the one whose `id` carries a
+  camelCase plugin prefix (`hypeMaps:2026041200`) is pending while its lowercase twin
+  (`hypemaps:2026041200`) is completed. An upgrade's identity is `{plugin_id}:{version}`.
+- **Fix:** delete the camelCase entity. Same family as the stranded plugin settings —
+  `references/4x-post-lowercase-plugin-settings.sql`.
+- **gate:** NO (data) · **Sources:** bodyology 2026-07-10
+
+### FC-UPG-04 — A batch that never terminates (constant `countItems()`)
+- **Detection (regex):** `needsIncrementOffset(): bool` returning `false` in a class whose
+  `countItems()` returns a constant (`return 1;`, `return count(self::SOME_ARRAY);`) **or** a
+  plain entity count that `run()` never reduces.
+- **Why:** `Elgg\Upgrade\Loop::isCompleted()` only ends a `needsIncrementOffset() === false`
+  batch when `countItems()` SHRINKS TO ZERO. With `true` it ends on `processed >= count`.
+  So `false` is a promise that `run()` deletes/converts rows and the count falls.
+- **Fix:** if `run()` does all its work in one pass, return `true`. If it pages with `$offset`,
+  return `true` (Elgg only advances the offset when it is `true` — otherwise `run()` re-fetches
+  the same first page forever). Only return `false` when `countItems()` genuinely counts
+  remaining work, and make sure an unconvertible row is REMOVED, not skipped, or the count
+  never reaches zero.
+- **Symptom:** the CLI progress bar climbs past the item count without end — hypeinbox's reached
+  1.5 million, anypage's 987,000 — and everything queued behind it stays pending.
+- **Test-to-write:** unit — assert `needsIncrementOffset() === true` whenever `countItems()` is
+  not a function of remaining work.
+- **gate:** NO (behaviour) · **Sources:** bodyology 2026-07-10 (hypeinbox, hypediscovery,
+  elgg_stars, prototyper_group, anypage, videolist — six plugins, one shape)
+
+### FC-UPG-05 — One failing batch aborts the whole run
+- **Detection (runtime):** `Unhandled promise rejection with RuntimeException: Upgrade "…" failed`.
+  `UpgradeService::runUpgrades()` rejects the promise if `Result::getFailureCount()` is non-zero,
+  and `all($promises)` rejects the batch, so NOTHING after it runs.
+- **Fix:** a batch must never `addFailures()` for a row it can never convert. Delete the row (log
+  a notice) and `addSuccesses()`. Real instances:
+  - `hypegallery` counted two 2016-era serialized `ElggBatch` OBJECTS as failures. With
+    `allowed_classes: false` they decode to `__PHP_Incomplete_Class`, never an array, so they can
+    never become JSON. They are dead cache AND an object-injection vector — delete them.
+  - `hypescraper` called `Result::addFailure()`. **No such method** — it is `addFailures()`. The
+    first unparseable row was a fatal, not a failure.
+  - core's `\Elgg\Upgrades\AlterDatabaseToMultiByteCharset` ALTERs `elgg_private_settings`,
+    a table Elgg 4 removed. It dies before converting anything. Do the conversion yourself
+    (`references/7x-utf8mb4-plugin-tables.sql`) and mark the upgrade completed.
+- **Also:** `elgg_log($msg, 'NOTICE')` throws in Elgg 7 — pass `\Psr\Log\LogLevel::NOTICE`.
+- **gate:** NO (runtime) · **Sources:** bodyology 2026-07-10
+
+### FC-UPG-06 — A batch querying `elgg_private_settings`
+- **Detection (symbol):** `private_settings` in any SQL string outside a comment.
+- **Fix:** Elgg 4 removed the table and moved plugin settings into metadata. Read them with
+  `$plugin->getAllMetadata()`. Note `getAllSettings()` MERGES `elgg-plugin.php` defaults and can
+  never tell you whether a key is actually stored.
+- **gate:** NO · **Sources:** bodyology 2026-07-10 (prototyper_group)
+
 ## All version steps (version-agnostic)
 
 ### FC-ALL-01 — `unserialize()` PHP object injection (RCE)
