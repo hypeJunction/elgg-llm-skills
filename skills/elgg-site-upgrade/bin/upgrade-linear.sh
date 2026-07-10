@@ -107,7 +107,10 @@ if [[ -z "$PROJECT" ]]; then
     echo "ERROR: --project is required" >&2
     exit 2
 fi
-PROJECT="$(realpath "$PROJECT")"
+# `realpath` is not present on every macOS/BSD host; both targets here are
+# directories, so cd+pwd -P canonicalises them portably.
+abspath_dir() { ( cd "$1" && pwd -P ); }
+PROJECT="$(abspath_dir "$PROJECT")"
 if [[ ! -f "$PROJECT/elgg-config/settings.php" ]]; then
     echo "ERROR: $PROJECT/elgg-config/settings.php not found" >&2
     exit 2
@@ -119,7 +122,7 @@ fi
 
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT/../elgg-backups}"
 mkdir -p "$BACKUP_DIR"
-BACKUP_DIR="$(realpath "$BACKUP_DIR")"
+BACKUP_DIR="$(abspath_dir "$BACKUP_DIR")"
 
 # ---------------------------------------------------------------------------
 # Helpers

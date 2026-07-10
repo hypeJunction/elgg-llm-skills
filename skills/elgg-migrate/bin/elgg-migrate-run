@@ -7,8 +7,31 @@
 # from env → XDG config → cwd detection → prompt.
 set -euo pipefail
 
+# --- portable absolute-path resolution ------------------------------------
+# `readlink -f` is GNU-only (absent on macOS/BSD before very recent releases),
+# and this ships as a vendorable skill. Resolve via cd+pwd -P, which is POSIX and
+# canonicalises every directory component.
+abspath() {
+  local p="$1" d b
+  if [ -d "$p" ]; then
+    ( cd "$p" && pwd -P )
+  else
+    d="$(dirname "$p")"; b="$(basename "$p")"
+    # follow a symlinked file one hop (enough to locate a symlinked entry point)
+    if [ -L "$p" ]; then
+      local t; t="$(readlink "$p")"
+      case "$t" in
+        /*) p="$t" ;;
+        *)  p="$d/$t" ;;
+      esac
+      d="$(dirname "$p")"; b="$(basename "$p")"
+    fi
+    printf '%s/%s\n' "$( cd "$d" && pwd -P )" "$b"
+  fi
+}
+
 # --- locate skill root (this script lives at <skill>/bin/elgg-migrate-run) ---
-SCRIPT_PATH="$(readlink -f "$0")"
+SCRIPT_PATH="$(abspath "$0")"
 BIN_DIR="$(dirname "$SCRIPT_PATH")"
 SKILL_ROOT="$(dirname "$BIN_DIR")"
 SKILL_INFRA="$SKILL_ROOT/infra"
@@ -106,7 +129,7 @@ cmd_init() {
   if [[ -z "$source" ]]; then
     read -r -p "Plugins source directory (absolute path): " source
   fi
-  source="$(readlink -f "$source")"
+  source="$(abspath "$source")"
   [[ -d "$source" ]] || { echo "not a directory: $source" >&2; exit 1; }
   config_set plugins_source "$source"
   [[ -n "$from" ]] && config_set from_version "$from"
@@ -211,7 +234,7 @@ classify_dep() {
   local candidate path
   for candidate in "$plugins_source/$lower" "$plugins_source/$name"; do
     if [[ -d "$candidate" ]] && is_plugin_dir "$candidate"; then
-      path="$(readlink -f "$candidate")"
+      path="$(abspath "$candidate")"
       printf 'local\t%s\n' "$path"
       return 0
     fi
@@ -481,7 +504,7 @@ cmd_up() {
     echo "resolve deps before spawning, or run with --allow-missing-deps (not yet implemented)" >&2
     exit 1
   fi
-  write_override "$plugin" "$(readlink -f "$pdir")" "$deps" "$jdir"
+  write_override "$plugin" "$(abspath "$pdir")" "$deps" "$jdir"
   local port; port=$(( (RANDOM % 1000) + 18000 ))
   local dbport; dbport=$(( (RANDOM % 1000) + 13000 ))
   # PLUGINS_DIR is the workspace root so the skill-infra compose file can
@@ -491,7 +514,7 @@ cmd_up() {
   cat > "$jdir/.env" <<EOF
 ELGG_PORT=$port
 DB_PORT=$dbport
-PLUGINS_DIR=$(readlink -f "$src")
+PLUGINS_DIR=$(abspath "$src")
 PLUGIN_ID=$plugin
 EOF
   cat > "$jdir/report.json" <<EOF
@@ -510,7 +533,7 @@ EOF
   ( cd "$jdir" && docker compose $(compose_args "$plugin" "$sha" "$version" "$jdir") up -d --build )
   local project="em-${plugin}-${sha}"
   wait_for_install "$project" || echo "  (install still running — rerun composer require manually if libs are missing)" >&2
-  install_plugin_libs "$project" "$(readlink -f "$pdir")" "$deps" || \
+  install_plugin_libs "$project" "$(abspath "$pdir")" "$deps" || \
     echo "  (plugin-lib install failed — rerun manually: docker compose --project-name $project exec elgg composer require ...)" >&2
   echo "job dir: $jdir"
   echo "elgg:    http://localhost:$port"
@@ -519,7 +542,7 @@ EOF
 cmd_down() {
   local plugin="${1:?plugin id required}"
   local jdir jshort version sha
-  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -printf '%f\n' | head -n1)"
+  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -exec basename {} \; | head -n1)"
   [[ -n "$jdir" ]] || { echo "no job for $plugin" >&2; exit 1; }
   jdir="$JOBS_DIR/$jdir"
   sha="$(jq -r '.sha'     "$jdir/report.json")"
@@ -531,11 +554,11 @@ cmd_down() {
 
 cmd_status() {
   if [[ $# -eq 0 ]]; then
-    find "$JOBS_DIR" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | sort
+    find "$JOBS_DIR" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort
     return
   fi
   local plugin="$1" jdir
-  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" -printf '%p\n' | head -n1)"
+  jdir="$(find "$JOBS_DIR" -maxdepth 1 -type d -name "${plugin}-*" | head -n1)"
   [[ -n "$jdir" ]] || { echo "no job for $plugin" >&2; exit 1; }
   jq . "$jdir/report.json"
   echo "--- deps.lock.json ---"

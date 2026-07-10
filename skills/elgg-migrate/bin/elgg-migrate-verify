@@ -27,8 +27,31 @@
 
 set -euo pipefail
 
+# --- portable absolute-path resolution ------------------------------------
+# `readlink -f` is GNU-only (absent on macOS/BSD before very recent releases),
+# and this ships as a vendorable skill. Resolve via cd+pwd -P, which is POSIX and
+# canonicalises every directory component.
+abspath() {
+  local p="$1" d b
+  if [ -d "$p" ]; then
+    ( cd "$p" && pwd -P )
+  else
+    d="$(dirname "$p")"; b="$(basename "$p")"
+    # follow a symlinked file one hop (enough to locate a symlinked entry point)
+    if [ -L "$p" ]; then
+      local t; t="$(readlink "$p")"
+      case "$t" in
+        /*) p="$t" ;;
+        *)  p="$d/$t" ;;
+      esac
+      d="$(dirname "$p")"; b="$(basename "$p")"
+    fi
+    printf '%s/%s\n' "$( cd "$d" && pwd -P )" "$b"
+  fi
+}
+
 PLUGIN_DIR="${1:?usage: elgg-migrate-verify <plugin-dir> [--phpunit] [--compose-file=...]}"
-PLUGIN_DIR="$(readlink -f "$PLUGIN_DIR")"
+PLUGIN_DIR="$(abspath "$PLUGIN_DIR")"
 PLUGIN_ID="$(basename "$PLUGIN_DIR")"
 
 COMPOSE_FILE="$PLUGIN_DIR/docker/docker-compose.yml"
@@ -98,7 +121,7 @@ fi
 # while the page is still >1000 bytes. This static scan catches that.
 echo ""
 echo "  ── frontend (client JS) ────────────────────────────────────────"
-SCAN="$(dirname "$(readlink -f "$0")")/scan-frontend-residue.sh"
+SCAN="$(dirname "$(abspath "$0")")/scan-frontend-residue.sh"
 if [[ -f "$SCAN" ]]; then
   if bash "$SCAN" --quiet "$PLUGIN_DIR" >/dev/null 2>&1; then
     gate "No Elgg-7 frontend residue (AMD/jQuery-global/Foundation)" PASS
