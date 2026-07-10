@@ -29,6 +29,14 @@
 #                                 [--mod-path /var/www/html/mod] \
 #                                 [--mysql-user root] [--mysql-pass root] [--dry-run]
 #
+# Env (defaults match the docker stacks this skill ships; a real site must set them,
+# otherwise every statement below silently addresses the wrong schema):
+#   ELGG_DB_NAME    database name          (default: elgg)
+#   ELGG_DB_USER    mysql user             (default: root)
+#   ELGG_DB_PASS    mysql password         (default: root)
+#   ELGG_DB_PREFIX  table prefix           (default: elgg_)
+#   ELGG_MOD_PATH   in-container mod/ path (default: /var/www/html/mod)
+#
 # TSV format: one plugin per line, "<plugin_id>\t<priority>". Lines beginning
 # with "//" or "#", and blank lines, are ignored.
 
@@ -37,10 +45,14 @@ set -euo pipefail
 TSV=""
 DB_CONTAINER=""
 APP_CONTAINER=""
-MOD_PATH="/var/www/html/mod"
-DB="elgg"
-MYSQL_USER="root"
-MYSQL_PASS="root"
+MOD_PATH="${ELGG_MOD_PATH:-/var/www/html/mod}"
+# Defaults match the docker stacks this skill ships. A site with its own DB name,
+# credentials or table prefix must override them — otherwise every query below
+# silently addresses the wrong schema.
+DB="${ELGG_DB_NAME:-elgg}"
+MYSQL_USER="${ELGG_DB_USER:-root}"
+MYSQL_PASS="${ELGG_DB_PASS:-root}"
+PFX="${ELGG_DB_PREFIX:-elgg_}"
 DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
@@ -82,7 +94,7 @@ build_ondisk_inserts() {
     | awk 'NF{printf "INSERT IGNORE INTO _ondisk(id) VALUES ('"'"'%s'"'"');\n", $1}'
 }
 
-site_guid=$(echo "SELECT guid FROM elgg_entities WHERE type='site' ORDER BY guid LIMIT 1;" | mysql_exec)
+site_guid=$(echo "SELECT guid FROM ${PFX}entities WHERE type='site' ORDER BY guid LIMIT 1;" | mysql_exec)
 [[ -n "$site_guid" ]] || { echo "ERROR: no site entity found in $DB" >&2; exit 2; }
 
 # Register on-disk plugins that the migrated DB never created 7.x ElggPlugin
@@ -100,22 +112,22 @@ fi
 
 # Target = prod-active AND on-disk this stage. Matched case-insensitively.
 TARGET_JOIN="
-JOIN elgg_metadata md ON md.entity_guid=e.guid AND md.name='title'
+JOIN ${PFX}metadata md ON md.entity_guid=e.guid AND md.name='title'
 JOIN _want   w  ON w.id  = LOWER(md.value)
 JOIN _ondisk od ON od.id = LOWER(md.value)
 WHERE e.type='object' AND e.subtype='plugin' AND e.enabled='yes'
   AND NOT EXISTS (
-    SELECT 1 FROM elgg_entity_relationships r
+    SELECT 1 FROM ${PFX}entity_relationships r
     WHERE r.guid_one=e.guid AND r.relationship='active_plugin'
   )"
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  ACTION_SQL="SELECT md.value AS would_activate, e.guid FROM elgg_entities e $TARGET_JOIN ORDER BY md.value;"
+  ACTION_SQL="SELECT md.value AS would_activate, e.guid FROM ${PFX}entities e $TARGET_JOIN ORDER BY md.value;"
 else
   ACTION_SQL="
-INSERT INTO elgg_entity_relationships (guid_one, relationship, guid_two, time_created)
+INSERT INTO ${PFX}entity_relationships (guid_one, relationship, guid_two, time_created)
 SELECT e.guid, 'active_plugin', $site_guid, UNIX_TIMESTAMP()
-FROM elgg_entities e $TARGET_JOIN;"
+FROM ${PFX}entities e $TARGET_JOIN;"
 fi
 
 {
@@ -129,8 +141,8 @@ fi
   # on-disk + prod-active plugin entity first. Without this, freshly-migrated
   # plugins (e.g. group_sort, widget_manager) silently stay inactive.
   if [[ "$DRY_RUN" != "1" ]]; then
-    echo "UPDATE elgg_entities e
-            JOIN elgg_metadata m ON m.entity_guid=e.guid AND m.name='title'
+    echo "UPDATE ${PFX}entities e
+            JOIN ${PFX}metadata m ON m.entity_guid=e.guid AND m.name='title'
             JOIN _want   w  ON w.id  = LOWER(m.value)
             JOIN _ondisk od ON od.id = LOWER(m.value)
           SET e.enabled='yes'
@@ -141,7 +153,7 @@ fi
   echo "SELECT '== ${DRY_RUN:+would-}activate (prod-active AND on-disk, currently inactive) ==' AS '';"
   echo "$ACTION_SQL"
   echo "SELECT CONCAT('== plugins now active: ', COUNT(DISTINCT guid_one), ' ==') AS ''
-        FROM elgg_entity_relationships WHERE relationship='active_plugin';"
+        FROM ${PFX}entity_relationships WHERE relationship='active_plugin';"
 } | mysql_exec
 
 if [[ "$DRY_RUN" != "1" ]]; then

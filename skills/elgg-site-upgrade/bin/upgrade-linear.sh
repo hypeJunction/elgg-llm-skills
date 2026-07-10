@@ -36,6 +36,10 @@
 #   AUTH_USER/AUTH_PASS/DB_CONTAINER
 #                       Enable the write-path gate (authenticated create/edit).
 #   GM_BASELINE_DIR     Where golden masters are stored (default <project>/baselines).
+#   ELGG_COMPOSER_CONTAINER / ELGG_CONTAINER_PROJECT
+#                       Run composer inside the container instead of on the host,
+#                       whose PHP may not satisfy the source tier (default project
+#                       path: /var/www/html). Falls back to ELGG_APP_CONTAINER.
 # A gate that cannot run says so loudly; it never silently passes.
 #
 # Branch auto-detection (for each target version N, tried in order):
@@ -95,7 +99,7 @@ while [[ $# -gt 0 ]]; do
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
         --site-url)   SITE_URL_OVERRIDE="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -470,14 +474,44 @@ checkout_branch() {
 #   2. install --ignore-platform-reqs (when PHP extensions / version mismatch)
 #   3. update (when lock file is stale or out of sync with composer.json)
 # ---------------------------------------------------------------------------
+# Composer inside the container when one is named, on the host otherwise.
+#
+# SKILL.md recommends running composer in the container: on an EOL server the host
+# PHP (and therefore the host composer) often does not satisfy the source tier's
+# platform requirements, so the host path falls through to --ignore-platform-reqs
+# and installs a dependency set the running PHP cannot execute. Set
+# ELGG_COMPOSER_CONTAINER (or ELGG_APP_CONTAINER) to use the container's composer;
+# ELGG_CONTAINER_PROJECT is the project path inside it.
 run_composer() {
-    log "Running composer install"
-    if [[ $DRY_RUN -eq 1 ]]; then
-        echo "  [dry-run] composer install --no-interaction --no-progress --optimize-autoloader --working-dir='$PROJECT'"
-        return 0
+    local ccontainer="${ELGG_COMPOSER_CONTAINER:-${ELGG_APP_CONTAINER:-}}"
+    local cproject="${ELGG_CONTAINER_PROJECT:-/var/www/html}"
+    local common_flags="--no-interaction --no-progress --optimize-autoloader"
+
+    if [[ -n "$ccontainer" ]]; then
+        log "Running composer install inside container $ccontainer ($cproject)"
+        if [[ $DRY_RUN -eq 1 ]]; then
+            echo "  [dry-run] docker exec -w '$cproject' '$ccontainer' composer install $common_flags"
+            return 0
+        fi
+        if docker exec -w "$cproject" "$ccontainer" composer install $common_flags 2>&1; then
+            return 0
+        fi
+        log "Retrying in-container with --ignore-platform-reqs"
+        docker exec -w "$cproject" "$ccontainer" composer install $common_flags --ignore-platform-reqs 2>&1
+        return
     fi
 
-    local common_flags="--no-interaction --no-progress --optimize-autoloader --working-dir=$PROJECT"
+    log "Running composer install on the HOST"
+    warn "  Host composer uses the host PHP. On an EOL server that PHP may not satisfy this"
+    warn "  tier's platform requirements, and the --ignore-platform-reqs fallback below then"
+    warn "  installs packages the running PHP cannot execute. Set ELGG_COMPOSER_CONTAINER to"
+    warn "  run composer inside the app container instead."
+
+    common_flags="$common_flags --working-dir=$PROJECT"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  [dry-run] composer install $common_flags"
+        return 0
+    fi
 
     if composer install $common_flags 2>&1; then
         return 0
