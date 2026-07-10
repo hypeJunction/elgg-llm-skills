@@ -668,6 +668,28 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
 
 ---
 
+### FC-ALL-13 — A route whose `resource` view does not exist (permanent, invisible 404)
+- **Detection (script):** `bin/verify-route-resources.sh <plugins-dir> [core-dir]`. For every
+  `'resource' => 'x/y'` in `elgg-plugin.php` (or an `elgg_register_route()` call), assert
+  `views/default/resources/x/y.php` exists somewhere on the view path.
+- **The shape:** a 2.x page handler ported as a catch-all —
+  `['path' => '/library/{segments}', 'resource' => 'library']` — where the plugin only ever had
+  `resources/library/{all,view,edit}.php` and the old handler switched on `$page[0]` itself.
+  `resources/library.php` never existed. `elgg_view_resource()` raises
+  `ResourceNotFoundException` and EVERY `/library/*` URL 404s, including the permalink
+  `getURL()` advertises.
+- **Why nothing catches it:** the plugin activates cleanly, boots cleanly, and a route crawl
+  never requests a URL nothing links to. Only asking each ENTITY for its own URL finds it.
+- **Fix:** name each route explicitly, one resource view per path. Route parameters reach a
+  resource view through `$vars` **only** — `Elgg\Router` never calls `setParam()`, so
+  `get_input('guid')` reads null and the gatekeeper throws. Use
+  `elgg_extract('guid', $vars, get_input('guid'))`.
+- **Also:** a page that streamed bytes with raw `header()`/`readfile()` cannot be a resource view
+  in Elgg 7. Use `elgg_download_response()` (core, since 5.0).
+- **Test-to-write:** integration — fetch `$entity->getURL()` for one entity of every subtype.
+- **gate:** `verify-route-resources.sh` · **Sources:** bodyology 2026-07-10 (bodyology_library,
+  bodyology_feedback, feedback were live regressions; 9 more latent — bd elgg-migrate)
+
 ## Known data-file refinements
 
 - **RESOLVED 2026-07-08 — removal-version placement is now core-verified.** A
