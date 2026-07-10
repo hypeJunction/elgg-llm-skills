@@ -448,6 +448,42 @@ final class VersionGuardTest extends TestCase
 
     public function testIncompletePatternsFlagsRemovedIn5xFunctionCalls(): void
     {
+        // Genuine 5.0 removals: present in Elgg 4.0's engine, gone in 5.0.
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
+            'classes/Foo/Boot.php' => <<<'PHP'
+                <?php
+                namespace Foo;
+                class Boot {
+                    public function init(): void {
+                        \system_message('hello');
+                        \register_error('nope');
+                    }
+                }
+                PHP,
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir);
+            $descs = implode('|', array_map(fn ($f) => $f->description, $findings));
+            $this->assertStringContainsString('system_message', $descs);
+            $this->assertStringContainsString('register_error', $descs);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * The procedural plugin-hook helpers survive into Elgg 5.0 and disappear in
+     * 6.0. VersionGuard's hand-maintained REMOVED_IN_5X constant claimed they
+     * went in 5.x, contradicting references/removed-functions.json (which the
+     * verifier reads) and producing a false positive with a wrong-version message
+     * for any plugin legitimately sitting on 5.x. Verified against upstream
+     * Elgg 5.0 and 6.0 sources. They are still flagged at 5.x->6.x — see
+     * testIncompletePatternsFlagsRemovedIn6xFunctionCall.
+     */
+    public function testIncompletePatternsDoesNotFlagPluginHookApiAt5x(): void
+    {
         $dir = $this->makePluginDir([
             'elgg-plugin.php' => "<?php\nreturn ['events' => []];",
             'classes/Foo/Boot.php' => <<<'PHP'
@@ -463,10 +499,34 @@ final class VersionGuardTest extends TestCase
         ]);
 
         try {
-            $findings = $this->guard->detectIncompletePatterns($dir);
+            $findings = $this->guard->detectIncompletePatterns($dir, '5.x');
             $descs = implode('|', array_map(fn ($f) => $f->description, $findings));
-            $this->assertStringContainsString('elgg_register_plugin_hook_handler', $descs);
-            $this->assertStringContainsString('elgg_trigger_plugin_hook', $descs);
+            $this->assertStringNotContainsString('elgg_register_plugin_hook_handler', $descs);
+            $this->assertStringNotContainsString('elgg_trigger_plugin_hook', $descs);
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    /**
+     * sanitize_string()/sanitize_int() are real 4.0 removals (live in 2.3,
+     * deprecated in 3.0, gone in 4.0) that lived only in VersionGuard's constant
+     * and were missing from references/removed-functions.json, so
+     * PostMigrationVerifier — which reads the JSON — never flagged them at any
+     * version. Now that both gates share the JSON, they must be detected here.
+     */
+    public function testIncompletePatternsFlagsSanitizeHelpersRemovedIn4x(): void
+    {
+        $dir = $this->makePluginDir([
+            'elgg-plugin.php' => "<?php\nreturn ['hooks' => []];",
+            'classes/Foo/Db.php' => "<?php\nnamespace Foo;\nclass Db {\n  public function q(\$s) { return \\sanitize_string(\$s) . \\sanitize_int(\$s); }\n}\n",
+        ]);
+
+        try {
+            $findings = $this->guard->detectIncompletePatterns($dir, '4.x');
+            $descs = implode('|', array_map(fn ($f) => $f->description, $findings));
+            $this->assertStringContainsString('sanitize_string', $descs);
+            $this->assertStringContainsString('sanitize_int', $descs);
         } finally {
             $this->removeDir($dir);
         }

@@ -179,8 +179,9 @@ final class VersionGuard
                 ],
                 [
                     'id' => 'removed-function-call',
-                    'detector' => 'removedIn4xFunctionCall',
-                    'fix' => 'Function was removed in Elgg 4.x — see RemovedFunctions rule notes for the replacement.',
+                    'detector' => 'removedFunctionForTarget',
+                    'target' => '4.x',
+                    'fix' => 'Function was removed in Elgg 4.x — see references/removed-functions.json for the replacement.',
                 ],
             ],
             '4.x->5.x' => [
@@ -196,8 +197,9 @@ final class VersionGuard
                 ],
                 [
                     'id' => 'removed-function-call-5x',
-                    'detector' => 'removedIn5xFunctionCall',
-                    'fix' => 'Function was removed in Elgg 5.x — see the suggested replacement.',
+                    'detector' => 'removedFunctionForTarget',
+                    'target' => '5.x',
+                    'fix' => 'Function was removed in Elgg 5.x — see references/removed-functions.json for the replacement.',
                 ],
             ],
             '5.x->6.x' => [
@@ -275,42 +277,15 @@ final class VersionGuard
         return $hits;
     }
 
-    /**
-     * Detector: calls to functions removed in Elgg 4.x. Conservative list
-     * derived from real-world snapshot-test findings (2026-05-26) plus
-     * a small set of high-signal removals. Add more as new gaps surface.
-     */
-    private const REMOVED_IN_4X = [
-        'sanitize_string' => 'Use htmlspecialchars($x, ENT_QUOTES, "UTF-8")',
-        'sanitize_int' => 'Cast to (int)',
-        'elgg_register_admin_menu_item' => 'Removed — admin menu entries auto-discovered from views/default/admin/*',
-        'elgg_set_plugin_setting' => 'Use $plugin->setSetting($name, $value)',
-        'elgg_unset_plugin_setting' => 'Use $plugin->unsetSetting($name)',
-    ];
-
-    /**
-     * @param array<Node\Stmt> $ast
-     * @param array $pattern
-     * @return array<int, array{line:int, description:string}>
-     */
-    private function find_removedIn4xFunctionCall(array $ast, array $pattern): array
-    {
-        $finder = new NodeFinder();
-        $hits = [];
-        $calls = $finder->findInstanceOf($ast, Node\Expr\FuncCall::class);
-        foreach ($calls as $call) {
-            assert($call instanceof Node\Expr\FuncCall);
-            if (!$call->name instanceof Node\Name) continue;
-            $name = $call->name->toString();
-            if (!isset(self::REMOVED_IN_4X[$name])) continue;
-
-            $hits[] = [
-                'line' => $call->getStartLine(),
-                'description' => sprintf("Call to '%s()' — removed in Elgg 4.x. %s", $name, self::REMOVED_IN_4X[$name]),
-            ];
-        }
-        return $hits;
-    }
+    // NOTE: the 4.x and 5.x removed-function lists used to be hand-maintained
+    // constants here. They drifted from references/removed-functions.json — the
+    // list PostMigrationVerifier reads — in both directions: the constants
+    // mislabeled four procedural plugin-hook helpers as 5.x removals when they
+    // survive into 5.0 and disappear in 6.0, and they held sanitize_string/
+    // sanitize_int, genuine 4.0 removals that the JSON omitted entirely (so the
+    // verifier never flagged them at any version). Both transitions now read the
+    // JSON through find_removedFunctionForTarget(), so there is one source of
+    // truth. Verified against upstream Elgg 3.0/4.0/5.0/6.0 sources.
 
     /**
      * Detector: parameter typed as `\Elgg\Hook` (or `Hook` with a `use Elgg\Hook;`
@@ -396,34 +371,6 @@ final class VersionGuard
      * Functions removed/deprecated at the 4.x → 5.x boundary that need
      * rewriting. Conservative list; extend as new gaps surface.
      */
-    private const REMOVED_IN_5X = [
-        'elgg_register_plugin_hook_handler' => 'Use elgg_register_event_handler($event, $type, $callback) or the events key in elgg-plugin.php',
-        'elgg_unregister_plugin_hook_handler' => 'Use elgg_unregister_event_handler',
-        'elgg_trigger_plugin_hook' => 'Use elgg_trigger_event_results / elgg_trigger_before_event / elgg_trigger_after_event',
-        'elgg_clear_plugin_hook_handlers' => 'Use elgg_clear_event_handlers',
-    ];
-
-    /**
-     * @param array<Node\Stmt> $ast
-     * @return array<int, array{line:int, description:string}>
-     */
-    private function find_removedIn5xFunctionCall(array $ast, array $pattern): array
-    {
-        $finder = new NodeFinder();
-        $hits = [];
-        foreach ($finder->findInstanceOf($ast, Node\Expr\FuncCall::class) as $call) {
-            assert($call instanceof Node\Expr\FuncCall);
-            if (!$call->name instanceof Node\Name) continue;
-            $name = $call->name->toString();
-            if (!isset(self::REMOVED_IN_5X[$name])) continue;
-            $hits[] = [
-                'line' => $call->getStartLine(),
-                'description' => sprintf("Call to '%s()' — removed in Elgg 5.x. %s", $name, self::REMOVED_IN_5X[$name]),
-            ];
-        }
-        return $hits;
-    }
-
     /**
      * Generic, data-driven removed-function detector. Reads the target major's
      * block from references/removed-functions.json (the single source of truth
