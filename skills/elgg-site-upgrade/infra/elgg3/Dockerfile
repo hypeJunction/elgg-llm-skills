@@ -28,7 +28,12 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 RUN a2enmod rewrite
 
 # Install Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Composer 2.2 (LTS) on purpose: composer/installers v1 requires Plugin API ^1.0,
+# but Composer 2.3+ ships Plugin API 2.x and SILENTLY SKIPS the plugin, so every
+# elgg-plugin package lands in vendor/ instead of mod/. Elgg 3.x has a hard chain
+# elgg/elgg 3.3 -> elgg/login_as ~2.1 -> composer/installers ^1.0.8 with no newer
+# login_as. See SKILL.md "composer/installers v1 vs Composer 2.3+".
+COPY --from=composer:2.2 /usr/bin/composer /usr/bin/composer
 
 # Set working directory
 WORKDIR /var/www/html

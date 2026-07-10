@@ -117,6 +117,12 @@ validate_one() {
   # colliding with the user's dev containers (which typically use the
   # defaults 8380/8480/3307 etc.). Each version gets its own slot.
   export PLUGINS_DIR="${PLUGINS_DIR:-/tmp}"
+  # The `node` (Playwright) service interpolates ${PLUGIN_ID:?...}. Compose
+  # interpolates the WHOLE file before it selects services, so `up elgg db`
+  # still fails with "required variable PLUGIN_ID is missing a value" unless it
+  # is set. Without this the validator could never bring up ANY stack. The value
+  # is a placeholder: the node service is never started here.
+  export PLUGIN_ID="${PLUGIN_ID:-_validate_placeholder}"
   export ELGG_PORT="$((19000 + ver * 10))"
   export DB_PORT="$((19100 + ver * 10))"
   local port="$ELGG_PORT"
