@@ -141,9 +141,22 @@ cmd_init() {
 }
 
 # --- job id: <plugin>-<short-sha> ---
+# True only when $1 is the ROOT of its own git repository. A plugin dir with no .git
+# of its own resolves to whatever repo encloses it — the bodyology workspace is itself
+# a repo now — so `git -C <plugin> rev-parse HEAD` silently returns the PARENT's sha
+# and branch. That would name the job after the wrong commit and make the branch guard
+# compare the parent's branch. Ask whether the toplevel IS the plugin.
+is_own_repo() {
+  local dir="$1" top
+  top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$top" ]] && [[ "$(abspath "$top")" == "$(abspath "$dir")" ]]
+}
+
 job_sha() {
-  local plugin_dir="$1" sha
-  sha="$(git -C "$plugin_dir" rev-parse --short HEAD 2>/dev/null || true)"
+  local plugin_dir="$1" sha=""
+  if is_own_repo "$plugin_dir"; then
+    sha="$(git -C "$plugin_dir" rev-parse --short HEAD 2>/dev/null || true)"
+  fi
   if [[ -z "$sha" ]]; then
     sha="$(printf '%s-%s' "$plugin_dir" "$(date +%s)" | sha1sum | cut -c1-8)"
   fi
@@ -652,8 +665,14 @@ cmd_test() {
   # core: it manufactures "boot fatals" (name() missing a return type, a non-static
   # getType()) that the plugin's own migrate/elgg-7.x branch already fixed. Every
   # such result is noise. Refuse unless the caller is explicit.
-  local want_branch="migrate/elgg-${version#elgg}.x" cur_branch
-  cur_branch="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  local want_branch="migrate/elgg-${version#elgg}.x" cur_branch=""
+  if is_own_repo "$pdir"; then
+    cur_branch="$(git -C "$pdir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  else
+    echo "note: $plugin is not a git repository of its own — cannot check its branch." >&2
+    echo "      Testing whatever is on disk. (An enclosing repo's branch is not this" >&2
+    echo "      plugin's branch and is deliberately ignored.)" >&2
+  fi
   if [[ -n "$cur_branch" && "$cur_branch" != "$want_branch" && "$allow_branch" -eq 0 ]]; then
     echo "ERROR: $plugin is checked out on '$cur_branch' but the stack is $version." >&2
     echo "       The stack mounts the working tree, so this would test $cur_branch code" >&2
