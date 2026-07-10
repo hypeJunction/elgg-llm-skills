@@ -204,7 +204,7 @@ boot_and_upgrade() {
     && { log "    ⚠ phinx fatals"; grep -E 'Exception|SQLSTATE|Fatal|Unknown column' "$CHAIN_DIR/schema-$proj.log" | head -5 | sed 's/^/      /' | tee -a "$REPORT"; return 1; }
 
   log "  [upgrade 2/2] elgg-cli upgrade (Batch)"
-  docker exec -u www-data "$(app_c "$proj")" php vendor/elgg/elgg/elgg-cli upgrade -v --quiet >"$CHAIN_DIR/batch-$proj.log" 2>&1 || true
+  docker exec -u www-data "$(app_c "$proj")" php vendor/elgg/elgg/elgg-cli upgrade all -n -f -v --quiet >"$CHAIN_DIR/batch-$proj.log" 2>&1 || true
   # Include Symfony Console 'Upgrade class … was not found' — aborts non-zero
   # WITHOUT a PHP fatal, so a fatal-only grep would miss it (a real cutover breaker).
   local pat='Phinx\\.*Exception|SQLSTATE|Elgg\\Upgrade.*failed|Fatal error|Uncaught|Upgrade class .* was not found|Locator\.php'

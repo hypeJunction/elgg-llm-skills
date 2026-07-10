@@ -10,7 +10,7 @@ services:
       ELGG_DB_NAME: elgg
       ELGG_DB_USER: elgg
       ELGG_DB_PASS: elgg
-      ELGG_SITE_URL: "http://localhost:${ELGG_PORT:?ELGG_PORT must be set (create a .env with ELGG_PORT and DB_PORT, or use bin/elgg-migrate-run)}/"
+      ELGG_SITE_URL: "${ELGG_SITE_URL:-http://localhost:${ELGG_PORT:?ELGG_PORT must be set (create a .env with ELGG_PORT and DB_PORT, or use bin/elgg-migrate-run)}/}"
       ELGG_DATA_ROOT: "/var/www/data/"
       ELGG_ADMIN_EMAIL: "admin@example.com"
       ELGG_ADMIN_PASSWORD: "Admin@12345678901"

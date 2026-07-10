@@ -38,7 +38,15 @@ RUN mkdir -p /var/www/data && chown www-data:www-data /var/www/data
 
 # Install Elgg 4.x
 COPY elgg-composer.json /var/www/html/composer.json
-RUN cd /var/www/html && composer install --no-interaction --prefer-dist
+# Elgg 2.x/3.x/4.x pin PHP < 8.0, and current Composer refuses to parse tar/phar
+# archives on those versions ("Refusing to parse a tar/phar archive on PHP < 8.0").
+# Every npm-asset/* dependency pulled via asset-packagist ships as a .tgz, so the
+# install aborts with "Install of npm-asset/... failed". Upgrading PHP is not an
+# option here — the tier exists to run the old PHP. The override is acceptable in
+# this DISPOSABLE TEST IMAGE: the dists come from packagist/registry.npmjs.org over
+# TLS and Composer still verifies their recorded hashes. Do not carry it into a
+# production image.
+RUN cd /var/www/html && COMPOSER_ALLOW_UNSAFE_PHAR_METADATA=1 composer install --no-interaction --prefer-dist
 
 # Register Elgg coding standard with phpcs
 RUN vendor/bin/phpcs --config-set installed_paths /var/www/html/vendor/elgg/sniffs/src
