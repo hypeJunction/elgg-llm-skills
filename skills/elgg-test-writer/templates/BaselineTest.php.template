@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace __PLUGIN_NAMESPACE__\Tests;
 
-use Elgg\IntegrationTestCase;
+__BASE_CLASS_USE__
 
 /**
  * Auto-generated pre-migration BASELINE for plugin "__PLUGIN_ID__".
@@ -38,7 +38,7 @@ use Elgg\IntegrationTestCase;
  * flow adds richer per-feature behavior (form round-trips, listing renders,
  * permission negatives) on top of this baseline.
  */
-final class BaselineTest extends IntegrationTestCase
+final class BaselineTest extends __BASE_CLASS__
 {
     public function testPluginIsRegistered(): void
     {
@@ -77,6 +77,13 @@ __ACTION_ROWS__
      */
     public function testEntityClassResolves(string $type, string $subtype, string $expectedClass): void
     {
+        // elgg_get_entity_class() arrived in Elgg 3.0 with the entity-class
+        // registry. On a 2.x baseline there is nothing to query, so record that
+        // explicitly rather than fataling on an undefined function.
+        if (!function_exists('elgg_get_entity_class')) {
+            $this->markTestSkipped('elgg_get_entity_class() does not exist before Elgg 3.0 — entity-class binding is not part of the 2.x baseline');
+        }
+
         $actual = elgg_get_entity_class($type, $subtype);
         $this->assertNotEmpty(
             $actual,

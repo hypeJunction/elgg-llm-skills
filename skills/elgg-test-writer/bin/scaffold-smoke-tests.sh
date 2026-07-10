@@ -108,6 +108,22 @@ if [ -f "$plugin_dir/composer.json" ]; then
 fi
 [ -n "$current_major" ] || current_major=4
 
+# BaselineTest boots the CURRENT major. Elgg 2.x has no \Elgg\IntegrationTestCase
+# (it first ships in 3.0), so a hardcoded base class fataled at class-load on
+# exactly the 2.x->3.x step — the one the baseline exists to protect. 2.x uses
+# plain PHPUnit\Framework\TestCase over the plugin's custom tests/bootstrap.php,
+# which loads Elgg core, so the elgg_* assertions in the body still run.
+# NOTE: these strings are sed REPLACEMENT text, where a literal backslash must be
+# written '\\'. Single-quoted here so the shell passes both characters through;
+# with "\\Framework" sed would consume the escape and emit 'PHPUnitFrameworkTestCase'.
+if [ "$current_major" -le 2 ] 2>/dev/null; then
+    base_class="TestCase"
+    base_class_use='use PHPUnit\\Framework\\TestCase;'
+else
+    base_class="IntegrationTestCase"
+    base_class_use='use Elgg\\IntegrationTestCase;'
+fi
+
 # Migration target: explicit flag wins, else current+1 (capped at 7).
 if [ -z "$target_major" ]; then
     target_major="$((current_major + 1))"
@@ -195,6 +211,8 @@ if [ -f "$base_template" ]; then
         sed \
             -e "s|__PLUGIN_ID__|$plugin_id|g" \
             -e "s|__PLUGIN_NAMESPACE__|$plugin_ns|g" \
+            -e "s|__BASE_CLASS_USE__|$base_class_use|g" \
+            -e "s|__BASE_CLASS__|$base_class|g" \
             "$base_template" > "$base_dst.tmp"
         awk -v actions="$action_rows" -v entities="$entity_rows" '
             /__ACTION_ROWS__/  { print actions; next }
