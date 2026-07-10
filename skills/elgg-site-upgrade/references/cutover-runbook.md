@@ -16,6 +16,7 @@ by DNS/reverse-proxy. **Rollback = flip back to the untouched old stack.**
 | Authenticated read + write paths pass on target | `bin/verify-write-paths.sh` |
 | Render parity old→new, no route regressed | `bin/verify-parity.sh check <from> <to>` |
 | `elgg-cli upgrade` clean on migrated prod data | run against a restored prod dump, expect exit 0 |
+| Deployed refs match migrated source (no release-lag) | `bin/check-release-lag.sh <lock> <plugins-dir>` → no LAG/FLOAT |
 | Avatar/file serving from the real dataroot | md5 byte-match a known avatar; a signed serve-file returns 200 |
 | Backup/restore round-trip is loss-less | §6 dry-run: state A == state B (counts AND page md5s) |
 | Plugin disposition signed off | which prod-active plugins are kept/dropped — **owner decision** |
@@ -26,8 +27,15 @@ not scripts.
 
 ## 1. Pre-cutover (T-24h)
 
-1. Freeze code on the target branch; confirm `composer.lock` tips are current
-   (`bin/check-release-lag.sh <lock> <plugins-dir>` → no LAG/FLOAT).
+1. Freeze code on the target branch; confirm `composer.lock` tips are current:
+
+   ```bash
+   bin/check-release-lag.sh <project>/composer.lock "$ELGG_PLUGINS_DIR"
+   ```
+
+   Expect no `LAG` or `FLOAT` rows. A `LAG` row means the lock pins a tag older
+   than the plugin's migration-branch tip: the site would deploy code that is
+   missing fixes the source gates already pass. Cut and pin the tag, then re-run.
 2. Build and warm the target image; confirm it boots a clean install.
 3. Announce the maintenance window.
 

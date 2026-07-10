@@ -202,7 +202,8 @@ SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
 # Mirrored with --delete: must be byte-identical. references/ is merge-mirrored
 # (siblings own extra files there), so it is checked one-way below.
 MIRRORED_TREES=(src rules tests infra/migrate)
-MIRRORED_FILES=(bin/migrate.php bin/migrate-plugin.sh bin/scan-frontend-residue.sh composer.json phpunit.xml)
+MIRRORED_FILES=(bin/migrate.php bin/migrate-plugin.sh bin/scan-frontend-residue.sh
+                bin/check-release-lag.sh composer.json phpunit.xml)
 # The reference data the mirrored engine loads at runtime.
 ENGINE_REFS=(removed-functions.json removed-function-renames.json class-renames.json
              string-renames.json changed-class-contracts.json migration-failure-catalog.md)

@@ -14,6 +14,9 @@
 #   --from N          Starting Elgg major version. Auto-detected from vendor/elgg/elgg if omitted.
 #   --to N            Target major version (default: 6).
 #   --yes             Skip per-step confirmation prompts.
+#   --auto-restore    On step failure, roll the DB back to the pre-step snapshot
+#                     without asking. Not implied by --yes: restoring discards
+#                     whatever the failed step accomplished.
 #   --dry-run         Print what would be done without executing.
 #   --backup-dir DIR  Where to store DB backups (default: <project>/../elgg-backups/).
 #   --site-url URL    Override site URL for curl verification (auto-detected from settings.php).
@@ -43,6 +46,8 @@ DRY_RUN=0
 YES=0
 BACKUP_DIR=""
 SITE_URL_OVERRIDE=""
+LAST_BACKUP=""      # path written by the most recent backup_db(); restore target
+AUTO_RESTORE=0      # --auto-restore: roll back the DB on step failure unattended
 
 # Per-version branch overrides (empty = auto-detect from the git repo)
 ELGG_BRANCH_2="${ELGG_BRANCH_2:-}"
@@ -61,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         --from)       FROM_VER="$2"; shift 2 ;;
         --to)         TO_VER="$2"; shift 2 ;;
         --yes|-y)     YES=1; shift ;;
+        --auto-restore) AUTO_RESTORE=1; shift ;;
         --dry-run)    DRY_RUN=1; shift ;;
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
         --site-url)   SITE_URL_OVERRIDE="$2"; shift 2 ;;
@@ -219,6 +225,7 @@ load_db_settings() {
 backup_db() {
     local label="$1"
     local outfile="$BACKUP_DIR/elgg-${label}-$(date +%Y%m%d-%H%M%S).sql.gz"
+    LAST_BACKUP="$outfile"   # consumed by restore_db() when a step fails
     log "Backing up $DB_NAME → $outfile"
 
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -256,6 +263,35 @@ backup_db() {
     size="$(du -sh "$outfile" | cut -f1)"
     tables="$(zcat "$outfile" | grep -c '^CREATE TABLE' || true)"
     log "Backup complete: $size, $tables tables → $outfile"
+}
+
+# ---------------------------------------------------------------------------
+# Restore the DB from a gzipped dump. Used to roll a failed step back to the
+# snapshot taken at its start, while the site is still behind maintenance mode.
+# ---------------------------------------------------------------------------
+restore_db() {
+    local infile="$1"
+    if [[ ! -f "$infile" ]]; then
+        warn "Restore requested but backup file is missing: $infile"
+        return 1
+    fi
+    if ! gzip -t "$infile" 2>/dev/null; then
+        warn "Refusing to restore from a corrupt archive: $infile"
+        return 1
+    fi
+    log "Restoring $DB_NAME from $infile"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  [dry-run] zcat $infile | mysql ... $DB_NAME"
+        return 0
+    fi
+    if ! zcat "$infile" | mysql \
+        -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" \
+        --skip-ssl "$DB_NAME"; then
+        warn "RESTORE FAILED. The database is in an unknown state."
+        warn "Restore by hand before serving traffic: zcat '$infile' | mysql -u… $DB_NAME"
+        return 1
+    fi
+    log "Restore complete — DB is back at the pre-step snapshot."
 }
 
 # ---------------------------------------------------------------------------
@@ -363,8 +399,12 @@ schema_prefix() {
 # Run Elgg upgrade (cd into project so elgg-cli resolves paths from CWD)
 # ---------------------------------------------------------------------------
 run_upgrade() {
-    log "Running elgg-cli upgrade async"
-    run "(cd '$PROJECT' && php vendor/bin/elgg-cli upgrade async -v)"
+    # Synchronous on purpose. `upgrade async` queues the pending upgrades and
+    # returns immediately, so verification (and the next step) could run against
+    # a database still being migrated. verify-migration-chain.sh has always used
+    # the synchronous form; the orchestrator now matches it.
+    log "Running elgg-cli upgrade (synchronous)"
+    run "(cd '$PROJECT' && php vendor/bin/elgg-cli upgrade -v)"
     log "Flushing caches"
     run "(cd '$PROJECT' && php vendor/bin/elgg-cli cache:clear)" || true
 }
@@ -407,16 +447,49 @@ do_step() {
 
     confirm "Step Elgg ${from}.x → ${to}.x: backup DB, checkout $branch, run upgrade" || return 1
 
-    # Abort helper: always disables maintenance before returning failure
+    # Abort helper. Maintenance mode stays ON: a step that died partway through
+    # leaves a half-migrated schema, and lifting maintenance would serve that to
+    # live traffic. The operator decides when the site is fit to serve again.
+    #
+    # Restoring is itself destructive (it discards whatever the step did), so it
+    # is never inherited from --yes. Unattended runs stop and leave the snapshot;
+    # pass --auto-restore to opt in.
     abort_step() {
         warn "$1"
-        disable_maintenance 2>/dev/null || true
-        warn "DB backup is at $BACKUP_DIR"
+        warn "Maintenance mode is STILL ON — the site is not serving a half-migrated DB."
+
+        if [[ -z "$LAST_BACKUP" ]]; then
+            warn "No pre-step snapshot was recorded; DB backups are under $BACKUP_DIR"
+        elif [[ $AUTO_RESTORE -eq 1 ]]; then
+            log "--auto-restore set; rolling the DB back to the pre-step snapshot"
+            restore_db "$LAST_BACKUP" || true
+        elif [[ $YES -eq 0 && $DRY_RUN -eq 0 ]]; then
+            echo ""
+            echo "  Restore the database from the pre-step snapshot?"
+            echo "    $LAST_BACKUP"
+            echo -n "  Restore? [y/N] "
+            read -r answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                restore_db "$LAST_BACKUP" || true
+            else
+                warn "Skipping restore. Snapshot retained at $LAST_BACKUP"
+            fi
+        else
+            warn "Not restoring automatically (re-run with --auto-restore to opt in)."
+            warn "Roll back by hand: zcat '$LAST_BACKUP' | mysql -u… $DB_NAME"
+        fi
+
+        warn "The working tree may still be on the new branch — check out the previous"
+        warn "branch before serving traffic again."
+        warn "When the site is verified healthy, lift maintenance by removing the"
+        warn "'$MAINT_MARKER' block from $PROJECT/elgg-config/settings.php"
         return 1
     }
 
+    # Backup runs before maintenance mode: nothing is mutated yet, so a failure
+    # here needs no restore and no maintenance window.
     info "1/7 Backup"
-    backup_db "before-${to}x" || { warn "Backup failed — aborting step"; return 1; }
+    backup_db "before-${to}x" || { warn "Backup failed — aborting step (site untouched)"; return 1; }
 
     info "2/7 Enable maintenance mode"
     enable_maintenance
@@ -433,15 +506,22 @@ do_step() {
     info "6/7 Upgrade"
     run_upgrade || { abort_step "elgg-cli upgrade failed"; return 1; }
 
-    info "7/7 Verify"
+    # Maintenance mode must come off BEFORE verifying: while it is on, Elgg serves
+    # the maintenance page (503 in modern versions) to the anonymous request
+    # verify_site makes. Verifying first reported every successful step as a
+    # failure — and on versions that answer 200 it verified the maintenance
+    # template rather than the site.
+    info "7/7 Disable maintenance, then verify"
+    disable_maintenance
+
     if ! verify_site; then
         warn "Verification failed after upgrade ${from}→${to}."
-        disable_maintenance
-        warn "DB backup is at $BACKUP_DIR"
+        warn "Re-enabling maintenance mode so the site does not serve a broken upgrade."
+        enable_maintenance
+        abort_step "post-upgrade verification failed"
         return 1
     fi
 
-    disable_maintenance
     log "Step ${from}→${to} complete."
 }
 

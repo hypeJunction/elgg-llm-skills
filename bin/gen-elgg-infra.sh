@@ -410,6 +410,8 @@ mirror_engine_to_siblings() {
     rsync -a "$migrate_root/bin/migrate.php"       "$dst/bin/migrate.php"
     rsync -a "$migrate_root/bin/migrate-plugin.sh" "$dst/bin/migrate-plugin.sh"
     rsync -a "$migrate_root/bin/scan-frontend-residue.sh" "$dst/bin/scan-frontend-residue.sh"
+    # elgg-site-upgrade's cutover runbook invokes this as a go/no-go gate.
+    rsync -a "$migrate_root/bin/check-release-lag.sh" "$dst/bin/check-release-lag.sh"
     rsync -a --delete "$migrate_root/src/"         "$dst/src/"
     rsync -a --delete "$migrate_root/rules/"       "$dst/rules/"
     rsync -a "$migrate_root/references/"           "$dst/references/"
