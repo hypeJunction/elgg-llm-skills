@@ -65,14 +65,35 @@ is "::class resolves to a class string" \
    '\Demo\Page'
 
 # A class CONSTANT (::SUBTYPE) DOES autoload at generateEntities() time and is the
-# real fatal. The extractor cannot evaluate it, and currently drops the row.
+# real fatal, so the extractor cannot evaluate it. It must NOT drop the row
+# silently: a missing entity row means the scaffolded baseline asserts nothing
+# about exactly the binding most likely to fatal.
 cat > "$P/elgg-plugin.php" <<'PHP'
 <?php
-return ['entities' => [['type' => 'object', 'subtype' => \Demo\Page::SUBTYPE, 'class' => 'Demo\\Page']]];
+return ['entities' => [
+    ['type' => 'object', 'subtype' => \Demo\Page::SUBTYPE, 'class' => 'Demo\\Page'],
+    ['type' => 'object', 'subtype' => 'ok_item', 'class' => 'Demo\\Item'],
+]];
 PHP
-is "::CONST subtype yields no entity rows (documented gap: it is dropped silently)" \
-   "$(php "$EX" "$P" | php -r 'echo count(json_decode(file_get_contents("php://stdin"),true)["entities"]);')" \
-   "0"
+err="$WORK/extract.err"
+php "$EX" "$P" 2>"$err" >"$WORK/extract.json"
+is "::CONST row does not abort the extractor" "$?" "0"
+is "resolvable siblings still emitted" \
+   "$(php -r 'echo count(json_decode(file_get_contents("'"$WORK"'/extract.json"),true)["entities"]);')" \
+   "1"
+is "unresolved row is reported in the JSON" \
+   "$(php -r 'echo count(json_decode(file_get_contents("'"$WORK"'/extract.json"),true)["entities_unresolved"] ?? []);')" \
+   "1"
+has "unresolved row warns on stderr, naming the construct" '::SUBTYPE' "$err"
+has "warning explains the autoload fatal" 'autoloads at generateEntities() time' "$err"
+
+# A clean plugin must stay silent — a warning that always fires is noise.
+cat > "$P/elgg-plugin.php" <<'PHP'
+<?php
+return ['entities' => [['type' => 'object', 'subtype' => 'ok', 'class' => 'Demo\\Ok']]];
+PHP
+php "$EX" "$P" 2>"$WORK/clean.err" >/dev/null
+is "clean plugin produces no warning" "$(wc -c < "$WORK/clean.err" | tr -d ' ')" "0"
 
 # Empty blocks must produce empty arrays, not nulls the templates would choke on.
 printf '<?php\nreturn [];\n' > "$P/elgg-plugin.php"

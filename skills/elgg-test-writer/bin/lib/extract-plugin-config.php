@@ -94,6 +94,8 @@ $out = [
     'entities' => [],
     'events' => new \stdClass(),
 ];
+/** @var array<int,array{line:int,reason:string}> entity rows we could not resolve statically */
+$unresolvedEntities = [];
 
 foreach ($returnArray->items as $item) {
     if (!$item instanceof Node\ArrayItem || $item->key === null) continue;
@@ -105,10 +107,21 @@ foreach ($returnArray->items as $item) {
         $out['actions'] = collectActionKeys($item->value);
         sort($out['actions']);
     } elseif ($key === 'entities' && $item->value instanceof Node\Expr\Array_) {
-        $out['entities'] = collectEntities($item->value);
+        $out['entities'] = collectEntities($item->value, $unresolvedEntities);
     } elseif ($key === 'events' && $item->value instanceof Node\Expr\Array_) {
         $out['events'] = collectEvents($item->value);
     }
+}
+
+if ($unresolvedEntities) {
+    $out['entities_unresolved'] = $unresolvedEntities;
+    fwrite(STDERR, "WARNING: " . count($unresolvedEntities) . " entity row(s) in elgg-plugin.php could not be resolved statically\n");
+    foreach ($unresolvedEntities as $u) {
+        fwrite(STDERR, "  line {$u['line']}: {$u['reason']}\n");
+    }
+    fwrite(STDERR, "  A class CONSTANT (Foo::SUBTYPE) autoloads at generateEntities() time and fatals;\n");
+    fwrite(STDERR, "  use a string literal, or Foo::class for the 'class' key (compile-time, never autoloads).\n");
+    fwrite(STDERR, "  These entities are ABSENT from the generated tests.\n");
 }
 
 echo json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
@@ -144,25 +157,62 @@ function collectActionKeys(Node\Expr\Array_ $arr): array
 }
 
 /** @return array<int,array<string,string>> */
-function collectEntities(Node\Expr\Array_ $arr): array
+/**
+ * @param array<int,array{line:int,reason:string}> $unresolved  filled with rows we
+ *        could not statically resolve, so the caller can WARN instead of silently
+ *        emitting a descriptor that omits them.
+ */
+function collectEntities(Node\Expr\Array_ $arr, array &$unresolved = []): array
 {
     $rows = [];
     foreach ($arr->items as $it) {
         if (!$it instanceof Node\ArrayItem) continue;
         if (!$it->value instanceof Node\Expr\Array_) continue;
         $row = ['type' => '', 'subtype' => '', 'class' => ''];
+        $bad = [];
         foreach ($it->value->items as $sub) {
             if (!$sub instanceof Node\ArrayItem || $sub->key === null) continue;
             $sk = stringValue($sub->key);
             if (!in_array($sk, ['type', 'subtype', 'class'], true)) continue;
             $sv = stringValue($sub->value);
-            if ($sv !== null) $row[$sk] = $sv;
+            if ($sv !== null) {
+                $row[$sk] = $sv;
+            } else {
+                $bad[] = $sk . ' => ' . describeNode($sub->value);
+            }
         }
         if ($row['type'] !== '' && $row['subtype'] !== '') {
             $rows[] = $row;
+            continue;
         }
+        // Dropping this row silently would leave the scaffolded BaselineTest
+        // asserting nothing about an entity binding — and a class CONSTANT is
+        // exactly the construct that fatals at generateEntities() time, so these
+        // are the rows that most need coverage.
+        $unresolved[] = [
+            'line' => $it->getStartLine(),
+            'reason' => $bad
+                ? 'not a literal: ' . implode(', ', $bad)
+                : 'missing a literal type and/or subtype',
+        ];
     }
     return $rows;
+}
+
+/** Short, human-readable shape of an unresolvable node, for the warning text. */
+function describeNode(Node $node): string
+{
+    if ($node instanceof Node\Expr\ClassConstFetch && $node->class instanceof Node\Name) {
+        $const = $node->name instanceof Node\Identifier ? $node->name->toString() : '?';
+        return '\\' . ltrim($node->class->toString(), '\\') . '::' . $const;
+    }
+    if ($node instanceof Node\Expr\ConstFetch) {
+        return $node->name->toString();
+    }
+    if ($node instanceof Node\Expr\Variable && is_string($node->name)) {
+        return '$' . $node->name;
+    }
+    return $node->getType();
 }
 
 /** @return array<string, array<int,string>> */
