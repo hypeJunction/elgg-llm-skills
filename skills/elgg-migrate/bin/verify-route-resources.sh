@@ -25,7 +25,28 @@
 set -euo pipefail
 
 PLUGINS_DIR="${1:?usage: verify-route-resources.sh <plugins-dir> [core-dir]}"
-CORE_DIR="${2:-}"
+CORE_DIR="${2:-${ELGG_CORE_DIR:-}}"
+
+# Core ships many of the resource views plugins name (groups/profile, groups/search,
+# discussion/view...). Without core on the view path this check reports every one of
+# them as missing: against the bodyology fleet it says 10 missing routes with no core
+# dir and 5 with one. Half the findings would be false. Try to locate core, and if we
+# cannot, say plainly that the result over-reports.
+if [ -z "$CORE_DIR" ]; then
+  for c in "$PLUGINS_DIR/../vendor/elgg/elgg" \
+           "$PLUGINS_DIR/../*/vendor/elgg/elgg" \
+           "$PLUGINS_DIR/../../vendor/elgg/elgg"; do
+    for g in $c; do
+      if [ -d "$g/views/default/resources" ]; then CORE_DIR="$g"; break 2; fi
+    done
+  done
+  [ -n "$CORE_DIR" ] && echo "note: using discovered core views at $CORE_DIR" >&2
+fi
+if [ -z "$CORE_DIR" ]; then
+  echo "WARNING: no core-dir given and none discovered. Resource views that CORE provides" >&2
+  echo "         will be reported as missing — this run OVER-REPORTS. Pass the path to" >&2
+  echo "         vendor/elgg/elgg, or set ELGG_CORE_DIR." >&2
+fi
 
 found=0
 
