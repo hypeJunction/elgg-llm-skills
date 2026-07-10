@@ -211,6 +211,14 @@
       "priority": 205
     },
     {
+      "id": "034-migrate-camelcase-plugin-settings",
+      "name": "Scaffold an upgrade batch that rescues plugin settings stranded by plugin ID lowercasing",
+      "automated": true,
+      "class": "ElggMigrate\\Rules\\V3ToV4\\ScaffoldCamelCaseSettingsUpgrade",
+      "breaking_change": "Elgg 4.x creates a new lowercase plugin entity instead of renaming the camelCase one, so every stored plugin setting is stranded on the orphaned entity and the plugin falls back to its elgg-plugin.php defaults",
+      "priority": 206
+    },
+    {
       "id": "019-plugin-settings-vars",
       "name": "Replace $vars['plugin'] with $vars['entity'] in plugin settings views",
       "automated": true,

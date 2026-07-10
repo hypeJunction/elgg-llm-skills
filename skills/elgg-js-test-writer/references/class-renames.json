@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "description": "Core classes RENAMED/MOVED to a new fully-qualified name at a major version, where the fix is a pure 1:1 FQN substitution safe to auto-rewrite (use-statements, ::class, catch/type-hint/new references, and string-literal registrations in elgg-plugin.php). Consumed by the data-driven AST-ish rules under ElggMigrate\\Rules\\* via Rules\\Shared\\DataDrivenClassRenames. Because the keys are fully-qualified and unique, a plain substring replace is safe (no short-name collisions). Per-major (not cumulative).",
+    "excluded": "Class REMOVALS with no 1:1 replacement, and API/signature changes that accompany a rename (e.g. Elgg 7 elgg_register_notification_event() array $actions -> string $action) stay LLM-guided — a blind rename cannot fix a changed signature.",
+    "relationship": "Sibling to removed-function-renames.json (functions) — same data-driven-rewrite model, different symbol kind."
+  },
+  "7.x": {
+    "Elgg\\Notifications\\CreateCommentEventHandler": "Elgg\\Notifications\\Handlers\\CreateComment",
+    "Elgg\\Notifications\\MakeAdminUserEventHandler": "Elgg\\Notifications\\Handlers\\MakeAdminUser",
+    "Elgg\\Notifications\\MentionsEventHandler": "Elgg\\Notifications\\Handlers\\Mentions",
+    "Elgg\\Notifications\\RemoveAdminUserEventHandler": "Elgg\\Notifications\\Handlers\\RemoveAdminUser",
+    "Elgg\\Notifications\\UnbanUserEventHandler": "Elgg\\Notifications\\Handlers\\UnbanUser",
+    "Elgg\\Notifications\\CreateContentEventHandler": "Elgg\\Notifications\\Events\\CreateContent",
+    "Elgg\\Notifications\\EnqueueEventHandler": "Elgg\\Notifications\\Events\\Enqueue",
+    "Elgg\\Notifications\\MentionsEnqueueEventHandler": "Elgg\\Notifications\\Events\\MentionsEnqueue"
+  }
+}

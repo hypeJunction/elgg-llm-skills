@@ -243,6 +243,14 @@
       "priority": 226
     },
     {
+      "id": "035-strict-string-params",
+      "name": "Cast possibly-null values passed to core functions with strict string parameters",
+      "automated": false,
+      "llm_instructions": "Elgg 7 declares `elgg_get_excerpt(string $text, int $num_chars = 250): string` and `elgg_strip_tags(string $string, ?string $allowable_tags = null): string`. Both reject null.\n\nAn Elgg entity property that was never set reads back as **null**, so a callsite like\n\n```php\nelgg_get_excerpt($entity->description);      // TypeError when description is unset\nelgg_strip_tags($entity->description);       // TypeError when description is unset\n```\n\nthrows a TypeError and returns HTTP 500 on any page that renders an entity without a description. The failure is invisible to synthetic smoke tests, which seed entities that always have one, and it only appears against real data.\n\nFor every callsite where the first argument is a *property read* (`$e->description`, `$e->$prop`) rather than a method call, add a `(string)` cast — or keep an existing truthiness guard if the call is already inside one:\n\n```php\nelgg_get_excerpt((string) $entity->description);\nelgg_strip_tags((string) $entity->description);\n```\n\nMethod calls such as `$entity->getDisplayName()` already declare `: string` and need no cast.\n\nVerify with `bin/verify-strict-string-args.sh <plugins-dir>`, which exits non-zero on any unguarded callsite.",
+      "breaking_change": "elgg_get_excerpt() and elgg_strip_tags() take non-nullable `string`; a null entity property is now a TypeError instead of an empty string",
+      "priority": 220
+    },
+    {
       "id": "999-add-docblocks",
       "name": "Add PHPDoc blocks to functions, methods, and class properties",
       "automated": true,

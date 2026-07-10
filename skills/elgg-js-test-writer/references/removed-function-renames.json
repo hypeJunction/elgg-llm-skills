@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "description": "The SAFE, auto-rewritable subset of removed-functions.json: global functions removed at a major whose replacement is an exact 1:1 global-function rename with a compatible call signature for the dominant call shape. Consumed PER-MAJOR by the data-driven AST rules ElggMigrate\\Rules\\V2ToV3\\RemovedFunctionRenames (3.x), V3ToV4\\RemovedFunctionRenames (4.x), V4ToV5\\RemovedFunctions (5.x), V5ToV6\\RemovedFunctions (6.x) and V6ToV7\\RemovedFunctions (7.x) — all via Rules\\Shared\\DataDrivenRemovedFunctions — which rewrite FuncCall names in place AT THE STEP WHERE THE FUNCTION ACTUALLY BREAKS. Entries whose replacement is prose, needs new arguments, changes semantics, or is a method/service call (e.g. ELGG's AMD->ESM migration, elgg_set_ignore_access -> elgg_call(...), elgg_reset_system_cache -> _elgg_services()->systemCache->clear()) are DELIBERATELY EXCLUDED here — they stay LLM-guided in the manifest because a blind rename would corrupt code.",
+    "relationship": "This is a strict subset of references/removed-functions.json (which drives DETECTION/flagging in PostMigrationVerifier + VersionGuard --check, cumulatively). This file drives REWRITING and is per-major. Each function's top-level block here MUST equal its removal major in removed-functions.json — a mismatch means the rename fires at the wrong migration step (the exact bug fixed under bd elgg-migrate-jfrc1). This invariant is enforced by tests/Rules/Shared/RenameMapPlacementTest.php.",
+    "signature_note": "For multi-arg helpers included here (forward, register_error, system_message), the rename is correct for the dominant single-message/single-url call; the manifest's LLM instructions still cover the rarer multi-arg reason/priority cases.",
+    "placement_note": "Placement reconciled 2026-07-09 (bd elgg-migrate-jfrc1) against the core-verified removed-functions.json (commit d9df460): forward / register_error / system_message / current_page_url / elgg_get_version are removed at 5.x (NOT 6.x); elgg_redirect / _elgg_rmdir / _elgg_html_decode / elgg_get_logged_in_user at 3.x; elgg_flush_caches at 4.x. Previously these all sat in the 6.x block, so a 4x->5x or 5x->6x migration never rewrote them at the step where they break. register_error -> elgg_register_error_message (NOT elgg_register_error, which does not exist)."
+  },
+  "3.x": {
+    "elgg_redirect": "elgg_redirect_response",
+    "_elgg_rmdir": "elgg_delete_directory",
+    "_elgg_html_decode": "html_entity_decode",
+    "elgg_get_logged_in_user": "elgg_get_logged_in_user_entity"
+  },
+  "4.x": {
+    "elgg_flush_caches": "elgg_clear_caches"
+  },
+  "5.x": {
+    "current_page_url": "elgg_get_current_url",
+    "get_default_access": "elgg_get_default_access",
+    "forward": "elgg_redirect_response",
+    "register_error": "elgg_register_error_message",
+    "system_message": "elgg_register_success_message",
+    "elgg_get_version": "elgg_get_release"
+  },
+  "6.x": {
+    "elgg_trigger_plugin_hook": "elgg_trigger_event_results",
+    "elgg_register_plugin_hook_handler": "elgg_register_event_handler",
+    "elgg_unregister_plugin_hook_handler": "elgg_unregister_event_handler",
+    "elgg_clear_plugin_hook_handlers": "elgg_clear_event_handlers",
+    "elgg_strrchr": "mb_strrchr",
+    "elgg_strripos": "mb_strripos"
+  },
+  "7.x": {}
+}

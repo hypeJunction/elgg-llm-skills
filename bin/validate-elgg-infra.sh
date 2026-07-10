@@ -190,9 +190,63 @@ check_template_invariants() {
   return 0
 }
 
+# --- engine mirror drift gate (fast, no docker) -----------------------------
+# gen-elgg-infra.sh mirrors the AST engine from skills/elgg-migrate into every
+# sibling skill. If someone edits src/rules/references without re-running the
+# generator, the siblings silently ship a stale engine: their bundled
+# migrate.php --check and PostMigrationVerifier read data files that no longer
+# match the rules, and whole-site upgrades skip rules the canonical skill has.
+# That happened for 034-migrate-camelcase-plugin-settings + 035-strict-string-params
+# (bd elgg-migrate-7jgbj). Fail loudly instead.
+SIBLING_SKILLS=(elgg-site-upgrade elgg-test-writer elgg-js-test-writer)
+# Mirrored with --delete: must be byte-identical. references/ is merge-mirrored
+# (siblings own extra files there), so it is checked one-way below.
+MIRRORED_TREES=(src rules tests infra/migrate)
+MIRRORED_FILES=(bin/migrate.php bin/migrate-plugin.sh bin/scan-frontend-residue.sh composer.json phpunit.xml)
+# The reference data the mirrored engine loads at runtime.
+ENGINE_REFS=(removed-functions.json removed-function-renames.json class-renames.json
+             string-renames.json changed-class-contracts.json migration-failure-catalog.md)
+
+check_engine_mirror() {
+  local canon="$ROOT/skills/elgg-migrate" rc=0 s t f
+  for s in "${SIBLING_SKILLS[@]}"; do
+    local dst="$ROOT/skills/$s"
+    for t in "${MIRRORED_TREES[@]}"; do
+      if ! diff -rq "$canon/$t" "$dst/$t" >/dev/null 2>&1; then
+        echo "  DRIFT: skills/$s/$t differs from canonical" >&2
+        rc=1
+      fi
+    done
+    for f in "${MIRRORED_FILES[@]}"; do
+      if ! cmp -s "$canon/$f" "$dst/$f"; then
+        echo "  DRIFT: skills/$s/$f differs from canonical" >&2
+        rc=1
+      fi
+    done
+    # references/: engine-consumed files must be present and identical; the
+    # sibling may legitimately carry additional files of its own.
+    for f in "${ENGINE_REFS[@]}"; do
+      if ! cmp -s "$canon/references/$f" "$dst/references/$f"; then
+        echo "  DRIFT: skills/$s/references/$f missing or stale" >&2
+        rc=1
+      fi
+    done
+  done
+  if [[ $rc -ne 0 ]]; then
+    echo "engine mirror: FAIL — run bin/gen-elgg-infra.sh and commit the result" >&2
+  else
+    echo "engine mirror: PASS (${#SIBLING_SKILLS[@]} siblings identical to canonical)"
+  fi
+  return $rc
+}
+
 declare -A RESULTS
 declare -A TRESULTS
 rc_overall=0
+
+if ! check_engine_mirror; then
+  rc_overall=1
+fi
 
 # Static template gate first (fast, no docker).
 for ver in "${VERSIONS[@]}"; do

@@ -1,0 +1,12 @@
+{
+    "name": "acme/notes",
+    "type": "elgg-plugin",
+    "autoload": {
+        "psr-4": {
+            "Notes\\": "classes/Notes/"
+        }
+    },
+    "extra": {
+        "installer-name": "notes"
+    }
+}

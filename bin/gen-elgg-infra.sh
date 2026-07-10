@@ -388,25 +388,36 @@ mirror_to_siblings() {
   done
 }
 
-# Mirror the AST engine (bin/migrate.php, src/, rules/, composer.json,
-# phpunit.xml, tests/, infra/migrate/) from skills/elgg-migrate/ into
-# each sibling skill so that every skill is atomic and self-contained.
-# skills/elgg-migrate/ is the single source of truth; the siblings are
-# regenerated from it on every run of this script.
+# Mirror the AST engine (bin/migrate.php, bin/scan-frontend-residue.sh, src/,
+# rules/, references/, composer.json, phpunit.xml, tests/, infra/migrate/) from
+# skills/elgg-migrate/ into each sibling skill so that every skill is atomic and
+# self-contained. skills/elgg-migrate/ is the single source of truth; the
+# siblings are regenerated from it on every run of this script.
+#
+# references/ is mirrored WITHOUT --delete: the engine loads
+# {removed-functions,removed-function-renames,class-renames,string-renames,
+# changed-class-contracts}.json plus migration-failure-catalog.md at runtime
+# (PostMigrationVerifier, TestsFirstGate, the DataDriven* rules), while each
+# sibling also OWNS files under references/ (elgg-test-writer: ci/,
+# regression-classes.md; elgg-site-upgrade: the SQL + runbook). Deleting there
+# would destroy skill-local docs. Likewise scan-frontend-residue.sh is exec'd by
+# the mirrored tests/ScanFrontendResidueTest.php, so it must travel with them.
 mirror_engine_to_siblings() {
   local migrate_root="$ROOT/skills/elgg-migrate"
   for s in "${SIBLING_SKILLS[@]}"; do
     local dst="$ROOT/skills/$s"
-    mkdir -p "$dst/bin" "$dst/infra/migrate"
+    mkdir -p "$dst/bin" "$dst/infra/migrate" "$dst/references"
     rsync -a "$migrate_root/bin/migrate.php"       "$dst/bin/migrate.php"
     rsync -a "$migrate_root/bin/migrate-plugin.sh" "$dst/bin/migrate-plugin.sh"
+    rsync -a "$migrate_root/bin/scan-frontend-residue.sh" "$dst/bin/scan-frontend-residue.sh"
     rsync -a --delete "$migrate_root/src/"         "$dst/src/"
     rsync -a --delete "$migrate_root/rules/"       "$dst/rules/"
+    rsync -a "$migrate_root/references/"           "$dst/references/"
     rsync -a "$migrate_root/composer.json"         "$dst/composer.json"
     rsync -a "$migrate_root/phpunit.xml"           "$dst/phpunit.xml"
     rsync -a --delete "$migrate_root/tests/"       "$dst/tests/"
     rsync -a --delete "$migrate_root/infra/migrate/" "$dst/infra/migrate/"
-    echo "mirrored engine -> skills/$s/{bin,src,rules,composer.json,phpunit.xml,tests,infra/migrate}"
+    echo "mirrored engine -> skills/$s/{bin,src,rules,references,composer.json,phpunit.xml,tests,infra/migrate}"
   done
 }
 
