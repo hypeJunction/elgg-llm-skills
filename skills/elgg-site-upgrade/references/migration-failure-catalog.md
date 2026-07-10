@@ -584,7 +584,7 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
     first unparseable row was a fatal, not a failure.
   - core's `\Elgg\Upgrades\AlterDatabaseToMultiByteCharset` ALTERs `elgg_private_settings`,
     a table Elgg 4 removed. It dies before converting anything. Do the conversion yourself
-    (`references/7x-utf8mb4-plugin-tables.sql`) and mark the upgrade completed.
+    (`elgg-site-upgrade/references/7x-utf8mb4-convert.sh`) and mark the upgrade completed.
 - **Also:** `elgg_log($msg, 'NOTICE')` throws in Elgg 7 — pass `\Psr\Log\LogLevel::NOTICE`.
 - **gate:** NO (runtime) · **Sources:** bodyology 2026-07-10
 
@@ -689,6 +689,22 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
 - **Test-to-write:** integration — fetch `$entity->getURL()` for one entity of every subtype.
 - **gate:** `verify-route-resources.sh` · **Sources:** bodyology 2026-07-10 (bodyology_library,
   bodyology_feedback, feedback were live regressions; 9 more latent — bd elgg-migrate)
+
+### FC-ALL-14 — A disabled feature leaves `null` in a menu-item array (hard 500)
+- **Detection (regex):** a ternary assigning into a menu-item array with `: null;` —
+  `$items['download'] = FEATURE_ON ? [...] : null;` — followed by a loop that writes into
+  `$options` (`$options['name'] = $name;`) without filtering.
+- **Why it fatals:** the key survives holding `null`; PHP auto-vivifies an array when you write
+  `$options['name']` onto it; `ElggMenuItem::factory()` requires BOTH `name` and `text` and throws
+  `Elgg\Exceptions\InvalidArgumentException`. Elgg 7 turns that into a 500.
+- **Fix:** `foreach (array_filter($items) as $name => $options)`.
+- **Why it hid:** it fires only on the subtype whose branch has the ternary. On bodyology every
+  `hjalbumimage` page 500'd while every `hjalbum` page rendered — and the difference is one
+  `: null` in a sibling branch. Anonymous visitors never saw it either: the items are only built
+  for users who can see the title buttons.
+- **Test-to-write:** integration — register the title menu for the affected subtype and assert
+  every item has a non-empty `getName()` and `getText()`, whatever the feature constants say.
+- **gate:** NO · **Sources:** bodyology 2026-07-10 (hypegallery 7.0.10)
 
 ## Known data-file refinements
 

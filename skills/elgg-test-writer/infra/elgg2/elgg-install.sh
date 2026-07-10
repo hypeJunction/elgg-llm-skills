@@ -8,6 +8,21 @@ until php -r "new PDO('mysql:host=${ELGG_DB_HOST:-db}', '${ELGG_DB_USER:-elgg}',
 done
 echo "MySQL is ready."
 
+# Is this database already an Elgg install? The chain harness (verify-migration-chain.sh)
+# preseeds the NEXT tier's DB volume from the PREVIOUS tier and expects this container to
+# SKIP installation. The old gate was the file /var/www/html/.elgg-installed, which lives
+# in the image layer, not a volume — so a fresh tier container never has it, re-ran
+# batchInstall over the carried-forward data, and the chain aborted. Ask the DATABASE.
+ELGG_PRESEEDED=0
+if php -r "
+    \$p = new PDO('mysql:host=${ELGG_DB_HOST:-db};dbname=${ELGG_DB_NAME:-elgg}', '${ELGG_DB_USER:-elgg}', '${ELGG_DB_PASS:-elgg}');
+    \$q = \$p->query(\"SHOW TABLES LIKE 'elgg_entities'\");
+    exit(\$q && \$q->fetchAll() ? 0 : 1);
+" 2>/dev/null; then
+    ELGG_PRESEEDED=1
+    echo "Existing Elgg schema detected (elgg_entities present) — skipping batchInstall."
+fi
+
 cd /var/www/html
 
 # Check if Elgg is already installed
