@@ -44,7 +44,10 @@ INFRA="$SKILL_ROOT/infra"
 GM_SCRIPT="$SELF_DIR/baseline-golden-master.sh"
 
 STACKS_FILE=""
-SERVICE="elgg"
+SERVICE="${ELGG_SERVICE:-elgg}"
+# The db service name is a compose detail, not a constant: a site's stack may call
+# it "mysql" or "mariadb". Everything else here is already parameterised.
+DB_SERVICE="${ELGG_DB_SERVICE:-db}"
 DO_GOLDEN=0
 BASELINE=""
 DRIFT_PCT="${SNAPSHOT_DRIFT_PCT:-50}"
@@ -134,7 +137,7 @@ verify_stack() {
   if ! $dc build "$SERVICE" >"$SNAP_ROOT/build-$proj.log" 2>&1; then
     log "  BUILD FAILED — see $SNAP_ROOT/build-$proj.log"; tail -4 "$SNAP_ROOT/build-$proj.log" | sed 's/^/    /' | tee -a "$REPORT"; return 1
   fi
-  log "  [3/5] up -d"; $dc up -d "$SERVICE" db >/dev/null 2>&1
+  log "  [3/5] up -d"; $dc up -d "$SERVICE" "$DB_SERVICE" >/dev/null 2>&1
 
   log "  [4/5] waiting for install (sentinel or homepage, ${INSTALL_TIMEOUT}s)"
   local cid code="" waited=0

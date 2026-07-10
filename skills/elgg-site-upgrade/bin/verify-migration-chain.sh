@@ -94,8 +94,21 @@ fi
 [ ${#STACKS[@]} -ge 2 ] || { echo "need >=2 tiers to chain" >&2; exit 2; }
 
 want_next() { [ ${#WANT_NEXT[@]} -eq 0 ] && return 0; for w in "${WANT_NEXT[@]}"; do [ "$w" = "$1" ] && return 0; done; return 1; }
-app_c() { echo "$1-$SERVICE-1"; }
-db_c()  { echo "$1-$DB_SERVICE-1"; }
+# Ask compose for the container id rather than rebuilding its v2 naming scheme
+# ("<project>-<service>-1"). That convention breaks the moment a stack sets
+# container_name:, or compose changes the separator. Fall back to the convention
+# when compose cannot answer (e.g. the project is down).
+_resolve_c() {
+  local proj="$1" svc="$2" id
+  id="$(docker compose --project-name "$proj" ps -q "$svc" 2>/dev/null | head -n1)"
+  if [ -n "$id" ]; then
+    docker inspect -f '{{.Name}}' "$id" 2>/dev/null | sed 's|^/||'
+  else
+    echo "${proj}-${svc}-1"
+  fi
+}
+app_c() { _resolve_c "$1" "$SERVICE"; }
+db_c()  { _resolve_c "$1" "$DB_SERVICE"; }
 
 dc_for() {
   local dir="$1" proj="$2" args="-f $dir/docker-compose.yml"
