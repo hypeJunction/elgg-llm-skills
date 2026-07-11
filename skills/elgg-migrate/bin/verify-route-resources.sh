@@ -50,21 +50,32 @@ fi
 
 found=0
 
+# A resource view may live under ANY viewtype, not only default. AJAX endpoints
+# ship views/json/resources/<name>.php and are fetched with ?view=json (e.g.
+# hypenotifications' ajax:notifications:ticker). Checking only views/default
+# reported those as broken (bd elgg-migrate-ckn0c). Glob every viewtype.
+has_resource_in() {  # $1 = a root dir (plugin/core), $2 = resource name
+  local root="$1" resource="$2" vt
+  for vt in "$root"/views/*/resources/"$resource".php; do
+    [ -f "$vt" ] && return 0
+  done
+  return 1
+}
+
 resource_view_exists() {
-  local plugin_root="$1" resource="$2" rel="views/default/resources/${2}.php"
-  [ -f "$plugin_root/$rel" ] && return 0
+  local plugin_root="$1" resource="$2"
+  has_resource_in "$plugin_root" "$resource" && return 0
   # a plugin may legitimately point at another plugin's / core's resource view
   if [ -n "$CORE_DIR" ]; then
-    [ -f "$CORE_DIR/$rel" ] && return 0
-    [ -f "$CORE_DIR/views/default/resources/${resource}.php" ] && return 0
+    has_resource_in "$CORE_DIR" "$resource" && return 0
     local m
     for m in "$CORE_DIR"/mod/*/; do
-      [ -f "$m$rel" ] && return 0
+      has_resource_in "$m" "$resource" && return 0
     done
   fi
   local other
   for other in "$PLUGINS_DIR"/*/; do
-    [ -f "$other$rel" ] && return 0
+    has_resource_in "$other" "$resource" && return 0
   done
   return 1
 }
