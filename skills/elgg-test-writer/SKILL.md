@@ -46,6 +46,7 @@ does not depend on the elgg-migrate skill for infrastructure. After
       templates/BaselineTest.php.template   # tests-first: GREEN before + after (behavior net)
       templates/RegressionTest.php.template # static guard for recurring 7.x fatals
       templates/MigrationRegressionTest.php.template # tests-first: RED before, GREEN after (per-target failure classes)
+      templates/PerformanceRegressionTest.php.template # query-cost gate: Handler_read_next per entity shape vs .perf-baseline.json
       templates/DEVELOPMENT.md  # plugin-level testing docs template
       references/ci/            # GitHub Actions workflow templates
       references/regression-classes.md      # bug-class → assertion map
@@ -183,7 +184,7 @@ $SKILL/bin/scaffold-smoke-tests.sh --target-version=elgg7
 
 The script statically parses `elgg-plugin.php` (no Elgg bootstrap needed),
 infers the **current** major from the `elgg/elgg` composer constraint and the
-**target** major (current + 1, or `--target-version`), and writes four files:
+**target** major (current + 1, or `--target-version`), and writes up to five files:
 
 | File | Boot? | Role in the RED→GREEN cycle |
 |------|-------|-----------------------------|
@@ -191,6 +192,7 @@ infers the **current** major from the `elgg/elgg` composer constraint and the
 | `tests/phpunit/integration/BaselineTest.php` | yes (current stack) | **GREEN before AND after.** Captures the observable behavior the migration must preserve. |
 | `tests/phpunit/unit/RegressionTest.php` | no (static scan) | Standing 7.x fatal guard (signature-incompat, null-title, add_translation, removed instance method, orphaned css). |
 | `tests/phpunit/integration/SmokeTest.php` | yes (target stack) | Post-migration proof: registered, activates, actions registered, entity classes bind. |
+| `tests/phpunit/integration/PerformanceRegressionTest.php` | yes (target stack) | **Query-cost gate** (only when the plugin owns entities). Measures `Handler_read_next` for each of the plugin's entity shapes (delta method — no elevated DB privilege) and fails if it drifts >25% over a committed `tests/.perf-baseline.json`. First run records the baseline (skips + writes `.observed`); commit it to arm the gate. The per-plugin companion to the elgg-benchmark skill and `migrate.php --benchmark`. |
 
 ### The tests-first cycle (mandatory for migrations)
 

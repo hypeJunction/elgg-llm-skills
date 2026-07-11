@@ -8,11 +8,12 @@
 # If --plugin-dir is omitted, the current working directory is used (must
 # contain elgg-plugin.php).
 #
-# The script writes FOUR files:
+# The script writes FIVE files:
 #   <plugin>/tests/phpunit/integration/SmokeTest.php            (post-migration proof)
 #   <plugin>/tests/phpunit/integration/BaselineTest.php         (GREEN before + after)
 #   <plugin>/tests/phpunit/unit/RegressionTest.php             (7.x static guard)
 #   <plugin>/tests/phpunit/unit/MigrationRegressionTest.php     (RED before, GREEN after)
+#   <plugin>/tests/phpunit/integration/PerformanceRegressionTest.php (query-cost gate; entities only)
 #
 # TESTS-FIRST: BaselineTest + MigrationRegressionTest are generated so a
 # migration can prove RED→GREEN. Run them BEFORE changing any plugin code:
@@ -244,6 +245,32 @@ if [ -f "$mig_template" ]; then
     fi
 fi
 
+# --- PerformanceRegressionTest: integration test that locks the Handler_read_next
+# cost of this plugin's own entity shapes against tests/.perf-baseline.json, so a
+# later index/getter change can't silently 10x the row scan. Boots Elgg; uses the
+# delta method (no elevated DB privilege). Only meaningful when the plugin owns
+# entities — with none, the test skips itself. ---
+perf_template="$SKILL_ROOT/templates/PerformanceRegressionTest.php.template"
+perf_dst="$plugin_dir/tests/phpunit/integration/PerformanceRegressionTest.php"
+perf_written=""
+if [ -f "$perf_template" ] && [ -n "$entity_rows" ]; then
+    if [ -e "$perf_dst" ] && [ "$force" -ne 1 ]; then
+        echo "skip (exists): ${perf_dst#$plugin_dir/} — use --force to overwrite"
+    else
+        mkdir -p "$plugin_dir/tests/phpunit/integration"
+        sed \
+            -e "s|__PLUGIN_ID__|$plugin_id|g" \
+            -e "s|__PLUGIN_NAMESPACE__|$plugin_ns|g" \
+            "$perf_template" > "$perf_dst.tmp"
+        awk -v entities="$entity_rows" '
+            /__ENTITY_ROWS__/  { print entities; next }
+            { print }
+        ' "$perf_dst.tmp" > "$perf_dst"
+        rm -f "$perf_dst.tmp"
+        perf_written="${perf_dst#$plugin_dir/}"
+    fi
+fi
+
 action_count="$(printf '%s' "$action_rows" | grep -c '^' || true)"
 entity_count="$(printf '%s' "$entity_rows" | grep -c '^' || true)"
 [ -z "$action_rows" ] && action_count=0
@@ -260,6 +287,7 @@ smoke          = ${dst#$plugin_dir/}
 baseline       = ${base_written:-"(skipped)"}
 regression     = ${reg_written:-"(skipped)"}
 migration      = ${mig_written:-"(skipped)"}
+performance    = ${perf_written:-"(skipped)"}
 
 TESTS-FIRST — run these BEFORE changing any plugin code:
   cd "$plugin_dir"
