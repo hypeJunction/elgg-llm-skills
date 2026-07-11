@@ -4,8 +4,14 @@ A reproducible, clean-container before/after benchmark for adding a composite in
 on `metadata (entity_guid, name)`, mirroring the long-standing `entity_guid_name`
 index on the `annotations` table.
 
-The matching migration is
-`engine/schema/migrations/20260711120000_add_entity_guid_name_index_to_metadata.php`.
+The change under test is the committed DDL in `sql/03_add_index.sql` (the same
+`ALTER TABLE … ADD INDEX entity_guid_name (entity_guid, name(255))` run here).
+That DDL corresponds to a schema migration for **Elgg core** —
+`engine/schema/migrations/…_add_entity_guid_name_index_to_metadata.php` — which
+belongs upstream (proposed as an Elgg PR), not vendored in this repo: this
+toolkit does not carry core migrations (see the project's no-upstream-core-patches
+policy). The benchmark exists to justify that upstream change; `03_add_index.sql`
+is its authoritative, version-controlled form here.
 
 ## Why this index
 

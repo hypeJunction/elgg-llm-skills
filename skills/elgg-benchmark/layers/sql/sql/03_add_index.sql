@@ -1,7 +1,9 @@
--- The fix under test. This mirrors, byte-for-byte, the index created by
--- engine/schema/migrations/20260711120000_add_entity_guid_name_index_to_metadata.php
--- (composite on entity_guid + name, name prefixed to 255 chars to match its
--- sibling `entity_guid_name` index on the annotations table).
+-- The change under test (authoritative, version-controlled form). It is the DDL
+-- for a proposed Elgg CORE migration
+-- (engine/schema/migrations/..._add_entity_guid_name_index_to_metadata.php),
+-- which lives upstream rather than in this toolkit — composite on entity_guid +
+-- name, name prefixed to 255 chars to match the sibling `entity_guid_name` index
+-- already on the annotations table.
 USE bench;
 
 ALTER TABLE metadata ADD INDEX entity_guid_name (entity_guid, name(255));
