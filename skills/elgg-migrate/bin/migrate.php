@@ -81,7 +81,9 @@ if (count($args) < 2) {
     fwrite(STDERR, "                          flags inspect only. A bare invocation applies by default.\n");
     fwrite(STDERR, "  --check                 Only run the incomplete-migration check (scans for prior-version\n");
     fwrite(STDERR, "                          patterns left over after a previous migration attempt). Exit 0 if\n");
-    fwrite(STDERR, "                          none; exit 6 if findings.\n");
+    fwrite(STDERR, "                          none; exit 6 if findings. NOT a substitute for --verify: it only\n");
+    fwrite(STDERR, "                          finds leftover shapes for the detected step, not the full removed-\n");
+    fwrite(STDERR, "                          symbol / changed-contract catalog. Use --verify for that.\n");
     fwrite(STDERR, "  --strict-completeness   After migration, fail if any source-version patterns remain.\n");
     fwrite(STDERR, "                          Best paired with --verify.\n");
     fwrite(STDERR, "  --report                Show LLM instructions for manual rules\n");
