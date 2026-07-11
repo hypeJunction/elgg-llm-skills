@@ -316,7 +316,10 @@ resolve_deps() {
 
 cmd_resolve() {
   local plugin="${1:?plugin id required}"
-  local src; src="$(config_get plugins_source)"
+  # Honor the ELGG_MIGRATE_PLUGINS override like every other command; reading the
+  # cached config directly here made `test`/`resolve` ignore the env var and look in
+  # the wrong workspace (e.g. testing a plugin that lives under a site's mod/ dir).
+  local src; src="$(resolve_plugins_source)"
   [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
   local pdir="$src/$plugin"
   is_plugin_dir "$pdir" || { echo "not a plugin: $pdir" >&2; exit 1; }
@@ -502,7 +505,10 @@ cmd_up() {
     elgg2|elgg3|elgg4|elgg5|elgg6|elgg7) ;;
     *) echo "unknown --version: $version (expected elgg2|elgg3|elgg4|elgg5|elgg6|elgg7)" >&2; exit 2 ;;
   esac
-  local src; src="$(config_get plugins_source)"
+  # Honor the ELGG_MIGRATE_PLUGINS override (resolve_plugins_source), not the cached
+  # config alone — otherwise `up`/`test` ignore the env var and look in the wrong
+  # workspace (e.g. a plugin that lives under a site's mod/ dir, not the config'd one).
+  local src; src="$(resolve_plugins_source)"
   [[ -n "$src" ]] || { echo "run 'elgg-migrate-run init' first" >&2; exit 1; }
   local pdir="$src/$plugin"
   is_plugin_dir "$pdir" || { echo "not a plugin: $pdir" >&2; exit 1; }
