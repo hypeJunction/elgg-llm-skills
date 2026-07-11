@@ -164,9 +164,14 @@ $discover = function () use ($svc, $read) {
 $d = $discover();
 
 // Run everything as a normal logged-in user so the access WHERE clauses are
-// exercised (realistic), not bypassed.
+// exercised (realistic), not bypassed. Fetch under IGNORE_ACCESS: discover()
+// found the guid that way, and against real data get_entity() can otherwise
+// return null (access-controlled before login), which would fatal here.
 if ($d['user_guid']) {
-	$svc->session_manager->setLoggedInUser(get_entity($d['user_guid']));
+	$user = elgg_call(ELGG_IGNORE_ACCESS, fn() => get_entity($d['user_guid']));
+	if ($user instanceof \ElggUser) {
+		$svc->session_manager->setLoggedInUser($user);
+	}
 }
 
 // ---------------------------------------------------------------------------
