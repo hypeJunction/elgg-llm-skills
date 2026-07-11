@@ -81,8 +81,9 @@ harness iterates.
 
 ## Building the runnable set
 
-`layers/api/shapes.php` turns each shape into a concrete callable against seeded
-data (resolving `$guid`/`$container`/`$owner` to real seeded GUIDs of the right
-type/subtype). The harness runs each shape under `FLUSH STATUS` →
-`SHOW SESSION STATUS LIKE 'Handler_read_%'`, records the plan-relevant counters
-and wall-clock, and diffs before/after the change under test.
+`layers/api/bench.php` turns the head of this catalog into concrete callables
+against seeded data (resolving the subtype / owner / metadata name+value to real
+seeded values at runtime). It runs each shape under `FLUSH STATUS` →
+`SHOW SESSION STATUS LIKE 'Handler_read_%'`, adds the actual SQL time from
+`performance_schema` and a median wall-clock, and `report.php` diffs before/after
+the change under test.

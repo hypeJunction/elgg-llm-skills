@@ -1,0 +1,157 @@
+{
+    "iterations": 50,
+    "discovered": {
+        "subtype": "comment",
+        "owner_guid": 1367,
+        "md_name": "level",
+        "md_value": "1",
+        "entity_guid": 11901,
+        "user_guid": 45,
+        "guids": [
+            2283,
+            2288,
+            2290,
+            2309,
+            2316,
+            2319,
+            2331,
+            2342,
+            2350,
+            2361,
+            2373,
+            2379,
+            2400,
+            2416,
+            2421,
+            2429,
+            2432,
+            2449,
+            2454,
+            2461
+        ]
+    },
+    "server": "8.0.46",
+    "shapes": [
+        {
+            "id": "entities:type+subtype",
+            "md": false,
+            "rows": 20,
+            "handler_read_next": 54,
+            "handler_read_key": 76,
+            "handler_read_rnd_next": 0,
+            "db_ms": 3.57,
+            "median_ms": 3.786,
+            "p95_ms": 5.861
+        },
+        {
+            "id": "entities:type=user",
+            "md": false,
+            "rows": 20,
+            "handler_read_next": 1391,
+            "handler_read_key": 936,
+            "handler_read_rnd_next": 0,
+            "db_ms": 1.967,
+            "median_ms": 4.285,
+            "p95_ms": 6.555
+        },
+        {
+            "id": "entities:guids",
+            "md": false,
+            "rows": 20,
+            "handler_read_next": 345,
+            "handler_read_key": 386,
+            "handler_read_rnd_next": 0,
+            "db_ms": 0.962,
+            "median_ms": 2.55,
+            "p95_ms": 5.405
+        },
+        {
+            "id": "entities:type+subtype+owner",
+            "md": false,
+            "rows": 20,
+            "handler_read_next": 112,
+            "handler_read_key": 76,
+            "handler_read_rnd_next": 0,
+            "db_ms": 0.813,
+            "median_ms": 1.771,
+            "p95_ms": 3.613
+        },
+        {
+            "id": "count_entities:type+subtype",
+            "md": false,
+            "rows": 6294,
+            "handler_read_next": 6308,
+            "handler_read_key": 16,
+            "handler_read_rnd_next": 0,
+            "db_ms": 5.911,
+            "median_ms": 6.185,
+            "p95_ms": 8.418
+        },
+        {
+            "id": "entities:type+subtype+md_name",
+            "md": true,
+            "rows": 20,
+            "handler_read_next": 6348,
+            "handler_read_key": 6370,
+            "handler_read_rnd_next": 6295,
+            "db_ms": 15.348,
+            "median_ms": 17.033,
+            "p95_ms": 19.604
+        },
+        {
+            "id": "entities:type+subtype+md_nvp",
+            "md": true,
+            "rows": 20,
+            "handler_read_next": 6348,
+            "handler_read_key": 6370,
+            "handler_read_rnd_next": 6295,
+            "db_ms": 15.387,
+            "median_ms": 17.25,
+            "p95_ms": 19.735
+        },
+        {
+            "id": "entities:type+subtype+owner+md_nvp",
+            "md": true,
+            "rows": 20,
+            "handler_read_next": 112,
+            "handler_read_key": 134,
+            "handler_read_rnd_next": 59,
+            "db_ms": 0.843,
+            "median_ms": 1.88,
+            "p95_ms": 3.34
+        },
+        {
+            "id": "count_entities:type+subtype+md_nvp",
+            "md": true,
+            "rows": 6294,
+            "handler_read_next": 6308,
+            "handler_read_key": 6310,
+            "handler_read_rnd_next": 0,
+            "db_ms": 10.74,
+            "median_ms": 10.365,
+            "p95_ms": 11.815
+        },
+        {
+            "id": "metadata:guid+md_name",
+            "md": true,
+            "rows": 0,
+            "handler_read_next": 59,
+            "handler_read_key": 17,
+            "handler_read_rnd_next": 0,
+            "db_ms": 0.378,
+            "median_ms": 0.402,
+            "p95_ms": 1.19
+        },
+        {
+            "id": "metadata:guid",
+            "md": true,
+            "rows": 45,
+            "handler_read_next": 59,
+            "handler_read_key": 62,
+            "handler_read_rnd_next": 0,
+            "db_ms": 0.509,
+            "median_ms": 0.685,
+            "p95_ms": 1.225
+        }
+    ]
+}

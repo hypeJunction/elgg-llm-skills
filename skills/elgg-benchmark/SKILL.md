@@ -99,15 +99,21 @@ there).
 ### Step 3 — measure before / after
 
 ```bash
-./bin/bench.sh --before                 # runs every shape in shapes.php under FLUSH STATUS + SHOW STATUS
-elgg-cli migrate                        # or apply the specific migration under test
-./bin/bench.sh --after
-./bin/report.sh                         # per-shape Handler-counter + wall-clock diff, head-weighted
+./bin/bench.sh          # drops the index, runs bench.php; adds the index, runs again; prints the diff
 ```
 
-`shapes.php` resolves each shape to a concrete `elgg_get_*()` call against seeded
-GUIDs of the right type/subtype. The report leads with the shapes flagged `MD`
-(the ~45% that hit metadata by `(entity_guid, name)`).
+`bench.php` discovers concrete seeded GUIDs (a populous subtype, an owner, a real
+metadata name/value pair) and runs the head of the query-shape catalog through
+`elgg_get_*()`. For each shape it records three things:
+
+- **`Handler_read_next`** — rows the engine walked (deterministic headline),
+- **query ms** — actual SQL time from `performance_schema`, isolated from PHP,
+- **wall ms** — the full `elgg_get_*()` cost, median over N iterations.
+
+`report.php` diffs the before/after JSON and leads with the shapes flagged `MD`
+(the ~45% that hit metadata by `(entity_guid, name)`). A worked run is in
+`examples/api-metadata-index/` — the metadata-fetch shapes drop **−83/−84%** SQL
+time; it also surfaced a count-query edge case on a non-selective value.
 
 ## Infra
 
@@ -130,7 +136,8 @@ elgg-benchmark/
   infra/docker-compose.yml          clean CI-matrix containers (shared)
   layers/
     sql/  run.sh, sql/*.sql          index/query micro-benchmark
-    api/  bin/*.sh, shapes.php        native-seed + query-shape benchmark
+    api/  bench.php, report.php,      native-seed + query-shape benchmark
+          bin/{up,seed,bench}.sh
   references/  methodology, query-shapes, site-profile
-  examples/    worked results
+  examples/    metadata-entity-guid-name (SQL), api-metadata-index (API)
 ```
