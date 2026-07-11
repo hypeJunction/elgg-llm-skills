@@ -755,6 +755,31 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
 - **Test-to-write:** unit — assert the source contains no cross-table OR and that a miss is cached.
 - **gate:** NO (perf) · **Sources:** bodyology 2026-07-10 (hypeseo 7.0.6, bd elgg-migrate-xhigk)
 
+### FC-ALL-17 — A plugin ACTIVE on the source is INACTIVE on the migrated site (silent feature loss)
+- **THE FIRST CHECK when any feature is reported missing.** Run
+  `elgg-site-upgrade/bin/verify-plugin-composition.sh --source-tsv <prod-active.tsv> --target-db <db>`
+  and diff the active plugin set of the migrated site against production.
+- **Why first:** Elgg boots each active plugin in a try/catch; an uncaught error at boot flips that
+  plugin's `active_plugin` relationship OFF. So a plugin active on the source but inactive on the
+  target is the loudest signal of a migration fatal — and it removes that plugin's ENTIRE feature
+  surface (routes, actions, views, hooks) with no 500 anywhere. The feature is simply gone.
+- **Two causes, both surfaced by the script:**
+  - **Boot fatal:** the plugin errored on 7.x boot and was auto-disabled. Reproduce with
+    `elgg-cli plugins:activate <id>` (prints the fatal) and fix it.
+  - **Restore gap:** it was never re-activated when the prod active set was restored into the
+    migrated DB (not on disk at restore time, or an id-case mismatch). Re-activate — then confirm
+    it STAYS active after `cache:clear` + a fresh boot, because a boot fatal re-disables it.
+- **On bodyology (2026-07-11):** `hypestash` and `hypeinvite` were present-on-disk but inactive —
+  a restore gap, not a fatal (they boot clean and stay active once activated). The invitations
+  feature was silently absent. Twelve more source-active plugins are ABSENT from the 7.x disk —
+  all 2.x-era plugins removed or absorbed into 7.x core (notifications, embed, htmlawed,
+  legacy_urls, aalborg_theme, diagnostics, log tools); expected cross-version, feature-covered by
+  core.
+- **Test-to-write:** integration — assert the migrated active-plugin set ⊇ (source active set ∩
+  on-disk), lowercased.
+- **gate:** `verify-plugin-composition.sh` · **Sources:** bodyology 2026-07-11 (user directive:
+  make this the first triage step)
+
 ## Known data-file refinements
 
 - **RESOLVED 2026-07-08 — removal-version placement is now core-verified.** A

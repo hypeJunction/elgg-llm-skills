@@ -1003,6 +1003,27 @@ of them means production isn't ready:
 
 When all of these hold, the migration branches are ready for Part B.
 
+## FIRST when a feature is missing: diff the active plugin set
+
+Before debugging any "feature X is gone" report, run:
+
+```
+bin/verify-plugin-composition.sh --source-tsv <prod-active-plugins.tsv> --target-db <migrated-db>
+```
+
+Elgg boots each active plugin in a try/catch and **auto-disables any plugin that throws at boot**.
+So a plugin that is active on production but inactive on the migrated site is the single loudest
+signal of a migration fatal — and it silently removes that plugin's whole feature surface (routes,
+actions, views, hooks) with no 500 to point at. Two causes:
+
+- **Boot fatal** — `elgg-cli plugins:activate <id>` reproduces the error; fix it, re-activate.
+- **Restore gap** — it was never re-activated when prod's active set was restored (not on disk at
+  restore time, or an id-case mismatch). Re-activate, then confirm it STAYS active after a
+  cache clear + fresh boot (a boot fatal re-disables it).
+
+A plugin ABSENT from the target disk is usually a 2.x plugin removed/absorbed into 7.x core —
+confirm the feature is covered by core, then ignore. See FC-ALL-17 in the elgg-migrate catalog.
+
 ## Finish the upgrades Elgg deleted
 
 Run this against the migrated database, at every tier and again at the end:
