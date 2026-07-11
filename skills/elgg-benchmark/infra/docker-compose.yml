@@ -1,0 +1,53 @@
+# Clean, throwaway DB containers for the metadata (entity_guid, name) index benchmark.
+# Ports are NOT published to the host to avoid clashing with other local databases;
+# the runner execs the client inside each container. Data lives in tmpfs so every
+# `up` starts from a pristine, empty server (no persisted state between runs).
+name: elgg-idx-bench
+
+x-common: &common
+  restart: "no"
+  tmpfs:
+    - /var/lib/mysql
+  environment:
+    MYSQL_ROOT_PASSWORD: root
+    MYSQL_DATABASE: bench
+  # A large buffer pool so the 1M-row dataset lives fully in memory: we are
+  # measuring index access-path efficiency, not disk I/O.
+  command: ["--innodb-buffer-pool-size=1G"]
+
+services:
+  mysql80:
+    <<: *common
+    image: mysql:8.0
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mysql84:
+    <<: *common
+    image: mysql:8.4
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mariadb106:
+    <<: *common
+    image: mariadb:10.6
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mariadb1011:
+    <<: *common
+    image: mariadb:10.11
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
