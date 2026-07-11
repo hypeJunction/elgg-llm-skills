@@ -75,6 +75,26 @@ For each engine the runner boots a clean container, installs the exact pre-fix s
 migration), measures AFTER, and writes a per-engine report to `results/<engine>.txt`.
 A consolidated summary lives in `RESULTS.md`.
 
+## Real-data variant — `bench-real-db.sh`
+
+`run.sh` uses a formula-generated seed (fixed, portable, matrix-wide). When you
+have an actual site database and want the index proven against its **real**
+per-entity fan-out, use `bench-real-db.sh` instead. It dumps one table from a
+live Elgg DB into the same kind of clean throwaway container and replays the
+`getIDsByName` shape over the site's real `(entity_guid, name)` pairs. The live
+DB is read-only (dump only); it is never modified.
+
+```bash
+./bench-real-db.sh <source-container> [db] [prefix]
+# e.g. ./bench-real-db.sh bodyology7x-db-1 elgg elgg_
+```
+
+Same verdict rule (`Handler_read_*` delta + `EXPLAIN`). A captured run against a
+real 208k-row production `metadata` table (`Handler_read_next` 57,225 → 0) lives
+in `../../examples/metadata-real-bodyology/`. Use the synthetic `run.sh` to prove
+the mechanism across the full engine matrix; use `bench-real-db.sh` to confirm it
+on a specific site's real data (single engine).
+
 ## Files
 
 | File | Role |
@@ -84,7 +104,8 @@ A consolidated summary lives in `RESULTS.md`.
 | `sql/01_seed.sql` | Deterministic 1M-row seed + `point_lookups` workload |
 | `sql/02_measure.sql` | EXPLAIN + Handler-counter measurement (run before and after) |
 | `sql/03_add_index.sql` | The index under test (mirrors the migration) |
-| `run.sh` | Orchestrates the full matrix and captures results |
+| `run.sh` | Orchestrates the full matrix and captures results (synthetic seed) |
+| `bench-real-db.sh` | Real-data variant: dump one table from a live site DB and measure |
 | `RESULTS.md` | Captured before/after data |
 
 ## Methodology references

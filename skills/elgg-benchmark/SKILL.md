@@ -62,6 +62,12 @@ The shipped example proves the `metadata (entity_guid, name)` composite index:
 `EXPLAIN` switches from `entity_guid` (20 rows/scan) to `entity_guid_name`
 (1 row) — identically on all four engines (`examples/metadata-entity-guid-name/`).
 
+To prove the same index against a **real** site's actual table (real GUIDs and
+per-entity fan-out, not a formula seed), use `layers/sql/bench-real-db.sh`, which
+dumps one table from a live Elgg DB into a clean throwaway container. A captured
+run against a real 208k-row production `metadata` table (`Handler_read_next`
+57,225 → 0) is in `examples/metadata-real-bodyology/`.
+
 To benchmark a different change: edit `layers/sql/sql/00_schema.sql` (the pre-change
 table), `01_seed.sql` (the deterministic numbers-table seed), `02_measure.sql`
 (the query + `FLUSH STATUS`/`SHOW STATUS`), and `03_add_index.sql` (the DDL, which
@@ -126,7 +132,8 @@ exec'd inside the containers, so it never clashes with other local databases).
 - `references/methodology.md` — why deterministic-first, and how to measure it
 - `references/query-shapes.md` — the ranked query-shape catalog
 - `references/site-profile.md` — production baseline + native-seed sizing
-- `examples/metadata-entity-guid-name/` — a complete worked before/after result
+- `examples/metadata-entity-guid-name/` — a complete worked before/after result (synthetic matrix)
+- `examples/metadata-real-bodyology/` — the same index proven on a real 208k-row site table
 
 ## Layout
 
