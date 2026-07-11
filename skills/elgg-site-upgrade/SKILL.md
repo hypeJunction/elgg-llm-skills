@@ -601,6 +601,52 @@ passing count must match the baseline from Part A's test phase. See
 pitfalls (hypeWall interception, foreach-by-reference crashes, OPcache
 stale code).
 
+**Query-performance parity (the gate render parity can't see).** Render parity
+is GET-status only: a route that scans 10× the rows it used to still returns
+200, so status parity stays green while the site silently gets slower. A version
+step can regress query plans without touching a single route — a core schema
+change (e.g. 4.x absorbed `private_settings` into `metadata`, widening every
+per-entity scan), a getter rewrite, or a dropped/renamed index. Catch it with
+the **elgg-benchmark** skill's API layer, which runs the real Elgg query shapes
+against the site and reports the deterministic `Handler_read_*` per shape.
+
+`bench.php` runs the shapes from an installed Elgg root and prints one JSON
+snapshot; `report.php` diffs two snapshots. Capture one on each stack (same
+seeded data, only the version differs) and diff:
+
+`bench.php` needs a DB user with `RELOAD` (for `FLUSH STATUS`) and `SELECT` +
+`DROP` on `performance_schema` (it truncates the statement digest to isolate SQL
+time). The benchmark's own `layers/api/bin/up.sh` connects Elgg as `root`, which
+has these; the upgrade infra stacks connect as the lower-privilege `elgg` user,
+so grant them on each throwaway stack first (throwaway DBs — safe to widen):
+
+```bash
+API=skills/elgg-benchmark/layers/api
+mkdir -p results
+GRANT="GRANT RELOAD ON *.* TO 'elgg'@'%'; GRANT SELECT, DROP ON performance_schema.* TO 'elgg'@'%'; FLUSH PRIVILEGES;"
+
+# BEFORE the step — on the {from} stack:
+docker exec <from-db> mysql -uroot -p<root-pw> -e "$GRANT"
+docker cp $API/bench.php <from-app>:/var/www/html/bench_api.php
+docker exec -w /var/www/html <from-app> php bench_api.php 30 > results/before.json
+
+# AFTER booting the {to} stack — same site, upgraded:
+docker exec <to-db> mysql -uroot -p<root-pw> -e "$GRANT"
+docker cp $API/bench.php <to-app>:/var/www/html/bench_api.php
+docker exec -w /var/www/html <to-app> php bench_api.php 30 > results/after.json
+
+php $API/report.php results/before.json results/after.json
+```
+
+The verdict is the `Handler_read_next` delta on the metadata-hitting (MD) shapes
+— a material rise there with no intended schema change is a regression: find the
+dropped index or the getter that stopped using one, fix it, re-run. A *fall*
+(e.g. because the step added the `metadata (entity_guid, name)` index) is the
+win you're proving. Run against the same seeded data on both stacks so only the
+version differs (Iron Law: before/after on identical data). See
+`skills/elgg-benchmark/SKILL.md` (Layer 2) and its
+`examples/api-metadata-index/` for a worked before/after.
+
 When any gate fails, fix it in the workspace, commit the fix, and re-run
 the failing gate. Don't mask failures by commenting tests out.
 
