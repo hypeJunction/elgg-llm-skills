@@ -369,6 +369,7 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | `--verify` | Run the failure-catalog gate: version-boundary checks PLUS ~29 concrete FC-* failure-class detectors (removed functions/constants, changed class contracts, hook-signature leftovers, ESM/jQuery/i18n residue, DBAL param bugs, …) from `references/migration-failure-catalog.md`. Treat a non-empty report as your ready-made worklist, not a prompt to go hunting. **READ-ONLY**: it inspects and never rewrites the plugin. To migrate *and* verify in one run, add `--apply`. |
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
 | `--audit` | Run `composer audit` for dependency CVEs |
+| `--benchmark` | Run the **performance gate**: if the plugin ships schema-changing DDL (a new index / table / column, in raw SQL or an `Elgg\Upgrade\Batch` schema-builder call) it must also ship committed **benchmark evidence** — a `benchmarks/` dir, a `*BENCHMARK*` file, or any report recording `Handler_read_next`. A schema change without evidence fails with exit **8**. Prove the change with the **elgg-benchmark** skill (deterministic `Handler_read_*` before/after) and commit the result. A plugin with no schema change passes trivially. **READ-ONLY** like the other gate flags; add `--apply` to migrate in the same run. |
 | `--no-guard` | Skip version guard validation (not recommended) |
 | `--require-tests` | **Default ON.** Tests-first gate — refuse to apply any transform unless the plugin ships a test suite (incl. `MigrationRegressionTest`) AND a passing baseline record exists. Exit **7** if missing. See "Tests-first (mandatory gate)" below. |
 | `--no-tests` | Escape hatch — skip the tests-first gate. **Logged loudly** to stderr (and to `$ELGG_MIGRATE_STATE/tests-bypass.log` if a state dir is set). Unsafe: there is no RED→GREEN proof the migration preserved behavior. |
@@ -386,6 +387,7 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | 5 | Dependency audit found critical/high CVEs |
 | 6 | Incomplete-migration check (`--check`) or `--strict-completeness` found leftover prior-version patterns |
 | 7 | **Tests-first gate failed** — no test suite / no `MigrationRegressionTest` / no passing baseline record. Migration refused before any file was touched. |
+| 8 | **Performance gate failed** (`--benchmark`) — the plugin ships schema-changing DDL but no committed benchmark evidence. Prove the change with the elgg-benchmark skill and commit the result. |
 
 ---
 
@@ -405,6 +407,7 @@ is the load-bearing part.
 | PHP syntax check clean | A file that doesn't parse will fail in production, not in tests |
 | PostMigrationVerifier passes (exit code ≠ 3) | Catches Iron Law 7 violations — version knowledge leakage |
 | SecuritySweep passes (exit code ≠ 4) | Legacy code carries security debt across version boundaries; this is the cheapest point to catch it |
+| PerformanceGate passes (exit code ≠ 8) | A plugin that adds an index/table/column changes query plans; the `--benchmark` gate refuses a schema change that ships no deterministic before/after measurement. Only applies when the plugin actually ships schema DDL |
 | Pre-migration tests adapted and passing on TARGET version | The regression safety net only works if it's *run* against the new code |
 | Plugin activates in Docker | Activation is the first real integration test — catches serialization, DI, and missing-dep issues |
 | Site renders (homepage AND login, >1000 bytes) | Activation-without-render means a hook crashed on page load; both pages are needed because the login flow has its own code path |

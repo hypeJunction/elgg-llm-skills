@@ -4,7 +4,7 @@
 /**
  * Run automated migration rules on a plugin directory.
  *
- * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--apply] [--report] [--no-guard] [--verify] [--security] [--no-tests]
+ * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--apply] [--report] [--no-guard] [--verify] [--security] [--audit] [--benchmark] [--no-tests]
  *
  * A TESTS-FIRST gate runs before any transform is applied (Iron Law 4): the plugin
  * must ship a test suite (incl. MigrationRegressionTest) AND a passing baseline
@@ -19,6 +19,7 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use ElggMigrate\DependencyAudit;
+use ElggMigrate\PerformanceGate;
 use ElggMigrate\PostMigrationVerifier;
 use ElggMigrate\RuleRunner;
 use ElggMigrate\SecuritySweep;
@@ -32,6 +33,7 @@ $noGuard = in_array('--no-guard', $args);
 $verify = in_array('--verify', $args);
 $security = in_array('--security', $args);
 $audit = in_array('--audit', $args);
+$benchmark = in_array('--benchmark', $args);
 $checkOnly = in_array('--check', $args);
 $strictCompleteness = in_array('--strict-completeness', $args);
 $apply = in_array('--apply', $args);
@@ -45,9 +47,9 @@ $apply = in_array('--apply', $args);
 //
 // So when a gate flag is present without an explicit --apply, force read-only. A
 // bare invocation (migrate-plugin.sh) and an explicit --apply still mutate.
-if (($verify || $security || $audit) && !$apply && !$dryRun && !$checkOnly) {
+if (($verify || $security || $audit || $benchmark) && !$apply && !$dryRun && !$checkOnly) {
     $dryRun = true;
-    fwrite(STDERR, "note: --verify/--security/--audit are read-only gates — inspecting without applying.
+    fwrite(STDERR, "note: --verify/--security/--audit/--benchmark are read-only gates — inspecting without applying.
 ");
     fwrite(STDERR, "      Pass --apply to run the migration as well.
 
@@ -238,7 +240,7 @@ if ($dryRun) {
     // the documented "Verify only" workflow is `--dry-run --verify`, and a gate
     // that reports violations but exits 0 is silently non-blocking in CI.
     $exitCode = 0;
-    if ($verify || $security || $audit) {
+    if ($verify || $security || $audit || $benchmark) {
         echo "\n";
     }
     if ($verify) {
@@ -255,6 +257,11 @@ if ($dryRun) {
     if ($audit) {
         if (!runDependencyAudit($pluginPath)) {
             $exitCode = max($exitCode, 5);
+        }
+    }
+    if ($benchmark) {
+        if (!runPerformanceGate($pluginPath)) {
+            $exitCode = max($exitCode, 8);
         }
     }
 
@@ -376,6 +383,14 @@ if ($audit) {
     }
 }
 
+// Performance gate — a plugin that ships schema DDL must ship benchmark evidence
+if ($benchmark) {
+    echo "\n";
+    if (!runPerformanceGate($pluginPath)) {
+        $exitCode = max($exitCode, 8);
+    }
+}
+
 exit($exitCode);
 
 // --- Helper functions ---
@@ -412,6 +427,37 @@ function runVerification(string $pluginPath, string $targetVersion): bool
     echo "\n" . count($errors) . " error(s), " . count($warnings) . " warning(s)\n";
 
     return count($errors) === 0;
+}
+
+function runPerformanceGate(string $pluginPath): bool
+{
+    echo "--- PERFORMANCE GATE (benchmark evidence for schema changes) ---\n\n";
+
+    $gate = new PerformanceGate();
+    $result = $gate->scan($pluginPath);
+
+    if (!$result->hasSchemaChange()) {
+        echo "✓ {$result->summary}\n";
+        return true;
+    }
+
+    echo "Schema-changing DDL:\n";
+    foreach ($result->findings as $f) {
+        echo "  • {$f['file']}:{$f['line']}  ({$f['ddl']})\n";
+    }
+    echo "\n";
+
+    if ($result->hasEvidence()) {
+        echo "Benchmark evidence:\n";
+        foreach ($result->evidence as $e) {
+            echo "  ✓ {$e}\n";
+        }
+        echo "\n✓ {$result->summary}\n";
+        return true;
+    }
+
+    echo "✗ {$result->summary}\n";
+    return false;
 }
 
 function runDependencyAudit(string $pluginPath): bool
