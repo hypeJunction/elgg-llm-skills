@@ -4,7 +4,7 @@
 /**
  * Run automated migration rules on a plugin directory.
  *
- * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--report] [--no-guard] [--verify] [--security] [--no-tests]
+ * Usage: php bin/migrate.php <manifest> <plugin-path> [--dry-run] [--apply] [--report] [--no-guard] [--verify] [--security] [--no-tests]
  *
  * A TESTS-FIRST gate runs before any transform is applied (Iron Law 4): the plugin
  * must ship a test suite (incl. MigrationRegressionTest) AND a passing baseline
@@ -13,7 +13,7 @@
  * Example:
  *   php bin/migrate.php rules/2x-to-3x/manifest.json tmp/hypeWall
  *   php bin/migrate.php rules/2x-to-3x/manifest.json tmp/hypeWall --dry-run
- *   php bin/migrate.php rules/3x-to-4x/manifest.json tmp/hypeWall --verify --security
+ *   php bin/migrate.php rules/3x-to-4x/manifest.json tmp/hypeWall --apply --verify --security
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -34,6 +34,25 @@ $security = in_array('--security', $args);
 $audit = in_array('--audit', $args);
 $checkOnly = in_array('--check', $args);
 $strictCompleteness = in_array('--strict-completeness', $args);
+$apply = in_array('--apply', $args);
+
+// --verify / --security / --audit are READ-ONLY gates: they inspect a plugin and
+// report, they must never rewrite it. They used to ride on the apply path, so a
+// sweep of `--verify` silently rewrote 260 files across the bodyology fleet, and
+// two preview images were built from the mutated tree before it was noticed
+// (bd elgg-migrate-fohyb). SKILL.md documents them as gates ("treat a non-empty
+// report as your worklist") — a gate must not write.
+//
+// So when a gate flag is present without an explicit --apply, force read-only. A
+// bare invocation (migrate-plugin.sh) and an explicit --apply still mutate.
+if (($verify || $security || $audit) && !$apply && !$dryRun && !$checkOnly) {
+    $dryRun = true;
+    fwrite(STDERR, "note: --verify/--security/--audit are read-only gates — inspecting without applying.
+");
+    fwrite(STDERR, "      Pass --apply to run the migration as well.
+
+");
+}
 
 // TESTS-FIRST gate (Iron Law 4). Defaults ON: no plugin code is mutated until a
 // regression safety net (test suite + captured baseline) is proven to exist.
@@ -57,6 +76,9 @@ if (count($args) < 2) {
     fwrite(STDERR, "Usage: php bin/migrate.php <manifest.json> <plugin-path> [flags]\n");
     fwrite(STDERR, "\nFlags:\n");
     fwrite(STDERR, "  --dry-run               Analyze only, don't modify files\n");
+    fwrite(STDERR, "  --apply                 Apply automated transforms even when a read-only gate flag\n");
+    fwrite(STDERR, "                          (--verify/--security/--audit) is present. Without it, those\n");
+    fwrite(STDERR, "                          flags inspect only. A bare invocation applies by default.\n");
     fwrite(STDERR, "  --check                 Only run the incomplete-migration check (scans for prior-version\n");
     fwrite(STDERR, "                          patterns left over after a previous migration attempt). Exit 0 if\n");
     fwrite(STDERR, "                          none; exit 6 if findings.\n");

@@ -353,7 +353,7 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | Step | Command |
 |------|---------|
 | Analyze | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run` |
-| Apply + all gates | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --verify --security --audit` |
+| Apply + all gates | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --apply --verify --security --audit` |
 | LLM report | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --report` |
 | Verify only | `docker compose run --rm migrate bin/migrate.php rules/{from}-to-{to}/manifest.json /plugins/<plugin> --dry-run --verify --security --audit` |
 
@@ -362,10 +362,11 @@ After setting these, run `verify-plugin-branches.py` to confirm.
 | Flag | Purpose |
 |------|---------|
 | `--dry-run` | Analyze only, don't modify files |
+| `--apply` | Apply the automated transforms even when a read-only gate flag (`--verify`/`--security`/`--audit`) is present. A bare invocation applies by default; a gate flag alone does not. |
 | `--check` | Run **only** the incomplete-migration check: scan for prior-version patterns left over by an earlier migration attempt. Exit **0** if clean, **6** if findings. Shape-based version detection cannot see these — a plugin whose files look like 4.x can still carry 3.x hook signatures. |
 | `--strict-completeness` | After migrating, fail if any source-version patterns remain. Pair with `--verify`. |
 | `--report` | Show LLM instructions for manual rules |
-| `--verify` | Run the failure-catalog gate: version-boundary checks PLUS ~29 concrete FC-* failure-class detectors (removed functions/constants, changed class contracts, hook-signature leftovers, ESM/jQuery/i18n residue, DBAL param bugs, …) from `references/migration-failure-catalog.md`. Treat a non-empty report as your ready-made worklist, not a prompt to go hunting. |
+| `--verify` | Run the failure-catalog gate: version-boundary checks PLUS ~29 concrete FC-* failure-class detectors (removed functions/constants, changed class contracts, hook-signature leftovers, ESM/jQuery/i18n residue, DBAL param bugs, …) from `references/migration-failure-catalog.md`. Treat a non-empty report as your ready-made worklist, not a prompt to go hunting. **READ-ONLY**: it inspects and never rewrites the plugin. To migrate *and* verify in one run, add `--apply`. |
 | `--security` | Run security sweep (SQL injection, XSS, command injection, etc.) |
 | `--audit` | Run `composer audit` for dependency CVEs |
 | `--no-guard` | Skip version guard validation (not recommended) |

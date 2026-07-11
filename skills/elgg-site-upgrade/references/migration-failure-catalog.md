@@ -732,6 +732,29 @@ HAVING MAX(CASE WHEN m.name='is_completed' THEN m.value END) IN ('0') OR
 - **gate:** `verify-no-nested-core.sh` · **Sources:** bodyology 2026-07-10 (hypefaker 7.0.2,
   hypenotifications 7.0.5)
 
+### FC-ALL-16 — A cross-table `OR` in a hot query full-scans, and misses are never cached
+- **Detection (profile):** install `excimer` (`pecl install excimer`) in a THROWAWAY container and
+  sample the render. If `Doctrine\DBAL\Driver\PDO\Statement::execute` dominates self-time, it is
+  the database — no matter what the query COUNT says.
+- **Do not trust these three signals**, each of which misled us for hours:
+  - `Database::getQueryCount()` **undercounts** (43 reported, 116 actually executed —
+    `SHOW GLOBAL STATUS LIKE 'Questions'` before/after is the truth).
+  - a fast `SELECT 1` round trip (0.04ms) proves nothing about per-query EXECUTION time.
+  - the **slow query log needs `SET GLOBAL long_query_time`** and a reconnect; a session value of
+    10s silently records nothing. Prefer
+    `performance_schema.events_statements_summary_by_digest`, ordered by `SUM_TIMER_WAIT`, after
+    `TRUNCATE`-ing it — it gives per-digest ms, count, and `SUM_ROWS_EXAMINED`.
+- **The bug:** `WHERE a.x = :p OR a.y = :p OR b.z = :p`. An OR spanning tables cannot use an
+  index (`EXPLAIN` → `type=ALL, key=NULL`). Rewrite as a `UNION ALL` of individually-indexed
+  equality lookups resolving a primary key, then fetch by it.
+- **The multiplier:** a lookup that MISSES must cache the miss. hypeseo cached hits but not
+  misses, and Elgg renders many URLs with no SEF route — so every one re-ran a full scan of
+  11.7k rows, ~39 times per page, 126ms each: **4.9s of a 5.9s homepage render.**
+- **Measured:** 5.93s → 2.77s locally; deployed TTFB 3.9s → 1.57s, `/members` 1.83s → 0.46s,
+  `/gallery` 1.29s → 0.21s. Output byte-identical.
+- **Test-to-write:** unit — assert the source contains no cross-table OR and that a miss is cached.
+- **gate:** NO (perf) · **Sources:** bodyology 2026-07-10 (hypeseo 7.0.6, bd elgg-migrate-xhigk)
+
 ## Known data-file refinements
 
 - **RESOLVED 2026-07-08 — removal-version placement is now core-verified.** A
