@@ -16,6 +16,19 @@ x-common: &common
   command: ["--innodb-buffer-pool-size=1G"]
 
 services:
+  # MySQL 5.7 is still the version deployed on the reference production site, and
+  # its optimizer is the one that mis-plans the river listing (leads with an
+  # entities scan + temp table + filesort). 8.0+ already plans the JOIN form more
+  # sanely, so 5.7 is required to reproduce the production pathology.
+  mysql57:
+    <<: *common
+    image: mysql:5.7
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   mysql80:
     <<: *common
     image: mysql:8.0

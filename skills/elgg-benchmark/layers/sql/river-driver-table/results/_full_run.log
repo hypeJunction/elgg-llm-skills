@@ -1,0 +1,402 @@
+>>> mysql57
+ Network elgg-idx-bench_default Creating 
+ Network elgg-idx-bench_default Created 
+ Container elgg-idx-bench-mysql57-1 Creating 
+ Container elgg-idx-bench-mysql57-1 Created 
+ Container elgg-idx-bench-mysql57-1 Starting 
+ Container elgg-idx-bench-mysql57-1 Started 
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Table	Op	Msg_type	Msg_text
+bench.entities	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.river	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.metadata	analyze	status	OK
+river_rows	entity_rows	live_objects	metadata_rows
+4278	23000	11502	207030
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+# mysql57  (server: 5.7.44)
+
+## Result-set equivalence (access refactor must not change/leak rows)
+before ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+after  ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+verdict: IDENTICAL ✓
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### BEFORE — EXPLAIN (joins entities; optimizer picks the leading table)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	ALL	subject_guid,object_guid	NULL	NULL	NULL	4246	100.00	Using temporary; Using filesort
+1	PRIMARY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where; Distinct
+1	PRIMARY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.17	Using where; Distinct
+1	PRIMARY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using where; Distinct
+4	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+3	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+2	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+marker
+### BEFORE — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	2
+Handler_read_first	1
+Handler_read_key	16815
+Handler_read_next	193735
+Handler_read_rnd_next	6141
+Sort_rows	20
+Sort_scan	1
+```
+median wall-clock, 50 replays x3: 33.01s
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### AFTER — EXPLAIN (EXISTS semi-joins; river drives, posted index)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	index	NULL	posted	4	NULL	20	100.00	Using where
+8	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using index
+6	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.target_guid	1	12.50	Using where
+7	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+4	DEPENDENT SUBQUERY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.17	Using where
+5	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+2	DEPENDENT SUBQUERY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where
+3	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+marker
+### AFTER — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	1
+Handler_read_first	0
+Handler_read_key	207
+Handler_read_next	2160
+Handler_read_rnd_next	21
+Sort_rows	0
+Sort_scan	0
+```
+median wall-clock, 50 replays x3: 0.50s
+
+ Container elgg-idx-bench-mysql57-1 Stopping 
+ Container elgg-idx-bench-mysql57-1 Stopped 
+ Container elgg-idx-bench-mysql57-1 Removing 
+ Container elgg-idx-bench-mysql57-1 Removed 
+>>> mysql80
+ Container elgg-idx-bench-mysql80-1 Creating 
+ Container elgg-idx-bench-mysql80-1 Created 
+ Container elgg-idx-bench-mysql80-1 Starting 
+ Container elgg-idx-bench-mysql80-1 Started 
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Table	Op	Msg_type	Msg_text
+bench.entities	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.river	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.metadata	analyze	status	OK
+river_rows	entity_rows	live_objects	metadata_rows
+4278	23000	11502	207030
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+# mysql80  (server: 8.0.46)
+
+## Result-set equivalence (access refactor must not change/leak rows)
+before ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+after  ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+verdict: IDENTICAL ✓
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### BEFORE — EXPLAIN (joins entities; optimizer picks the leading table)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	index	subject_guid,object_guid	posted	4	NULL	2	100.00	Backward index scan; Using temporary
+1	PRIMARY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where; Distinct
+1	PRIMARY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.17	Using where; Distinct
+1	PRIMARY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists; Distinct
+1	PRIMARY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists; Distinct
+1	PRIMARY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using where; Distinct
+4	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+marker
+### BEFORE — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	2
+Handler_read_first	0
+Handler_read_key	136
+Handler_read_next	1200
+Handler_read_rnd_next	41
+Sort_rows	0
+Sort_scan	0
+```
+median wall-clock, 50 replays x3: 0.42s
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### AFTER — EXPLAIN (EXISTS semi-joins; river drives, posted index)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	index	NULL	posted	4	NULL	20	100.00	Using where; Backward index scan
+8	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using index
+6	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.target_guid	1	12.50	Using where
+6	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+4	DEPENDENT SUBQUERY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.17	Using where
+4	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+2	DEPENDENT SUBQUERY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where
+2	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+marker
+### AFTER — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	1
+Handler_read_first	0
+Handler_read_key	201
+Handler_read_next	1980
+Handler_read_rnd_next	21
+Sort_rows	0
+Sort_scan	0
+```
+median wall-clock, 50 replays x3: 0.64s
+
+ Container elgg-idx-bench-mysql80-1 Stopping 
+ Container elgg-idx-bench-mysql80-1 Stopped 
+ Container elgg-idx-bench-mysql80-1 Removing 
+ Container elgg-idx-bench-mysql80-1 Removed 
+>>> mysql84
+ Container elgg-idx-bench-mysql84-1 Creating 
+ Container elgg-idx-bench-mysql84-1 Created 
+ Container elgg-idx-bench-mysql84-1 Starting 
+ Container elgg-idx-bench-mysql84-1 Started 
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Table	Op	Msg_type	Msg_text
+bench.entities	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.river	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.metadata	analyze	status	OK
+river_rows	entity_rows	live_objects	metadata_rows
+4278	23000	11502	207030
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+# mysql84  (server: 8.4.10)
+
+## Result-set equivalence (access refactor must not change/leak rows)
+before ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+after  ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+verdict: IDENTICAL ✓
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### BEFORE — EXPLAIN (joins entities; optimizer picks the leading table)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	index	subject_guid,object_guid	posted	4	NULL	2	100.00	Backward index scan; Using temporary
+1	PRIMARY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where; Distinct
+1	PRIMARY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.18	Using where; Distinct
+1	PRIMARY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists; Distinct
+1	PRIMARY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists; Distinct
+1	PRIMARY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using where; Distinct
+4	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	0.17	Using where
+marker
+### BEFORE — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	2
+Handler_read_first	0
+Handler_read_key	136
+Handler_read_next	1200
+Handler_read_rnd_next	41
+Sort_rows	0
+Sort_scan	0
+```
+median wall-clock, 50 replays x3: 0.36s
+
+```
+mysql: [Warning] Using a password on the command line interface can be insecure.
+marker
+### AFTER — EXPLAIN (EXISTS semi-joins; river drives, posted index)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	rv	NULL	index	NULL	posted	4	NULL	20	100.00	Using where; Backward index scan
+8	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	100.00	Using index
+6	DEPENDENT SUBQUERY	te	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.target_guid	1	12.50	Using where
+6	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+4	DEPENDENT SUBQUERY	oe	NULL	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	7.18	Using where
+4	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+2	DEPENDENT SUBQUERY	se	NULL	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	12.50	Using where
+2	DEPENDENT SUBQUERY	pp_md	NULL	ref	entity_guid,name,value	name	202	const	30	100.00	Using where; Not exists
+marker
+### AFTER — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	1
+Handler_read_first	0
+Handler_read_key	201
+Handler_read_next	1980
+Handler_read_rnd_next	21
+Sort_rows	0
+Sort_scan	0
+```
+median wall-clock, 50 replays x3: 0.39s
+
+ Container elgg-idx-bench-mysql84-1 Stopping 
+ Container elgg-idx-bench-mysql84-1 Stopped 
+ Container elgg-idx-bench-mysql84-1 Removing 
+ Container elgg-idx-bench-mysql84-1 Removed 
+>>> mariadb106
+ Container elgg-idx-bench-mariadb106-1 Creating 
+ Container elgg-idx-bench-mariadb106-1 Created 
+ Container elgg-idx-bench-mariadb106-1 Starting 
+ Container elgg-idx-bench-mariadb106-1 Started 
+Table	Op	Msg_type	Msg_text
+bench.entities	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.river	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.metadata	analyze	status	OK
+river_rows	entity_rows	live_objects	metadata_rows
+4278	23000	11502	207030
+# mariadb106  (server: 10.6.27-MariaDB-ubu2204)
+
+## Result-set equivalence (access refactor must not change/leak rows)
+before ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+after  ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+verdict: IDENTICAL ✓
+
+```
+marker
+### BEFORE — EXPLAIN (joins entities; optimizer picks the leading table)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	rv	ALL	subject_guid,object_guid	NULL	NULL	NULL	4246	Using temporary; Using filesort
+1	PRIMARY	se	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	Using where; Distinct
+1	PRIMARY	oe	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	Using where; Distinct
+1	PRIMARY	te	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	Using where; Distinct
+4	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+3	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+2	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+marker
+### BEFORE — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	4
+Handler_read_first	0
+Handler_read_key	17214
+Handler_read_next	193735
+Handler_read_rnd_next	6141
+Sort_rows	20
+Sort_scan	1
+```
+median wall-clock, 50 replays x3: 60.71s
+
+```
+marker
+### AFTER — EXPLAIN (EXISTS semi-joins; river drives, posted index)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	rv	ALL	subject_guid,object_guid	NULL	NULL	NULL	4246	Using where; Using temporary; Using filesort
+1	PRIMARY	se	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	Using where; Distinct
+1	PRIMARY	oe	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	Using where; Distinct
+8	DEPENDENT SUBQUERY	te	unique_subquery	PRIMARY	PRIMARY	8	func	1	Using index
+6	DEPENDENT SUBQUERY	te	unique_subquery	PRIMARY,access_id,deleted	PRIMARY	8	func	1	Using where
+7	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+5	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+3	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+marker
+### AFTER — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	6
+Handler_read_first	0
+Handler_read_key	16273
+Handler_read_next	194335
+Handler_read_rnd_next	6141
+Sort_rows	20
+Sort_scan	1
+```
+median wall-clock, 50 replays x3: 17.45s
+
+ Container elgg-idx-bench-mariadb106-1 Stopping 
+ Container elgg-idx-bench-mariadb106-1 Stopped 
+ Container elgg-idx-bench-mariadb106-1 Removing 
+ Container elgg-idx-bench-mariadb106-1 Removed 
+>>> mariadb1011
+ Container elgg-idx-bench-mariadb1011-1 Creating 
+ Container elgg-idx-bench-mariadb1011-1 Created 
+ Container elgg-idx-bench-mariadb1011-1 Starting 
+ Container elgg-idx-bench-mariadb1011-1 Started 
+Table	Op	Msg_type	Msg_text
+bench.entities	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.river	analyze	status	OK
+Table	Op	Msg_type	Msg_text
+bench.metadata	analyze	status	OK
+river_rows	entity_rows	live_objects	metadata_rows
+4278	23000	11502	207030
+# mariadb1011  (server: 10.11.18-MariaDB-ubu2204)
+
+## Result-set equivalence (access refactor must not change/leak rows)
+before ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+after  ids: 2,3,4,5,7,8,17,18,19,20,22,30,32,33,34,35,37,44,45,47
+verdict: IDENTICAL ✓
+
+```
+marker
+### BEFORE — EXPLAIN (joins entities; optimizer picks the leading table)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	rv	ALL	subject_guid,object_guid	NULL	NULL	NULL	4246	Using temporary; Using filesort
+1	PRIMARY	se	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	Using where; Distinct
+1	PRIMARY	oe	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	Using where; Distinct
+1	PRIMARY	te	eq_ref	PRIMARY	PRIMARY	8	bench.rv.target_guid	1	Using where; Distinct
+4	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+3	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+2	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+marker
+### BEFORE — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	4
+Handler_read_first	0
+Handler_read_key	17214
+Handler_read_next	193735
+Handler_read_rnd_next	6141
+Sort_rows	20
+Sort_scan	1
+```
+median wall-clock, 50 replays x3: 16.20s
+
+```
+marker
+### AFTER — EXPLAIN (EXISTS semi-joins; river drives, posted index)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	rv	ALL	subject_guid,object_guid	NULL	NULL	NULL	4246	Using where; Using temporary; Using filesort
+1	PRIMARY	se	eq_ref	PRIMARY,access_id,deleted	PRIMARY	8	bench.rv.subject_guid	1	Using where; Distinct
+1	PRIMARY	oe	eq_ref	PRIMARY,type,access_id,type_subtype,type_subtype_owner,type_subtype_container,deleted,subtype	PRIMARY	8	bench.rv.object_guid	1	Using where; Distinct
+8	DEPENDENT SUBQUERY	te	unique_subquery	PRIMARY	PRIMARY	8	func	1	Using index
+6	DEPENDENT SUBQUERY	te	unique_subquery	PRIMARY,access_id,deleted	PRIMARY	8	func	1	Using where
+7	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+5	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+3	DEPENDENT SUBQUERY	pp_md	ref	entity_guid,name,value	name	202	const	30	Using where
+marker
+### AFTER — Handler_read_* and tmp tables for ONE execution
+Variable_name	Value
+Created_tmp_disk_tables	0
+Created_tmp_tables	6
+Handler_read_first	0
+Handler_read_key	16273
+Handler_read_next	194335
+Handler_read_rnd_next	6141
+Sort_rows	20
+Sort_scan	1
+```
+median wall-clock, 50 replays x3: 28.47s
+
+ Container elgg-idx-bench-mariadb1011-1 Stopping 
+ Container elgg-idx-bench-mariadb1011-1 Stopped 
+ Container elgg-idx-bench-mariadb1011-1 Removing 
+ Container elgg-idx-bench-mariadb1011-1 Removed 
+Done. Per-engine reports in results/.
