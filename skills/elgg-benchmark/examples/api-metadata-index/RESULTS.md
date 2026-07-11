@@ -35,3 +35,29 @@ Query duration = actual SQL time (performance_schema), isolated from PHP.
 - Headline metric is `Handler_read_next` (deterministic); SQL query time
   (performance_schema) isolates DB work from PHP; wall-clock is the full
   `elgg_get_*()` cost.
+
+## Combined with the value-BINARY ComparisonClause fix
+
+The count edge above stems from a deeper issue the benchmark exposed: Elgg wrapped
+the metadata **value** comparison in `CAST(value AS BINARY)` (for case-sensitive
+matching), which makes the value predicate **unindexable** — so no value index
+could ever be used, for fetches or counts. Wrapping the *value* instead
+(`value = BINARY ?`) keeps case sensitivity and lets the column index be used.
+
+Measured end-to-end on the same seeded site, a **selective** metadata query
+(`description = <one specific value>`, 1 of 11,065 rows) through
+`elgg_get_entities` / `elgg_count_entities`, comparing pre-branch
+(`CAST` + no composite index) to the branch (`BINARY` + composite index):
+
+| shape | before: `read_next` / SQL ms | after: `read_next` / SQL ms | speedup |
+| --- | ---: | ---: | ---: |
+| fetch (LIMIT 20) | 42,777 / 496.1 ms | 9 / 2.2 ms | ~225× |
+| count | 53,198 / 385.8 ms | 1 / 1.5 ms | ~257× |
+
+So the ComparisonClause fix resolves the count concern for the common case:
+**selective-value counts are now index seeks** (68 ms → 1 ms in the isolated
+measurement). The only residual regression is the pathological case where the
+value matches *nearly every* row of a common metadata name (e.g. `level=1` on all
+comments) — an un-scoped whole-type count there still hits the optimizer's
+join-order edge. Per-user (owner/container-scoped) counts, the common real shape,
+never regressed.
