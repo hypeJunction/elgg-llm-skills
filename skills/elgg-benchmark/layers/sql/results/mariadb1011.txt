@@ -1,0 +1,29 @@
+# mariadb1011  (server: 10.11.18-MariaDB-ubu2204)
+
+## BEFORE (single-column entity_guid index only)
+```
+marker
+### EXPLAIN point lookup (WHERE entity_guid = ? AND name = ?)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	metadata	ref	entity_guid,name	entity_guid	8	const	20	Using where
+marker
+### Handler counters for 10,000 getIDsByName lookups
+Variable_name	Value
+Handler_read_key	10000
+Handler_read_next	130003
+```
+median wall-clock, 10000 lookups x3: 0.51s
+
+## AFTER (composite entity_guid_name index)
+```
+marker
+### EXPLAIN point lookup (WHERE entity_guid = ? AND name = ?)
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	metadata	ref	entity_guid,name,entity_guid_name	entity_guid_name	1030	const,const	1	Using where
+marker
+### Handler counters for 10,000 getIDsByName lookups
+Variable_name	Value
+Handler_read_key	10000
+Handler_read_next	0
+```
+median wall-clock, 10000 lookups x3: 0.30s

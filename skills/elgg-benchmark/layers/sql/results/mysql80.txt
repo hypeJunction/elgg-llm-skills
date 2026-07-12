@@ -1,0 +1,29 @@
+# mysql80  (server: 8.0.46)
+
+## BEFORE (single-column entity_guid index only)
+```
+marker
+### EXPLAIN point lookup (WHERE entity_guid = ? AND name = ?)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	metadata	NULL	ref	entity_guid,name	entity_guid	8	const	20	5.97	Using where
+marker
+### Handler counters for 10,000 getIDsByName lookups
+Variable_name	Value
+Handler_read_key	10000
+Handler_read_next	130003
+```
+median wall-clock, 10000 lookups x3: 0.44s
+
+## AFTER (composite entity_guid_name index)
+```
+marker
+### EXPLAIN point lookup (WHERE entity_guid = ? AND name = ?)
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	metadata	NULL	ref	entity_guid,name,entity_guid_name	entity_guid_name	1030	const,const	1	100.00	Using where
+marker
+### Handler counters for 10,000 getIDsByName lookups
+Variable_name	Value
+Handler_read_key	10000
+Handler_read_next	0
+```
+median wall-clock, 10000 lookups x3: 0.35s
